@@ -3,10 +3,14 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
+#ifdef _MSC_VER
 #ifdef LVK_BUILDING_SHADER_COMPILE
 #define LVKDLL __declspec(dllexport)
 #else
 #define LVKDLL __declspec(dllimport)
+#endif
+#else
+#define LVKDLL
 #endif
 
 namespace lvk {
