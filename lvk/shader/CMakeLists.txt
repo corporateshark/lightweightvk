@@ -43,4 +43,4 @@ lvk_set_folder(glslang-default-resource-limits "third-party/glslang")
 target_link_libraries(LVKShaderCompile PRIVATE glslang SPIRV glslang-default-resource-limits)
 target_link_libraries(LVKShaderCompile PRIVATE Vulkan::Headers)
 
-target_include_directories(LVKShaderCompile PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/")
+target_include_directories(LVKShaderCompile PRIVATE "${LVK_ROOT_DIR}/third-party/deps/src/")

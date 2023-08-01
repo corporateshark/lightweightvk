@@ -1,3 +1,5 @@
+#define LVK_BUILDING_SHADER_COMPILE
+
 #include "ShaderCompile.h"
 
 #include <vulkan/vulkan.h>

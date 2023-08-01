@@ -3,20 +3,26 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
+#ifdef LVK_BUILDING_SHADER_COMPILE
+#define LVKDLL __declspec(dllexport)
+#else
+#define LVKDLL __declspec(dllimport)
+#endif
+
 namespace lvk {
 	struct Result;
 }
 
 namespace lvk::shader {
-	void initialize();
+	LVKDLL void initialize();
 
-	void shutdown();
+	LVKDLL void shutdown();
 
-	VkPhysicalDevice getTargetPhysicalDevice();
+	LVKDLL VkPhysicalDevice getTargetPhysicalDevice();
 
-	void loadTargetPhysicalDeviceLimits(VkPhysicalDevice device, const VkPhysicalDeviceLimits &limits);
+	LVKDLL void loadTargetPhysicalDeviceLimits(VkPhysicalDevice device, const VkPhysicalDeviceLimits &limits);
 
-	lvk::Result compile(const char *code, VkShaderStageFlagBits stage, std::vector<uint32_t>& out);
+	LVKDLL lvk::Result compile(const char *code, VkShaderStageFlagBits stage, std::vector<uint32_t>& out);
 
-	const char *getProcessingLog();
+	LVKDLL const char *getProcessingLog();
 }
