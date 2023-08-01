@@ -3,9 +3,10 @@
 #include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>
 
+#include <cstdio>
+#include <cstring>
 #include <ldrutils/lutils/ScopeExit.h>
-
-#include <lvk/LVK.h>
+#include <lvk/Result.h>
 
 VkPhysicalDevice last_device_;
 glslang_resource_t resource_template_;
