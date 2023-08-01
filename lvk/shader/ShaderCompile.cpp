@@ -49,7 +49,7 @@ void fillLogWithShaderError(const char *szProblem, glslang_shader_t *shader) {
 
 	auto appendIfNonNull = [&](const char* szLog) {
 		if (szLog && *szLog)
-			cursor += snprintf(processing_log_ + cursor, logSize - cursor, "%s", szLog);
+			cursor += snprintf(processing_log_ + cursor, logSize - cursor, "%s\n", szLog);
 	};
 
 	appendIfNonNull(szProblem);
