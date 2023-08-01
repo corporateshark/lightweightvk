@@ -18,9 +18,7 @@
 #include <igl/vulkan/VulkanPipelineBuilder.h>
 #include <igl/vulkan/VulkanSwapchain.h>
 #include <igl/vulkan/VulkanTexture.h>
-#include <lvk/vulkan/VulkanUtils.h>
-
-#include <glslang/Include/glslang_c_interface.h>
+#include <lvk/shader/ShaderCompile.h>
 
 static_assert(lvk::HWDeviceDesc::IGL_MAX_PHYSICAL_DEVICE_NAME_SIZE <= VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
 
@@ -189,7 +187,7 @@ VulkanContext::VulkanContext(const VulkanContextConfig& config,
     exit(255);
   };
 
-  glslang_initialize_process();
+  lvk::shader::initialize();
 
   createInstance();
 
@@ -256,7 +254,7 @@ VulkanContext::~VulkanContext() {
   vkDestroyDebugUtilsMessengerEXT(vkInstance_, vkDebugUtilsMessenger_, nullptr);
   vkDestroyInstance(vkInstance_, nullptr);
 
-  glslang_finalize_process();
+  lvk::shader::shutdown();
 
   LLOGL("Vulkan graphics pipelines created: %u\n",
                VulkanPipelineBuilder::getNumPipelinesCreated());

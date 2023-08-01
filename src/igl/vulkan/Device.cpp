@@ -16,8 +16,7 @@
 #include <igl/vulkan/VulkanHelpers.h>
 #include <igl/vulkan/VulkanSwapchain.h>
 #include <igl/vulkan/VulkanTexture.h>
-
-#include <glslang/Include/glslang_c_interface.h>
+#include <lvk/shader/ShaderCompile.h>
 
 namespace {
 
@@ -708,10 +707,13 @@ VulkanShaderModule Device::createShaderModule(ShaderStage stage,
     source = sourcePatched.c_str();
   }
 
-  const glslang_resource_t glslangResource = lvk::getGlslangResource(ctx_->getVkPhysicalDeviceProperties().limits);
-
   VkShaderModule vkShaderModule = VK_NULL_HANDLE;
-  const Result result = lvk::compileShader(ctx_->vkDevice_, vkStage, source, &vkShaderModule, &glslangResource);
+
+  if (lvk::shader::getTargetPhysicalDevice() != ctx_->vkPhysicalDevice_) {
+	  lvk::shader::loadTargetPhysicalDeviceLimits(ctx_->vkPhysicalDevice_, ctx_->getVkPhysicalDeviceProperties().limits);
+  }
+
+  const Result result = lvk::compileShader(ctx_->vkDevice_, vkStage, source, &vkShaderModule);
 
   Result::setResult(outResult, result);
 

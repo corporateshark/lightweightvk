@@ -46,8 +46,6 @@
     }                                                              \
   }
 
-typedef struct glslang_resource_s glslang_resource_t;
-
 namespace lvk {
 
 VkSemaphore createSemaphore(VkDevice device, const char* debugName);
@@ -55,12 +53,10 @@ VkFence createFence(VkDevice device, const char* debugName);
 VmaAllocator createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, VkInstance instance, uint32_t apiVersion);
 uint32_t findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags);
 
-glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits);
 Result compileShader(VkDevice device,
                      VkShaderStageFlagBits stage,
                      const char* code,
-                     VkShaderModule* outShaderModule,
-                     const glslang_resource_t* glslLangResource = nullptr);
+                     VkShaderModule* outShaderModule);
 
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
 
