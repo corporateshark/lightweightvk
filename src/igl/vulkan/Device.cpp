@@ -16,7 +16,7 @@
 #include <igl/vulkan/VulkanHelpers.h>
 #include <igl/vulkan/VulkanSwapchain.h>
 #include <igl/vulkan/VulkanTexture.h>
-#include <lvk/shader/ShaderCompile.h>
+#include <lvk/vulkan/ShaderCompile.h>
 
 namespace {
 
@@ -713,7 +713,7 @@ VulkanShaderModule Device::createShaderModule(ShaderStage stage,
 	  lvk::shader::loadTargetPhysicalDeviceLimits(ctx_->vkPhysicalDevice_, ctx_->getVkPhysicalDeviceProperties().limits);
   }
 
-  const Result result = lvk::compileShader(ctx_->vkDevice_, vkStage, source, &vkShaderModule);
+  const Result result = lvk::shader::compile(ctx_->vkDevice_, vkStage, source, &vkShaderModule);
 
   Result::setResult(outResult, result);
 

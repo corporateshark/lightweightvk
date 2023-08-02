@@ -11,6 +11,7 @@ project("LVK" CXX C)
 option(LVK_WITH_SAMPLES "Enable sample demo apps"  ON)
 option(LVK_WITH_TRACY   "Enable Tracy profiler"    ON)
 option(LVK_DEPLOY_DEPS  "Deploy dependencies via CMake" ON)
+option(LVK_DYNAMIC_GLSL "Link GLSL shader compiler dynamically" ON)
 # cmake-format: on
 
 include(cmake/CommonMacros.txt)

@@ -2,13 +2,11 @@
 
 #include "ShaderCompile.h"
 
-#include <vulkan/vulkan.h>
 #include <glslang/Include/glslang_c_interface.h>
 
-#include <cstdio>
-#include <cstring>
+#include <cassert>
+#include <lvk/vulkan/VulkanUtils.h>
 #include <ldrutils/lutils/ScopeExit.h>
-#include <lvk/Result.h>
 
 VkPhysicalDevice last_device_;
 glslang_resource_t resource_template_;
@@ -42,17 +40,10 @@ static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
 	return GLSLANG_STAGE_COUNT;
 }
 
-char processing_log_[1024];
-
-void fillLogWithShaderError(const char *szProblem, glslang_shader_t *shader) {
-	// 'snprintf' leaves a byte at the end for the null terminator.
-	// We try to leave a newline at the end of this output, but if we overflow it may be cutoff.
-	constexpr size_t logSize = sizeof(processing_log_);
-	size_t cursor = 0;
-
-	auto appendIfNonNull = [&](const char* szLog) {
+void logShaderError(const char *szProblem, glslang_shader_t *shader) {
+	auto appendIfNonNull = [&](const char *szLog) {
 		if (szLog && *szLog)
-			cursor += snprintf(processing_log_ + cursor, logSize - cursor, "%s\n", szLog);
+			LLOGW("%s\n", szLog);
 	};
 
 	appendIfNonNull(szProblem);
@@ -60,8 +51,15 @@ void fillLogWithShaderError(const char *szProblem, glslang_shader_t *shader) {
 	appendIfNonNull(glslang_shader_get_info_debug_log(shader));
 }
 
-lvk::Result lvk::shader::compile(const char *code, VkShaderStageFlagBits stage, std::vector<uint32_t> &out) {
-	processing_log_[0] = '\0';
+lvk::Result lvk::shader::compile(VkDevice device,
+								 VkShaderStageFlagBits stage,
+								 const char *code,
+								 VkShaderModule *outShaderModule) {
+	IGL_PROFILER_FUNCTION();
+
+	if (!outShaderModule) {
+		return Result(Result::Code::ArgumentOutOfRange, "outShaderModule is NULL");
+	}
 
 	glslang_stage_t apiStage = getGLSLangShaderStage(stage);
 	if (apiStage == GLSLANG_STAGE_COUNT) {
@@ -90,12 +88,12 @@ lvk::Result lvk::shader::compile(const char *code, VkShaderStageFlagBits stage, 
 			   };
 
 	if (!glslang_shader_preprocess(shader, &input)) {
-		fillLogWithShaderError("Shader preprocessing failed:\n", shader);
+		logShaderError("Shader preprocessing failed:\n", shader);
 		return Result(Result::Code::RuntimeError, "glslang_shader_preprocess() failed");
 	}
 
 	if (!glslang_shader_parse(shader, &input)) {
-		fillLogWithShaderError("Shader parsing failed:\n", shader);
+		logShaderError("Shader parsing failed:\n", shader);
 		return Result(Result::Code::RuntimeError, "glslang_shader_parse() failed");
 	}
 
@@ -107,7 +105,7 @@ lvk::Result lvk::shader::compile(const char *code, VkShaderStageFlagBits stage, 
 			   };
 
 	if (!glslang_program_link(program, GLSLANG_MSG_SPV_RULES_BIT | GLSLANG_MSG_VULKAN_RULES_BIT)) {
-		fillLogWithShaderError("Shader linking failed:\n", shader);
+		logShaderError("Shader linking failed:\n", shader);
 		return Result(Result::Code::RuntimeError, "glslang_program_link() failed");
 	}
 
@@ -125,19 +123,17 @@ lvk::Result lvk::shader::compile(const char *code, VkShaderStageFlagBits stage, 
 	glslang_program_SPIRV_generate_with_options(program, input.stage, &options);
 
 	if (glslang_program_SPIRV_get_messages(program)) {
-		sprintf(processing_log_, "%s\n", glslang_program_SPIRV_get_messages(program));
+		LLOGW("%s\n", glslang_program_SPIRV_get_messages(program));
 	}
 
-	// Size in blocks of 4 bytes.
-	size_t size = glslang_program_SPIRV_get_size(program);
-	out.resize(size);
-	memcpy(out.data(), glslang_program_SPIRV_get_ptr(program), size * sizeof(uint32_t));
+	const VkShaderModuleCreateInfo ci = {
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize = glslang_program_SPIRV_get_size(program) * sizeof(uint32_t),
+			.pCode = glslang_program_SPIRV_get_ptr(program),
+	};
+	VK_ASSERT_RETURN(vkCreateShaderModule(device, &ci, nullptr, outShaderModule));
 
 	return Result();
-}
-
-const char *lvk::shader::getProcessingLog() {
-	return processing_log_;
 }
 
 glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits &limits) {

@@ -21,7 +21,6 @@ lvk_setup_target(LVKLibrary)
 lvk_set_folder(LVKLibrary "LVK")
 
 add_subdirectory(vulkan)
-add_subdirectory(shader)
 
 target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
 

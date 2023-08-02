@@ -53,11 +53,6 @@ VkFence createFence(VkDevice device, const char* debugName);
 VmaAllocator createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, VkInstance instance, uint32_t apiVersion);
 uint32_t findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags);
 
-Result compileShader(VkDevice device,
-                     VkShaderStageFlagBits stage,
-                     const char* code,
-                     VkShaderModule* outShaderModule);
-
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
 
 Result getResultFromVkResult(VkResult result);

@@ -15,8 +15,6 @@
 
 #include <minilog/minilog.h>
 
-#include "Result.h"
-
 // clang-format off
 #if defined(LVK_WITH_TRACY)
   #include "tracy/Tracy.hpp"
@@ -259,6 +257,36 @@ struct Color {
 };
 
 static_assert(sizeof(Color) == 4 * sizeof(float));
+
+struct Result {
+  enum class Code {
+    Ok,
+    ArgumentOutOfRange,
+    RuntimeError,
+  };
+
+  Code code = Code::Ok;
+  const char* message = "";
+  explicit Result() = default;
+  explicit Result(Code code, const char* message = "") : code(code), message(message) {}
+
+  bool isOk() const {
+    return code == Result::Code::Ok;
+  }
+
+  static void setResult(Result* outResult, Code code, const char* message = "") {
+    if (outResult) {
+      outResult->code = code;
+      outResult->message = message;
+    }
+  }
+
+  static void setResult(Result* outResult, const Result& sourceResult) {
+    if (outResult) {
+      *outResult = sourceResult;
+    }
+  }
+};
 
 struct ScissorRect {
   uint32_t x = 0;

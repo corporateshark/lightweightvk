@@ -10,8 +10,6 @@
 #include <igl/vulkan/Common.h>
 #include <igl/vulkan/VulkanContext.h>
 
-#include <shader/ShaderCompile.h>
-
 lvk::Result lvk::getResultFromVkResult(VkResult result) {
   if (result == VK_SUCCESS) {
     return Result();
@@ -343,38 +341,4 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
   }
 
   return ci;
-}
-
-lvk::Result lvk::compileShader(VkDevice device,
-                               VkShaderStageFlagBits stage,
-                               const char* code,
-                               VkShaderModule* outShaderModule) {
-  IGL_PROFILER_FUNCTION();
-
-  if (!outShaderModule) {
-    return Result(Result::Code::ArgumentOutOfRange, "outShaderModule is NULL");
-  }
-
-  std::vector<uint32_t> bytecode;
-  lvk::Result res = lvk::shader::compile(code, stage, bytecode);
-
-  // Even if compilation+linking is successful, we may have some warnings.
-  if (*lvk::shader::getProcessingLog()) {
-	  LLOGW(lvk::shader::getProcessingLog());
-  }
-
-  if (!res.isOk()) {
-	  logShaderSource(code);
-	  assert(false);
-	  return Result();
-  }
-
-  const VkShaderModuleCreateInfo ci = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = bytecode.size() * sizeof(uint32_t),
-      .pCode = bytecode.data(),
-  };
-  VK_ASSERT_RETURN(vkCreateShaderModule(device, &ci, nullptr, outShaderModule));
-
-  return Result();
 }
