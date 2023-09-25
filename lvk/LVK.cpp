@@ -181,20 +181,33 @@ void lvk::destroy(lvk::IContext* ctx, lvk::TextureHandle handle) {
 // Logs GLSL shaders with line numbers annotation
 void lvk::logShaderSource(const char* text) {
   uint32_t line = 1;
-
-  LLOGL("\n(%3u) ", line);
-
+  
+  constexpr uint32_t kBufferLength = 8192;
+  char buffer[kBufferLength];
+  
+  auto offset = snprintf(buffer, kBufferLength, "\n(%3u) ", line);
+  assert(offset + 2 < kBufferLength);
+  
   while (text && *text) {
     if (*text == '\n') {
-      LLOGL("\n(%3u) ", ++line);
+      buffer[offset++] = '\n';
+      buffer[offset++] = 0;
+      LLOGL(buffer);
+
+      offset = snprintf(buffer, kBufferLength, "(%3u) ", ++line);
+      assert(offset + 2 < kBufferLength);
     } else if (*text == '\r') {
       // skip it to support Windows/UNIX EOLs
     } else {
-      LLOGL("%c", *text);
+      if (offset + 2 < kBufferLength) {
+        buffer[offset++] = *text;
+      }
     }
     text++;
   }
-  LLOGL("\n");
+  buffer[offset++] = '\n';
+  buffer[offset++] = 0;
+  LLOGL(buffer);
 }
 
 #if LVK_WITH_GLFW
