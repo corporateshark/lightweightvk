@@ -615,6 +615,7 @@ class VulkanContext final : public IContext {
   VkPhysicalDevice vkPhysicalDevice_ = VK_NULL_HANDLE;
   VkDevice vkDevice_ = VK_NULL_HANDLE;
 
+public:
   VkPhysicalDeviceVulkan13Features vkFeatures13_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
   VkPhysicalDeviceVulkan12Features vkFeatures12_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
                                                     .pNext = &vkFeatures13_};
@@ -622,6 +623,7 @@ class VulkanContext final : public IContext {
                                                     .pNext = &vkFeatures12_};
   VkPhysicalDeviceFeatures2 vkFeatures10_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vkFeatures11_};
 
+private:
   // provided by Vulkan 1.2
   VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
   VkPhysicalDeviceVulkan12Properties vkPhysicalDeviceVulkan12Properties_ = {
@@ -645,6 +647,7 @@ class VulkanContext final : public IContext {
   std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
   uint32_t currentMaxTextures_ = 16;
   uint32_t currentMaxSamplers_ = 16;
+  VkPipelineLayout vkGenericPipelineLayout_ = VK_NULL_HANDLE;
   VkDescriptorSetLayout vkDSL_ = VK_NULL_HANDLE;
   VkDescriptorPool vkDPool_ = VK_NULL_HANDLE;
   VkDescriptorSet vkDSet_ = VK_NULL_HANDLE;

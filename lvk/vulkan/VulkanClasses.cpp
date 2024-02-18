@@ -2531,20 +2531,26 @@ void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t 
     LLOGW("Push constants size exceeded %u (max %u bytes)", size + offset, limits.maxPushConstantsSize);
   }
 
-  if (currentPipelineGraphics_.empty() && currentPipelineCompute_.empty()) {
-    LVK_ASSERT_MSG(false, "No pipeline bound - cannot set push constants");
-    return;
+  VkPipelineLayout layout = ctx_->vkGenericPipelineLayout_;
+  VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+  if (ctx_->vkFeatures10_.features.tessellationShader == VK_TRUE) {
+    stageFlags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+    stageFlags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+  }
+  if (ctx_->vkFeatures10_.features.geometryShader == VK_TRUE) {
+    stageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
   }
 
-  const lvk::RenderPipelineState* stateGraphics = ctx_->renderPipelinesPool_.get(currentPipelineGraphics_);
-  const lvk::ComputePipelineState* stateCompute = ctx_->computePipelinesPool_.get(currentPipelineCompute_);
+  if (const lvk::RenderPipelineState* state = ctx_->renderPipelinesPool_.get(currentPipelineGraphics_)) {
+    stageFlags = state->shaderStageFlags_;
+    layout = state->pipelineLayout_;
+  }
+  if (const lvk::ComputePipelineState* state = ctx_->computePipelinesPool_.get(currentPipelineCompute_)) {
+    stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    layout = state->pipelineLayout_;
+  }
 
-  LVK_ASSERT(stateGraphics || stateCompute);
-
-  VkPipelineLayout layout = stateGraphics ? stateGraphics->pipelineLayout_ : stateCompute->pipelineLayout_;
-  VkShaderStageFlags shaderStageFlags = stateGraphics ? stateGraphics->shaderStageFlags_ : VK_SHADER_STAGE_COMPUTE_BIT;
-
-  vkCmdPushConstants(wrapper_->cmdBuf_, layout, shaderStageFlags, (uint32_t)offset, (uint32_t)size, data);
+  vkCmdPushConstants(wrapper_->cmdBuf_, layout, stageFlags, (uint32_t)offset, (uint32_t)size, data);
 }
 
 void lvk::CommandBuffer::cmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t baseInstance) {
@@ -3169,6 +3175,7 @@ lvk::VulkanContext::~VulkanContext() {
 
   immediate_.reset(nullptr);
 
+  vkDestroyPipelineLayout(vkDevice_, vkGenericPipelineLayout_, nullptr);
   vkDestroyDescriptorSetLayout(vkDevice_, vkDSL_, nullptr);
   vkDestroyDescriptorPool(vkDevice_, vkDPool_, nullptr);
   vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
@@ -5036,6 +5043,10 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
   if (vkDPool_ != VK_NULL_HANDLE) {
     deferredTask(std::packaged_task<void()>([device = vkDevice_, dp = vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
   }
+  if (vkGenericPipelineLayout_ != VK_NULL_HANDLE) {
+    deferredTask(std::packaged_task<void()>(
+        [device = vkDevice_, layout = vkGenericPipelineLayout_]() { vkDestroyPipelineLayout(device, layout, nullptr); }));
+  }
 
   // create default descriptor set layout which is going to be shared by graphics pipelines
   const VkDescriptorSetLayoutBinding bindings[kBinding_NumBindings] = {
@@ -5087,6 +5098,45 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
         .pSetLayouts = &vkDSL_,
     };
     VK_ASSERT_RETURN(vkAllocateDescriptorSets(vkDevice_, &ai, &vkDSet_));
+  }
+
+  // create pipeline layout
+  {
+    // maxPushConstantsSize is guaranteed to be at least 128 bytes
+    // https://www.khronos.org/registry/vulkan/specs/1.3/html/vkspec.html#features-limits
+    // Table 32. Required Limits
+    const uint32_t kPushConstantsSize = 128;
+    const VkPhysicalDeviceLimits& limits = getVkPhysicalDeviceProperties().limits;
+    if (!LVK_VERIFY(kPushConstantsSize <= limits.maxPushConstantsSize)) {
+      LLOGW("Push constants size exceeded %u (max %u bytes)", kPushConstantsSize, limits.maxPushConstantsSize);
+    }
+
+    VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+    if (vkFeatures10_.features.tessellationShader == VK_TRUE) {
+      stageFlags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+      stageFlags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+    }
+    if (vkFeatures10_.features.geometryShader == VK_TRUE) {
+      stageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+    }
+
+    const VkPushConstantRange range = {
+        .stageFlags = stageFlags,
+        .offset = 0,
+        .size = kPushConstantsSize,
+    };
+    const VkPipelineLayoutCreateInfo ci = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 0,
+        .pSetLayouts = nullptr,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &range,
+    };
+    VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ci, nullptr, &vkGenericPipelineLayout_));
+    VK_ASSERT(lvk::setDebugObjectName(vkDevice_,
+                                      VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                                      (uint64_t)vkGenericPipelineLayout_,
+                                      "Pipeline Layout: VulkanContext::vkGenericPipelineLayout_"));
   }
 
   return Result();
