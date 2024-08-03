@@ -140,4 +140,6 @@ ADD_DEMO_LINK_LIBRARIES("Tiny_MeshLarge" ktx)
 # Slang
 if(LVK_WITH_SLANG)
   ADD_DEMO("001_HelloTriangle_Slang")
+  target_link_libraries(001_HelloTriangle_Slang PRIVATE slang-rt)
+  target_link_libraries(001_HelloTriangle_Slang PRIVATE core)
 endif()

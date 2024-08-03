@@ -21,6 +21,7 @@ option(LVK_WITH_WAYLAND            "Enable Wayland"                          OFF
 option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
 option(LVK_WITH_OPENXR             "Enable OpenXR"                           OFF)
 option(LVK_WITH_ANDROID_VALIDATION "Enable validation layers on Android"     ON)
+option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
 
 cmake_dependent_option(LVK_WITH_VULKAN_PORTABILITY "Enable portability extension" ON "APPLE" OFF)
 
@@ -34,8 +35,9 @@ if(LVK_WITH_SAMPLES AND NOT LVK_WITH_GLFW)
 endif()
 
 if(ANDROID)
-  message(STATUS "WARNING: LVK_WITH_GLFW and LVK_WITH_SAMPLES were set to OFF for Android")
+  message(STATUS "WARNING: LVK_WITH_GLFW and LVK_WITH_SLANG were set to OFF for Android")
   set(LVK_WITH_GLFW OFF)
+  set(LVK_WITH_SLANG OFF)
 endif()
 
 if(LVK_WITH_WAYLAND AND (ANDROID OR APPLE OR WIN32))
@@ -152,7 +154,7 @@ if(LVK_WITH_OPENXR)
 endif()
 
 # temporary
-if(NOT LVK_USE_CUSTOM_MOLTENVK)
+if(NOT LVK_USE_CUSTOM_MOLTENVK AND NOT LVK_WITH_SLANG)
   find_package(Vulkan REQUIRED)
 endif()
 

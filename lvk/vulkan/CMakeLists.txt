@@ -35,6 +35,32 @@ lvk_set_folder(SPIRV              "third-party/glslang")
 lvk_set_folder(glslang-default-resource-limits "third-party/glslang")
 # cmake-format: on
 
+# slang
+# cmake-format: off
+if(LVK_WITH_SLANG)
+  set(SLANG_ENABLE_CUDA          OFF CACHE BOOL "")
+  set(SLANG_ENABLE_OPTIX         OFF CACHE BOOL "")
+  set(SLANG_ENABLE_NVAPI         OFF CACHE BOOL "")
+  set(SLANG_ENABLE_XLIB          OFF CACHE BOOL "")
+  set(SLANG_ENABLE_AFTERMATH     OFF CACHE BOOL "")
+  set(SLANG_ENABLE_DX_ON_VK      OFF CACHE BOOL "")
+  set(SLANG_ENABLE_GFX           OFF CACHE BOOL "")
+  set(SLANG_ENABLE_SLANGC        OFF CACHE BOOL "")
+  set(SLANG_ENABLE_SLANGRT       ON  CACHE BOOL "")
+  set(SLANG_ENABLE_SLANG_GLSLANG OFF CACHE BOOL "")
+  set(SLANG_ENABLE_TESTS         OFF CACHE BOOL "")
+  set(SLANG_ENABLE_EXAMPLES      OFF CACHE BOOL "")
+  set(SLANG_ENABLE_REPLAYER      OFF CACHE BOOL "")
+  set(SLANG_ENABLE_PREBUILT_BINARIES OFF CACHE BOOL "")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/slang "slang")
+  lvk_set_folder(compiler-core          "third-party/slang")
+  lvk_set_folder(core                   "third-party/slang")
+  lvk_set_folder(slang                  "third-party/slang")
+  lvk_set_folder(slangd                 "third-party/slang")
+  lvk_set_folder(slang-rt               "third-party/slang")
+endif()
+# cmake-format: on
+
 # SPIRV-Reflect
 set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "")
 set(SPIRV_REFLECT_STATIC_LIB ON  CACHE BOOL "")
@@ -52,6 +78,10 @@ endif()
 target_link_libraries(LVKVulkan PRIVATE LVKLibrary)
 target_link_libraries(LVKVulkan PRIVATE glslang SPIRV glslang-default-resource-limits)
 target_link_libraries(LVKVulkan PRIVATE spirv-reflect-static)
+if(LVK_WITH_SLANG)
+  target_link_libraries(LVKVulkan PRIVATE slang)
+  target_link_libraries(LVKVulkan PRIVATE slang-rt)
+endif()
 
 if(LVK_USE_CUSTOM_MOLTENVK)
   target_include_directories(LVKVulkan PUBLIC "${LVK_CUSTOM_MOLTENVK_PATH}/include")
