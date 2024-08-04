@@ -136,3 +136,8 @@ ADD_DEMO_SOURCES("Tiny_MeshLarge"
 ADD_DEMO_SOURCES("Tiny_MeshLarge"
   "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")
 ADD_DEMO_LINK_LIBRARIES("Tiny_MeshLarge" ktx)
+
+# Slang
+if(LVK_WITH_SLANG)
+  ADD_DEMO("001_HelloTriangle_Slang")
+endif()
