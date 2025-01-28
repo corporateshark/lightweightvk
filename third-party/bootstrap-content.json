@@ -70,5 +70,13 @@
         "url": "https://github.com/facebook/igl/raw/4e066d19b3461c05417542c14fa8ea5f64a70964/shell/resources/images/output_frame_900.nv12.yuv",
         "sha1": "afef6f0aa6a5b7e12fd79f87b0ae940113623fd6"
     }
+},
+{
+    "name": "Sponza",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/jimmiebergmann/Sponza.git",
+        "revision": "222338979d32f4f4818466291bdbc29f192b86ba"
+    }
 }
 ]
