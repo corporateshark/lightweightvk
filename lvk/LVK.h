@@ -864,6 +864,12 @@ enum AccelStructInstanceFlagBits : uint8_t {
   AccelStructInstanceFlagBits_ForceNoOpaque = 1 << 3,
 };
 
+struct AccelStructSizes {
+  uint64_t accelerationStructureSize = 0;
+  uint64_t updateScratchSize = 0;
+  uint64_t buildScratchSize = 0;
+};
+
 struct AccelStructBuildRange {
   uint32_t primitiveCount = 0;
   uint32_t primitiveOffset = 0;
@@ -1062,12 +1068,17 @@ class IContext {
 
   [[nodiscard]] virtual uint64_t gpuAddress(AccelStructHandle handle) const = 0;
 
+#pragma region Acceleration structure functions
+  [[nodiscard]] virtual AccelStructSizes getAccelStructSizes(const AccelStructDesc& desc, Result* outResult = nullptr) = 0;
+#pragma endregion
+
 #pragma region Buffer functions
   virtual Result upload(BufferHandle handle, const void* data, size_t size, size_t offset = 0) = 0;
   virtual Result download(BufferHandle handle, void* data, size_t size, size_t offset) = 0;
   [[nodiscard]] virtual uint8_t* getMappedPtr(BufferHandle handle) const = 0;
   [[nodiscard]] virtual uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const = 0;
   virtual void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
+  [[nodiscard]] virtual uint32_t getMaxStorageBufferSize() const = 0;
 #pragma endregion
 
 #pragma region Texture functions
