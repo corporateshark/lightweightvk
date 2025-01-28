@@ -22,7 +22,7 @@ def get_external_storage():
 
 external_storage_path = get_external_storage()
 if external_storage_path is not None:
-    paths = [(os.path.join("third-party", "content"), 
+    paths = [(os.path.join("third-party", "content"),
               os.path.join(external_storage_path, "LVK", "content").replace("\\", "/")),
              (os.path.join("third-party", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data"),
               os.path.join(external_storage_path, "LVK", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data").replace("\\", "/"))]
