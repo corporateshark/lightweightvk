@@ -73,7 +73,7 @@ macro(ADD_DEMO app)
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/AndroidManifest.xml")
       configure_file("${LVK_ROOT_DIR}/android/app/MainActivity.java.in"
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/java/org/lvk/samples/MainActivity.java")
-      
+
       if(LVK_WITH_ANDROID_VALIDATION)
         list(APPEND abdroid_abi arm64-v8a armeabi-v7a x86 x86_64)
         foreach(abi ${abdroid_abi})
@@ -92,7 +92,7 @@ macro(ADD_DEMO app)
       else()
         cmake_path(SET NDK_PATH $ENV{NDK_ROOT})
       endif()
-      add_library(lvk_android_native_${app} SHARED 
+      add_library(lvk_android_native_${app} SHARED
                   "${app}.cpp"
                   "${NDK_PATH}/sources/android/native_app_glue/android_native_app_glue.c")
       lvk_set_cxxstd(lvk_android_native_${app} 20)
@@ -127,11 +127,11 @@ ADD_DEMO("004_YUV")
 if(WIN32 OR UNIX AND NOT (APPLE))
   # Windows and Linux
   ADD_DEMO("005_MeshShaders")
-  ADD_DEMO("007_RayTracingAO")
 endif()
 if((WIN32 OR UNIX AND NOT (APPLE)) OR LVK_WITH_SAMPLES_ANDROID)
   # Windows, Linux and Android
   ADD_DEMO("006_RayTracingHello")
+  ADD_DEMO("007_RayTracingAO")
 endif()
 
 ADD_DEMO("Tiny")
