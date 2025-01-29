@@ -755,6 +755,7 @@ struct BufferDesc final {
   uint8_t usage = 0;
   StorageType storage = StorageType_HostVisible;
   size_t size = 0;
+  size_t overwrittenAlignment = 0;
   const void* data = nullptr;
   const char* debugName = "";
 };

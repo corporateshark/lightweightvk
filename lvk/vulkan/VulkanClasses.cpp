@@ -2891,6 +2891,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
             .usage = lvk::BufferUsageBits_Storage,
             .storage = lvk::StorageType_Device,
             .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+            .overwrittenAlignment = ctx_->accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
             .debugName = "scratchBuffer",
         },
         nullptr,
@@ -3372,6 +3373,7 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(uint32_t sizeNeeded) {
                     ctx_.createBuffer(stagingBufferSize_,
                                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                      0,
                                       nullptr,
                                       debugName)};
   LVK_ASSERT(!stagingBuffer_.empty());
@@ -3694,7 +3696,8 @@ lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc
   const VkMemoryPropertyFlags memFlags = storageTypeToVkMemoryPropertyFlags(desc.storage);
 
   Result result;
-  BufferHandle handle = createBuffer(desc.size, usageFlags, memFlags, &result, desc.debugName);
+  BufferHandle handle = createBuffer(desc.size, usageFlags, memFlags,
+                                     requestedDesc.overwrittenAlignment, &result, desc.debugName);
 
   if (!LVK_VERIFY(result.isOk())) {
     Result::setResult(outResult, result);
@@ -4236,6 +4239,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
           .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .overwrittenAlignment = accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
           .debugName = "Buffer: BLAS scratch",
       },
       nullptr,
@@ -4310,6 +4314,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
           .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .overwrittenAlignment = accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
           .debugName = "Buffer: TLAS scratch",
       },
       nullptr,
@@ -4823,6 +4828,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
           .usage = lvk::BufferUsageBits_ShaderBindingTable,
           .storage = lvk::StorageType_Device,
           .size = sbtBufferSize,
+          .overwrittenAlignment = props.shaderGroupBaseAlignment,
           .data = sbtStorage.data(),
           .debugName = "Buffer: SBT",
       },
@@ -6852,6 +6858,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
 lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
                                                    VkBufferUsageFlags usageFlags,
                                                    VkMemoryPropertyFlags memFlags,
+                                                   VkDeviceSize overwrittenAlignment,
                                                    lvk::Result* outResult,
                                                    const char* debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -6890,7 +6897,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
       .pQueueFamilyIndices = nullptr,
   };
 
-  if (LVK_VULKAN_USE_VMA) {
+  if (LVK_VULKAN_USE_VMA && overwrittenAlignment == 0) {
     VmaAllocationCreateInfo vmaAllocInfo = {};
 
     // Initialize VmaAllocation Info
@@ -6932,6 +6939,9 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     {
       VkMemoryRequirements requirements = {};
       vkGetBufferMemoryRequirements(vkDevice_, buf.vkBuffer_, &requirements);
+      if (overwrittenAlignment != 0) {
+        requirements.alignment = overwrittenAlignment;
+      }
       if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
         buf.isCoherentMemory_ = true;
       }

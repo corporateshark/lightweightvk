@@ -565,6 +565,7 @@ class VulkanContext final : public IContext {
   BufferHandle createBuffer(VkDeviceSize bufferSize,
                             VkBufferUsageFlags usageFlags,
                             VkMemoryPropertyFlags memFlags,
+                            VkDeviceSize overwrittenAlignment,
                             lvk::Result* outResult,
                             const char* debugName = nullptr);
   SamplerHandle createSampler(const VkSamplerCreateInfo& ci,
