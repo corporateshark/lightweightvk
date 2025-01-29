@@ -132,6 +132,7 @@ if((WIN32 OR UNIX AND NOT (APPLE)) OR LVK_WITH_SAMPLES_ANDROID)
   # Windows, Linux and Android
   ADD_DEMO("006_RayTracingHello")
   ADD_DEMO("007_RayTracingAO")
+  ADD_DEMO("008_RayTracingMesh")
 endif()
 
 ADD_DEMO("Tiny")
