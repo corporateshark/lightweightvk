@@ -208,6 +208,7 @@ namespace lvk {
 
 enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
 enum { LVK_MAX_MIP_LEVELS = 16 };
+enum { LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE = 4 };
 
 enum IndexFormat : uint8_t {
   IndexFormat_UI8,
@@ -684,15 +685,33 @@ struct ComputePipelineDesc final {
 };
 
 struct RayTracingPipelineDesc final {
-  ShaderModuleHandle smRayGen;
-  ShaderModuleHandle smAnyHit;
-  ShaderModuleHandle smClosestHit;
-  ShaderModuleHandle smMiss;
-  ShaderModuleHandle smIntersection;
-  ShaderModuleHandle smCallable;
+  ShaderModuleHandle smRayGen[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smAnyHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smClosestHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smMiss[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smIntersection[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smCallable[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
   SpecializationConstantDesc specInfo = {};
   const char* entryPoint = "main";
   const char* debugName = "";
+
+#define GET_SHADER_GROUP_SIZE(name, module) \
+  [[nodiscard]] uint32_t getShaderGroupSize##name() const { \
+    uint32_t n = 0; \
+    while (n < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE && module[n]) { \
+      n++; \
+    } \
+    return n; \
+  }
+
+  GET_SHADER_GROUP_SIZE(RayGen, smRayGen)
+  GET_SHADER_GROUP_SIZE(AnyHit, smAnyHit)
+  GET_SHADER_GROUP_SIZE(ClosestHit, smClosestHit)
+  GET_SHADER_GROUP_SIZE(RayMiss, smMiss)
+  GET_SHADER_GROUP_SIZE(Intersection, smIntersection)
+  GET_SHADER_GROUP_SIZE(Callable, smCallable)
+
+#undef GET_SHADER_GROUP_SIZE
 };
 
 struct RenderPass final {
