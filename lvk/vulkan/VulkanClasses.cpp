@@ -971,12 +971,14 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
 
   const VkImageAspectFlags imageAspectFlags = getImageAspectFlags();
 
-  const VkDebugUtilsLabelEXT utilsLabel = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-      .pLabelName = "Generate mipmaps",
-      .color = {1.0f, 0.75f, 1.0f, 1.0f},
-  };
-  vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &utilsLabel);
+  if (vkCmdBeginDebugUtilsLabelEXT) {
+    const VkDebugUtilsLabelEXT utilsLabel = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = "Generate mipmaps",
+        .color = {1.0f, 0.75f, 1.0f, 1.0f},
+    };
+    vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &utilsLabel);
+  }
 
   const VkImageLayout originalImageLayout = vkImageLayout_;
 
@@ -1064,7 +1066,9 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
                           VK_PIPELINE_STAGE_TRANSFER_BIT, // srcStageMask
                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // dstStageMask
                           VkImageSubresourceRange{imageAspectFlags, 0, numLevels_, 0, numLayers_});
-  vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+  if (vkCmdEndDebugUtilsLabelEXT) {
+    vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+  }
 
   vkImageLayout_ = originalImageLayout;
 }
@@ -1980,7 +1984,7 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
 void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA) const {
   LVK_ASSERT(label);
 
-  if (!label) {
+  if (!label || !vkCmdBeginDebugUtilsLabelEXT) {
     return;
   }
   const VkDebugUtilsLabelEXT utilsLabel = {
@@ -1998,7 +2002,7 @@ void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colo
 void lvk::CommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA) const {
   LVK_ASSERT(label);
 
-  if (!label) {
+  if (!label || !vkCmdInsertDebugUtilsLabelEXT) {
     return;
   }
   const VkDebugUtilsLabelEXT utilsLabel = {
@@ -2014,6 +2018,9 @@ void lvk::CommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t co
 }
 
 void lvk::CommandBuffer::cmdPopDebugGroupLabel() const {
+  if (!vkCmdEndDebugUtilsLabelEXT) {
+    return;
+  }
   vkCmdEndDebugUtilsLabelEXT(wrapper_->cmdBuf_);
 }
 
@@ -2884,6 +2891,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
             .usage = lvk::BufferUsageBits_Storage,
             .storage = lvk::StorageType_Device,
             .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+            .overwrittenAlignment = ctx_->accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
             .debugName = "scratchBuffer",
         },
         nullptr,
@@ -3365,6 +3373,7 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(uint32_t sizeNeeded) {
                     ctx_.createBuffer(stagingBufferSize_,
                                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                      0,
                                       nullptr,
                                       debugName)};
   LVK_ASSERT(!stagingBuffer_.empty());
@@ -3549,7 +3558,9 @@ lvk::VulkanContext::~VulkanContext() {
   // Device has to be destroyed prior to Instance
   vkDestroyDevice(vkDevice_, nullptr);
 
-  vkDestroyDebugUtilsMessengerEXT(vkInstance_, vkDebugUtilsMessenger_, nullptr);
+  if (vkDebugUtilsMessenger_ != VK_NULL_HANDLE) {
+    vkDestroyDebugUtilsMessengerEXT(vkInstance_, vkDebugUtilsMessenger_, nullptr);
+  }
   vkDestroyInstance(vkInstance_, nullptr);
 
   glslang_finalize_process();
@@ -3684,7 +3695,8 @@ lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc
   const VkMemoryPropertyFlags memFlags = storageTypeToVkMemoryPropertyFlags(desc.storage);
 
   Result result;
-  BufferHandle handle = createBuffer(desc.size, usageFlags, memFlags, &result, desc.debugName);
+  BufferHandle handle = createBuffer(desc.size, usageFlags, memFlags,
+                                     requestedDesc.overwrittenAlignment, &result, desc.debugName);
 
   if (!LVK_VERIFY(result.isOk())) {
     Result::setResult(outResult, result);
@@ -4187,63 +4199,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
 }
 
 lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& desc, Result* outResult) {
-  LVK_ASSERT(desc.type == AccelStructType_BLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Triangles);
-  LVK_ASSERT(desc.numVertices);
-  LVK_ASSERT(desc.indexBuffer.valid());
-  LVK_ASSERT(desc.vertexBuffer.valid());
-  LVK_ASSERT(desc.transformBuffer.valid());
-  LVK_ASSERT(desc.buildRange.primitiveCount);
+  VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+  getBuildInfoBLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
 
-  LVK_ASSERT(buffersPool_.get(desc.indexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-  LVK_ASSERT(buffersPool_.get(desc.vertexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-  LVK_ASSERT(buffersPool_.get(desc.transformBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-
-  VkGeometryFlagsKHR geometryFlags = 0;
-
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_Opaque) {
-    geometryFlags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
-  }
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_NoDuplicateAnyHit) {
-    geometryFlags |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-  }
-
-  const VkAccelerationStructureGeometryKHR accelerationStructureGeometry{
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
-      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
-      .geometry =
-          {
-              .triangles =
-                  {
-                      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-                      .vertexFormat = vertexFormatToVkFormat(desc.vertexFormat),
-                      .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
-                      .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
-                      .maxVertex = desc.numVertices - 1,
-                      .indexType = VK_INDEX_TYPE_UINT32,
-                      .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
-                      .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
-                  },
-          },
-      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
-  };
-
-  const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
-      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-      .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
-      .geometryCount = 1,
-      .pGeometries = &accelerationStructureGeometry,
-  };
-
-  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo = {
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
-  };
-  vkGetAccelerationStructureBuildSizesKHR(vkDevice_,
-                                          VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-                                          &accelerationStructureBuildGeometryInfo,
-                                          &desc.buildRange.primitiveCount,
-                                          &accelerationStructureBuildSizesInfo);
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
     snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
@@ -4279,6 +4238,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
           .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .overwrittenAlignment = accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
           .debugName = "Buffer: BLAS scratch",
       },
       nullptr,
@@ -4312,44 +4272,9 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
 }
 
 lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& desc, Result* outResult) {
-  LVK_ASSERT(desc.type == AccelStructType_TLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Instances);
-  LVK_ASSERT(desc.numVertices == 0);
-  LVK_ASSERT(desc.instancesBuffer.valid());
-  LVK_ASSERT(desc.buildRange.primitiveCount);
-  LVK_ASSERT(buffersPool_.get(desc.instancesBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-
-  const VkAccelerationStructureGeometryKHR accelerationStructureGeometry{
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
-      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
-      .geometry =
-          {
-              .instances =
-                  {
-                      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
-                      .arrayOfPointers = VK_FALSE,
-                      .data = {.deviceAddress = gpuAddress(desc.instancesBuffer)},
-                  },
-          },
-      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
-  };
-
-  const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = {
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
-      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
-      .geometryCount = 1,
-      .pGeometries = &accelerationStructureGeometry,
-  };
-
-  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{
-      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
-  };
-  vkGetAccelerationStructureBuildSizesKHR(vkDevice_,
-                                          VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-                                          &accelerationStructureBuildGeometryInfo,
-                                          &desc.buildRange.primitiveCount,
-                                          &accelerationStructureBuildSizesInfo);
+  VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+  getBuildInfoTLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
@@ -4388,6 +4313,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
           .size = accelerationStructureBuildSizesInfo.buildScratchSize,
+          .overwrittenAlignment = accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment,
           .debugName = "Buffer: TLAS scratch",
       },
       nullptr,
@@ -4712,7 +4638,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle) {
 }
 
 VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
-  lvk::RayTracingPipelineState* rtps = rayTracingPipelinesPool_.get(handle);
+  lvk::RayTracingPipelineState *rtps = rayTracingPipelinesPool_.get(handle);
 
   if (!rtps) {
     return VK_NULL_HANDLE;
@@ -4720,9 +4646,13 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
 
   if (rtps->lastVkDescriptorSetLayout_ != vkDSL_) {
     deferredTask(
-        std::packaged_task<void()>([device = vkDevice_, pipeline = rtps->pipeline_]() { vkDestroyPipeline(device, pipeline, nullptr); }));
+        std::packaged_task<void()>([device = vkDevice_, pipeline = rtps->pipeline_]() {
+            vkDestroyPipeline(device, pipeline, nullptr);
+        }));
     deferredTask(std::packaged_task<void()>(
-        [device = vkDevice_, layout = rtps->pipelineLayout_]() { vkDestroyPipelineLayout(device, layout, nullptr); }));
+        [device = vkDevice_, layout = rtps->pipelineLayout_]() {
+            vkDestroyPipelineLayout(device, layout, nullptr);
+        }));
     rtps->pipeline_ = VK_NULL_HANDLE;
     rtps->pipelineLayout_ = VK_NULL_HANDLE;
     rtps->lastVkDescriptorSetLayout_ = vkDSL_;
@@ -4735,23 +4665,45 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   checkAndUpdateDescriptorSets();
 
   // build a new Vulkan ray tracing pipeline
-  const RayTracingPipelineDesc& desc = rtps->desc_;
+  const RayTracingPipelineDesc &desc = rtps->desc_;
 
-  const lvk::ShaderModuleState* moduleRGen = shaderModulesPool_.get(desc.smRayGen);
-  const lvk::ShaderModuleState* moduleAHit = shaderModulesPool_.get(desc.smAnyHit);
-  const lvk::ShaderModuleState* moduleCHit = shaderModulesPool_.get(desc.smClosestHit);
-  const lvk::ShaderModuleState* moduleMiss = shaderModulesPool_.get(desc.smMiss);
-  const lvk::ShaderModuleState* moduleIntr = shaderModulesPool_.get(desc.smIntersection);
-  const lvk::ShaderModuleState* moduleCall = shaderModulesPool_.get(desc.smCallable);
+  const lvk::ShaderModuleState *moduleRGen[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  const lvk::ShaderModuleState *moduleAHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  const lvk::ShaderModuleState *moduleCHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  const lvk::ShaderModuleState *moduleMiss[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  const lvk::ShaderModuleState *moduleIntr[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  const lvk::ShaderModuleState *moduleCall[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+    if (desc.smRayGen[i]) {
+      moduleRGen[i] = shaderModulesPool_.get(desc.smRayGen[i]);
+    }
+    if (desc.smAnyHit[i]) {
+      moduleAHit[i] = shaderModulesPool_.get(desc.smAnyHit[i]);
+    }
+    if (desc.smClosestHit[i]) {
+      moduleCHit[i] = shaderModulesPool_.get(desc.smClosestHit[i]);
+    }
+    if (desc.smMiss[i]) {
+      moduleMiss[i] = shaderModulesPool_.get(desc.smMiss[i]);
+    }
+    if (desc.smIntersection[i]) {
+      moduleIntr[i] = shaderModulesPool_.get(desc.smIntersection[i]);
+    }
+    if (desc.smCallable[i]) {
+      moduleCall[i] = shaderModulesPool_.get(desc.smCallable[i]);
+    }
+  }
 
   LVK_ASSERT(moduleRGen);
 
   // create pipeline layout
   {
-#define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                  \
-  if (sm) {                                                                 \
-    pushConstantsSize = std::max(pushConstantsSize, sm->pushConstantsSize); \
-    rtps->shaderStageFlags_ |= bit;                                         \
+#define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                       \
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {              \
+    if (sm[i]) {                                                                 \
+      pushConstantsSize = std::max(pushConstantsSize, sm[i]->pushConstantsSize); \
+      rtps->shaderStageFlags_ |= bit;                                            \
+    }                                                                            \
   }
     rtps->shaderStageFlags_ = 0;
     uint32_t pushConstantsSize = 0;
@@ -4766,9 +4718,10 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     // maxPushConstantsSize is guaranteed to be at least 128 bytes
     // https://www.khronos.org/registry/vulkan/specs/1.3/html/vkspec.html#features-limits
     // Table 32. Required Limits
-    const VkPhysicalDeviceLimits& limits = getVkPhysicalDeviceProperties().limits;
+    const VkPhysicalDeviceLimits &limits = getVkPhysicalDeviceProperties().limits;
     if (!LVK_VERIFY(pushConstantsSize <= limits.maxPushConstantsSize)) {
-      LLOGW("Push constants size exceeded %u (max %u bytes)", pushConstantsSize, limits.maxPushConstantsSize);
+      LLOGW("Push constants size exceeded %u (max %u bytes)", pushConstantsSize,
+            limits.maxPushConstantsSize);
     }
 
     const VkDescriptorSetLayout dsls[] = {vkDSL_, vkDSL_, vkDSL_, vkDSL_};
@@ -4784,24 +4737,30 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &range,
     };
-    VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ciPipelineLayout, nullptr, &rtps->pipelineLayout_));
+    VK_ASSERT(
+        vkCreatePipelineLayout(vkDevice_, &ciPipelineLayout, nullptr, &rtps->pipelineLayout_));
     char pipelineLayoutName[256] = {0};
     if (rtps->desc_.debugName) {
-      snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rtps->desc_.debugName);
+      snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s",
+               rtps->desc_.debugName);
     }
-    VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)rtps->pipelineLayout_, pipelineLayoutName));
+    VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                                      (uint64_t) rtps->pipelineLayout_, pipelineLayoutName));
   }
 
   VkSpecializationMapEntry entries[SpecializationConstantDesc::LVK_SPECIALIZATION_CONSTANTS_MAX] = {};
 
-  const VkSpecializationInfo siComp = lvk::getPipelineShaderStageSpecializationInfo(rtps->desc_.specInfo, entries);
+  const VkSpecializationInfo siComp = lvk::getPipelineShaderStageSpecializationInfo(
+      rtps->desc_.specInfo, entries);
 
-  const uint32_t kMaxRayTracingShaderStages = 6;
+  const uint32_t kMaxRayTracingShaderStages = 6 * LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE;
   VkPipelineShaderStageCreateInfo ciShaderStages[kMaxRayTracingShaderStages];
   uint32_t numShaderStages = 0;
 #define ADD_STAGE(shaderModule, vkStageFlag) \
-  if (shaderModule)                          \
-    ciShaderStages[numShaderStages++] = lvk::getPipelineShaderStageCreateInfo(vkStageFlag, shaderModule->sm, "main", &siComp);
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {                                                                 \
+    if (shaderModule[i])                                                                                                            \
+      ciShaderStages[numShaderStages++] = lvk::getPipelineShaderStageCreateInfo(vkStageFlag, shaderModule[i]->sm, "main", &siComp); \
+  }
   ADD_STAGE(moduleRGen, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
   ADD_STAGE(moduleMiss, VK_SHADER_STAGE_MISS_BIT_KHR);
   ADD_STAGE(moduleCHit, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
@@ -4817,52 +4776,60 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   uint32_t idxMiss = 0;
   uint32_t idxHit = 0;
   uint32_t idxCallable = 0;
-  if (moduleRGen) {
-    // ray generation group
-    shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
-        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-        .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-        .generalShader = numShaders++,
-        .closestHitShader = VK_SHADER_UNUSED_KHR,
-        .anyHitShader = VK_SHADER_UNUSED_KHR,
-        .intersectionShader = VK_SHADER_UNUSED_KHR,
-    };
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+    if (moduleRGen[i]) {
+      // ray generation group
+      shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
+          .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+          .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+          .generalShader = numShaders++,
+          .closestHitShader = VK_SHADER_UNUSED_KHR,
+          .anyHitShader = VK_SHADER_UNUSED_KHR,
+          .intersectionShader = VK_SHADER_UNUSED_KHR,
+      };
+    }
   }
-  if (moduleMiss) {
-    // miss group
-    idxMiss = numShaders;
-    shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
-        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-        .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-        .generalShader = numShaders++,
-        .closestHitShader = VK_SHADER_UNUSED_KHR,
-        .anyHitShader = VK_SHADER_UNUSED_KHR,
-        .intersectionShader = VK_SHADER_UNUSED_KHR,
-    };
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+    if (moduleMiss[i]) {
+      // miss group
+      if (i == 0) idxMiss = numShaders;
+      shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
+          .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+          .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+          .generalShader = numShaders++,
+          .closestHitShader = VK_SHADER_UNUSED_KHR,
+          .anyHitShader = VK_SHADER_UNUSED_KHR,
+          .intersectionShader = VK_SHADER_UNUSED_KHR,
+      };
+    }
   }
   // hit group
-  if (moduleAHit || moduleCHit || moduleIntr) {
-    idxHit = numShaders;
-    shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
-        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-        .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
-        .generalShader = VK_SHADER_UNUSED_KHR,
-        .closestHitShader = moduleCHit ? numShaders++ : VK_SHADER_UNUSED_KHR,
-        .anyHitShader = moduleAHit ? numShaders++ : VK_SHADER_UNUSED_KHR,
-        .intersectionShader = moduleIntr ? numShaders++ : VK_SHADER_UNUSED_KHR,
-    };
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+    if (moduleAHit[i] || moduleCHit[i] || moduleIntr[i]) {
+      if (i == 0) idxHit = numShaders;
+      shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
+          .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+          .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+          .generalShader = VK_SHADER_UNUSED_KHR,
+          .closestHitShader = moduleCHit[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
+          .anyHitShader = moduleAHit[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
+          .intersectionShader = moduleIntr[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
+      };
+    }
   }
   // callable group
-  if (moduleCall) {
-    idxCallable = numShaders;
-    shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
-        .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-        .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-        .generalShader = numShaders++,
-        .closestHitShader = VK_SHADER_UNUSED_KHR,
-        .anyHitShader = VK_SHADER_UNUSED_KHR,
-        .intersectionShader = VK_SHADER_UNUSED_KHR,
-    };
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+    if (moduleCall[i]) {
+      if (i == 0) idxCallable = numShaders;
+      shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
+          .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+          .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+          .generalShader = numShaders++,
+          .closestHitShader = VK_SHADER_UNUSED_KHR,
+          .anyHitShader = VK_SHADER_UNUSED_KHR,
+          .intersectionShader = VK_SHADER_UNUSED_KHR,
+      };
+    }
   }
 
   const VkRayTracingPipelineCreateInfoKHR ciRayTracingPipeline = {
@@ -4871,7 +4838,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
       .pStages = ciShaderStages,
       .groupCount = numShaderGroups,
       .pGroups = shaderGroups,
-      .maxPipelineRayRecursionDepth = 1,
+      .maxPipelineRayRecursionDepth = rayTracingPipelineProperties_.maxRayRecursionDepth,
       .layout = rtps->pipelineLayout_,
   };
   VK_ASSERT(vkCreateRayTracingPipelinesKHR(vkDevice_, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &ciRayTracingPipeline, nullptr, &rtps->pipeline_));
@@ -4901,6 +4868,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
           .usage = lvk::BufferUsageBits_ShaderBindingTable,
           .storage = lvk::StorageType_Device,
           .size = sbtBufferSize,
+          .overwrittenAlignment = props.shaderGroupBaseAlignment,
           .data = sbtStorage.data(),
           .debugName = "Buffer: SBT",
       },
@@ -4909,23 +4877,23 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // generate SBT entries
   rtps->sbtEntryRayGen = {
       .deviceAddress = gpuAddress(rtps->sbt),
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .stride = sbtEntrySizeAligned,
+      .size = sbtEntrySizeAligned,
   };
   rtps->sbtEntryMiss = {
       .deviceAddress = idxMiss ? gpuAddress(rtps->sbt, idxMiss * sbtEntrySizeAligned) : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .stride = sbtEntrySizeAligned,
+      .size = sbtEntrySizeAligned,
   };
   rtps->sbtEntryHit = {
       .deviceAddress = idxHit ? gpuAddress(rtps->sbt, idxHit * sbtEntrySizeAligned) : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .stride = sbtEntrySizeAligned,
+      .size = sbtEntrySizeAligned,
   };
   rtps->sbtEntryCallable = {
       .deviceAddress = idxCallable ? gpuAddress(rtps->sbt, idxCallable * sbtEntrySizeAligned) : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .stride = sbtEntrySizeAligned,
+      .size = sbtEntrySizeAligned,
   };
 
   return rtps->pipeline_;
@@ -5765,6 +5733,38 @@ bool lvk::VulkanContext::getQueryPoolResults(QueryPoolHandle pool,
   return true;
 }
 
+lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) {
+  LVK_PROFILER_FUNCTION();
+
+  if (!LVK_VERIFY(hasAccelerationStructure_)) {
+    Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_acceleration_structure is not enabled"));
+    return {};
+  }
+
+  Result result;
+  VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
+  VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+  switch (desc.type) {
+    case AccelStructType_BLAS:
+      getBuildInfoBLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
+      break;
+    case AccelStructType_TLAS:
+      getBuildInfoTLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
+      break;
+    default:
+      LVK_ASSERT_MSG(false, "Invalid acceleration structure type");
+      Result::setResult(outResult, Result(Result::Code::ArgumentOutOfRange, "Invalid acceleration structure type"));
+      return {};
+  }
+
+  Result::setResult(outResult, Result::Code::Ok);
+  return lvk::AccelStructSizes{
+    .accelerationStructureSize = accelerationStructureBuildSizesInfo.accelerationStructureSize,
+    .updateScratchSize = accelerationStructureBuildSizesInfo.updateScratchSize,
+    .buildScratchSize = accelerationStructureBuildSizesInfo.buildScratchSize
+  };
+}
+
 void lvk::VulkanContext::createInstance() {
   vkInstance_ = VK_NULL_HANDLE;
 
@@ -5786,9 +5786,29 @@ void lvk::VulkanContext::createInstance() {
     }();
   }
 
+  uint32_t count = 0;
+  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
+
+  std::vector<VkExtensionProperties> allInstanceExtensions(count);
+  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
+  if (config_.enableValidation) {
+    for (const char *layer: kDefaultValidationLayers) {
+      uint32_t extCount = 0;
+      VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &extCount, nullptr));
+      if (extCount > 0) {
+        const auto sz = allInstanceExtensions.size();
+        allInstanceExtensions.resize(sz + extCount);
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &extCount,
+                                                         allInstanceExtensions.data() + sz));
+      }
+    }
+  }
+
+  // check if we have debug utils extension
+  const bool debugUtilsAvailable = hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, allInstanceExtensions);
+
   std::vector<const char*> instanceExtensionNames = {
     VK_KHR_SURFACE_EXTENSION_NAME,
-    VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #if defined(_WIN32)
     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -5807,6 +5827,10 @@ void lvk::VulkanContext::createInstance() {
     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
   };
+
+  if (debugUtilsAvailable) {
+    instanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
 
   if (config_.enableValidation) {
     instanceExtensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
@@ -5912,7 +5936,7 @@ void lvk::VulkanContext::createInstance() {
   volkLoadInstance(vkInstance_);
 
   // debug messenger
-  {
+  if (debugUtilsAvailable) {
     const VkDebugUtilsMessengerCreateInfoEXT ci = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
@@ -5924,13 +5948,6 @@ void lvk::VulkanContext::createInstance() {
     };
     VK_ASSERT(vkCreateDebugUtilsMessengerEXT(vkInstance_, &ci, nullptr, &vkDebugUtilsMessenger_));
   }
-
-  uint32_t count = 0;
-  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
-
-  std::vector<VkExtensionProperties> allInstanceExtensions(count);
-
-  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
 
   // log available instance extensions
   LLOGL("\nVulkan instance extensions:\n");
@@ -6045,6 +6062,105 @@ void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
       std::launder(reinterpret_cast<VkBaseOutStructure*>(vkPhysicalDeviceProperties2_.pNext));
 
   vkPhysicalDeviceProperties2_.pNext = properties;
+}
+
+void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc, VkAccelerationStructureGeometryKHR& geom,
+                                          VkAccelerationStructureBuildSizesInfoKHR& sizeInfo) {
+  LVK_ASSERT(desc.type == AccelStructType_BLAS);
+  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Triangles);
+  LVK_ASSERT(desc.numVertices);
+  LVK_ASSERT(desc.indexBuffer.valid());
+  LVK_ASSERT(desc.vertexBuffer.valid());
+  LVK_ASSERT(desc.transformBuffer.valid());
+  LVK_ASSERT(desc.buildRange.primitiveCount);
+
+  LVK_ASSERT(buffersPool_.get(desc.indexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+  LVK_ASSERT(buffersPool_.get(desc.vertexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+  LVK_ASSERT(buffersPool_.get(desc.transformBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+  VkGeometryFlagsKHR geometryFlags = 0;
+
+  if (desc.geometryFlags & AccelStructGeometryFlagBits_Opaque) {
+    geometryFlags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
+  }
+  if (desc.geometryFlags & AccelStructGeometryFlagBits_NoDuplicateAnyHit) {
+    geometryFlags |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+  }
+
+  geom = VkAccelerationStructureGeometryKHR{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+      .geometry =
+          {
+              .triangles =
+                  {
+                      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+                      .vertexFormat = vertexFormatToVkFormat(desc.vertexFormat),
+                      .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
+                      .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
+                      .maxVertex = desc.numVertices - 1,
+                      .indexType = VK_INDEX_TYPE_UINT32,
+                      .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
+                      .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
+                  },
+          },
+      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+  };
+
+  const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+      .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+      .geometryCount = 1,
+      .pGeometries = &geom,
+  };
+
+  sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+  vkGetAccelerationStructureBuildSizesKHR(vkDevice_,
+                                          VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                                          &accelerationBuildGeometryInfo,
+                                          &desc.buildRange.primitiveCount,
+                                          &sizeInfo);
+}
+
+void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc, VkAccelerationStructureGeometryKHR& geom,
+                                          VkAccelerationStructureBuildSizesInfoKHR& sizeInfo) {
+  LVK_ASSERT(desc.type == AccelStructType_TLAS);
+  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Instances);
+  LVK_ASSERT(desc.numVertices == 0);
+  LVK_ASSERT(desc.instancesBuffer.valid());
+  LVK_ASSERT(desc.buildRange.primitiveCount);
+  LVK_ASSERT(buffersPool_.get(desc.instancesBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+  geom = VkAccelerationStructureGeometryKHR{
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
+      .geometry =
+          {
+              .instances =
+                  {
+                      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
+                      .arrayOfPointers = VK_FALSE,
+                      .data = {.deviceAddress = gpuAddress(desc.instancesBuffer)},
+                  },
+          },
+      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+  };
+
+  const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = {
+      .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .geometryCount = 1,
+      .pGeometries = &geom,
+  };
+
+  sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
+  vkGetAccelerationStructureBuildSizesKHR(vkDevice_,
+                                          VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                                          &accelerationStructureBuildGeometryInfo,
+                                          &desc.buildRange.primitiveCount,
+                                          &sizeInfo);
 }
 
 lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
@@ -6712,7 +6828,8 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
   VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
                                   VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
   if (hasRayTracingPipeline_) {
-    stageFlags |= VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+    stageFlags |= (VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+                   VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR);
   }
   const VkDescriptorSetLayoutBinding bindings[kBinding_NumBindings] = {
       lvk::getDSLBinding(kBinding_Textures, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxTextures, stageFlags),
@@ -6778,6 +6895,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
 lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
                                                    VkBufferUsageFlags usageFlags,
                                                    VkMemoryPropertyFlags memFlags,
+                                                   VkDeviceSize overwrittenAlignment,
                                                    lvk::Result* outResult,
                                                    const char* debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -6816,7 +6934,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
       .pQueueFamilyIndices = nullptr,
   };
 
-  if (LVK_VULKAN_USE_VMA) {
+  if (LVK_VULKAN_USE_VMA && overwrittenAlignment == 0) {
     VmaAllocationCreateInfo vmaAllocInfo = {};
 
     // Initialize VmaAllocation Info
@@ -6858,6 +6976,9 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     {
       VkMemoryRequirements requirements = {};
       vkGetBufferMemoryRequirements(vkDevice_, buf.vkBuffer_, &requirements);
+      if (overwrittenAlignment != 0) {
+        requirements.alignment = overwrittenAlignment;
+      }
       if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
         buf.isCoherentMemory_ = true;
       }
@@ -7228,4 +7349,9 @@ void lvk::VulkanContext::invokeShaderModuleErrorCallback(int line, int col, cons
   if (!handle.empty()) {
     config_.shaderModuleErrorCallback(this, handle, line, col, debugName);
   }
+}
+
+uint32_t lvk::VulkanContext::getMaxStorageBufferSize() const {
+  const VkPhysicalDeviceLimits& limits = getVkPhysicalDeviceProperties().limits;
+  return limits.maxStorageBufferRange;
 }

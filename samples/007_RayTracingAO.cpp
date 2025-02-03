@@ -37,12 +37,20 @@
 #include <lvk/LVK.h>
 
 constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
+#if !defined(ANDROID)
 constexpr int kNumSamplesMSAA = 4;
+#else
+constexpr int kNumSamplesMSAA = 1;
+#endif
 #if defined(NDEBUG)
 constexpr bool kEnableValidationLayers = false;
 #else
 constexpr bool kEnableValidationLayers = true;
 #endif // NDEBUG
+
+#if defined(ANDROID)
+constexpr int kFramebufferScalar = 2;
+#endif
 
 std::string folderThirdParty;
 std::string folderContentRoot;
@@ -385,11 +393,21 @@ std::vector<lvk::Holder<lvk::BufferHandle>> ubPerFrame_, ubPerObject_;
 lvk::RenderPass renderPassOffscreen_;
 lvk::RenderPass renderPassZPrepass_;
 lvk::RenderPass renderPassMain_;
-lvk::Holder<lvk::AccelStructHandle> BLAS;
+std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
 lvk::Holder<lvk::AccelStructHandle> TLAS;
 
 // scene navigation
+#define USE_SPONZA 0
+
+#if USE_SPONZA
+#define MODEL_PATH "src/Sponza/sponza.obj"
+CameraPositioner_FirstPerson positioner_(vec3(-25, 10, -1), vec3(10, 10, 0), vec3(0, 1, 0));
+vec3 lightDir_ = normalize(vec3(0.05f, 1.0f, 0.01f));
+#else
+#define MODEL_PATH "src/bistro/Exterior/exterior.obj"
 CameraPositioner_FirstPerson positioner_(vec3(-100, 40, -47), vec3(0, 35, 0), vec3(0, 1, 0));
+vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
+#endif
 Camera camera_(positioner_);
 glm::vec2 mousePos_ = glm::vec2(0.0f);
 bool mousePressed_ = false;
@@ -397,15 +415,19 @@ bool mousePressed_ = false;
 bool enableShadows_ = true;
 bool enableAO_ = true;
 
+#if !defined(ANDROID)
 int aoSamples_ = 4;
 bool aoDistanceBased_ = false;
+#else
+int aoSamples_ = 2;
+bool aoDistanceBased_ = true;
+#endif
+
 float aoRadius_ = 8.0f;
 float aoPower_ = 1.0f;
 bool timeVaryingNoise = false;
 
 uint32_t frameId = 0;
-
-vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 
 struct VertexData {
   vec3 position;
@@ -512,8 +534,12 @@ bool init() {
   createOffscreenFramebuffer();
   createPipelines();
 
+  float fontSizePixels = float(height_) / 70.0f;
+#if defined(ANDROID)
+  fontSizePixels *= kFramebufferScalar;
+#endif
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
+      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), fontSizePixels);
 
   if (!initModel()) {
     return false;
@@ -544,7 +570,7 @@ void destroy() {
   fbOffscreenDepth_ = nullptr;
   fbOffscreenResolve_ = nullptr;
   TLAS = nullptr;
-  BLAS = nullptr;
+  BLAS.clear();
   sbInstances_ = nullptr;
   ctx_ = nullptr;
 }
@@ -553,9 +579,9 @@ bool loadAndCache(const char* cacheFileName) {
   LVK_PROFILER_FUNCTION();
 
   // load 3D model and cache it
-  LLOGL("Loading `exterior.obj`... It can take a while in debug builds...\n");
+  LLOGL("Loading `%s`... It can take a while in debug builds...\n", MODEL_PATH);
 
-  fastObjMesh* mesh = fast_obj_read((folderContentRoot + "src/bistro/Exterior/exterior.obj").c_str());
+  fastObjMesh* mesh = fast_obj_read((folderContentRoot + MODEL_PATH).c_str());
   SCOPE_EXIT {
     if (mesh)
       fast_obj_destroy(mesh);
@@ -722,7 +748,8 @@ bool initModel() {
       .data = &transformMatrix,
   });
 
-  BLAS = ctx_->createAccelerationStructure({
+  const auto totalPrimitiveCount = (uint32_t)indexData_.size() / 3;
+  lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
       .vertexFormat = lvk::VertexFormat::Float3,
@@ -732,30 +759,59 @@ bool initModel() {
       .indexFormat = lvk::IndexFormat_UI32,
       .indexBuffer = ib0_,
       .transformBuffer = transformBuffer,
-      .buildRange = {.primitiveCount = (uint32_t)indexData_.size() / 3},
+      .buildRange = {.primitiveCount = totalPrimitiveCount},
       .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
       .debugName = "BLAS",
-  });
+  };
+  auto blasSizes = ctx_->getAccelStructSizes(blasDesc);
+  LLOGL("Full model BLAS sizes buildScratchSize = %llu bytes, accelerationStructureSize = %llu\n",
+        blasSizes.buildScratchSize, blasSizes.accelerationStructureSize);
+  const auto maxStorageBufferSize = ctx_->getMaxStorageBufferSize();
+
+  // Calculate number of BLAS
+  uint32_t requiredBlasCount = 1;
+  if (maxStorageBufferSize != -1) {
+    requiredBlasCount = blasSizes.buildScratchSize / maxStorageBufferSize;
+    const auto cnt = blasSizes.accelerationStructureSize / maxStorageBufferSize;
+    if (cnt > requiredBlasCount)
+      requiredBlasCount = cnt;
+    requiredBlasCount++;
+
+    blasDesc.buildRange.primitiveCount = totalPrimitiveCount / requiredBlasCount;
+  }
+
+  LVK_ASSERT(requiredBlasCount > 0);
+  LLOGL("maxStorageBufferSize = %d bytes, number of BLAS = %d\n", maxStorageBufferSize, requiredBlasCount);
 
   const glm::mat3x4 transform(glm::scale(mat4(1.0f), vec3(0.05f)));
+  BLAS.reserve(requiredBlasCount);
 
-  const lvk::AccelStructInstance instance{
-      // clang-format off
-      .transform = (const lvk::mat3x4&)transform,
-      // clang-format on
-      .instanceCustomIndex = 0,
-      .mask = 0xff,
-      .instanceShaderBindingTableRecordOffset = 0,
-      .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
-      .accelerationStructureReference = ctx_->gpuAddress(BLAS),
-  };
+  std::vector<lvk::AccelStructInstance> instances;
+  instances.reserve(requiredBlasCount);
+  const auto primitiveCount = blasDesc.buildRange.primitiveCount;
+  for (int i = 0; i < totalPrimitiveCount; i += (int)primitiveCount) {
+    const auto rest = (int)totalPrimitiveCount - i;
+    blasDesc.buildRange.primitiveOffset = (uint32_t)i * 3 * sizeof(uint32_t);
+    blasDesc.buildRange.primitiveCount = (primitiveCount < rest) ? primitiveCount : rest;
+    BLAS.emplace_back(ctx_->createAccelerationStructure(blasDesc));
+    instances.emplace_back(lvk::AccelStructInstance{
+        // clang-format off
+        .transform = (const lvk::mat3x4&)transform,
+        // clang-format on
+        .instanceCustomIndex = 0,
+        .mask = 0xff,
+        .instanceShaderBindingTableRecordOffset = 0,
+        .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+        .accelerationStructureReference = ctx_->gpuAddress(BLAS.back()),
+    });
+  }
 
   // Buffer for instance data
   sbInstances_ = ctx_->createBuffer(lvk::BufferDesc{
       .usage = lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
       .storage = lvk::StorageType_HostVisible,
-      .size = sizeof(lvk::AccelStructInstance),
-      .data = &instance,
+      .size = sizeof(lvk::AccelStructInstance) * instances.size(),
+      .data = instances.data(),
       .debugName = "sbInstances_",
   });
 
@@ -763,7 +819,7 @@ bool initModel() {
       .type = lvk::AccelStructType_TLAS,
       .geometryType = lvk::AccelStructGeomType_Instances,
       .instancesBuffer = sbInstances_,
-      .buildRange = {.primitiveCount = 1},
+      .buildRange = {.primitiveCount = (uint32_t)instances.size()},
       .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
   });
 
@@ -930,11 +986,13 @@ void render(double delta, uint32_t frameIndex) {
     };
 
     const float indentSize = 16.0f;
-    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Controls:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+#if !defined(ANDROID)
     ImGui::Text("W/S/A/D - camera movement");
     ImGui::Text("1/2 - camera up/down");
     ImGui::Text("Shift - fast movement");
     ImGui::Separator();
+#endif
     ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
     ImGui::Checkbox("Ray traced shadows", &enableShadows_);
     ImGui::Indent(indentSize);
@@ -1244,15 +1302,13 @@ void handle_cmd(android_app* app, int32_t cmd) {
   switch (cmd) {
   case APP_CMD_INIT_WINDOW:
     if (app->window != nullptr) {
-      width_ = ANativeWindow_getWidth(app->window);
-      height_ = ANativeWindow_getHeight(app->window);
+      width_ = ANativeWindow_getWidth(app->window) / kFramebufferScalar;
+      height_ = ANativeWindow_getHeight(app->window) / kFramebufferScalar;
       ctx_ = lvk::createVulkanContextWithSwapchain(app->window,
                                                    width_,
                                                    height_,
                                                    {
                                                      .enableValidation = kEnableValidationLayers,
-                                                     .enableAccelerationStructure = true,
-                                                     .enableRayQuery = true,
                                                    });
       if (!init()) {
         LLOGW("Failed to initialize the app\n");
@@ -1267,8 +1323,8 @@ void handle_cmd(android_app* app, int32_t cmd) {
 }
 
 void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
-  int w = ANativeWindow_getWidth(window);
-  int h = ANativeWindow_getHeight(window);
+  int w = ANativeWindow_getWidth(window) / kFramebufferScalar;
+  int h = ANativeWindow_getHeight(window) / kFramebufferScalar;
   if (width_ != w || height_ != h) {
     width_ = w;
     height_ = h;
