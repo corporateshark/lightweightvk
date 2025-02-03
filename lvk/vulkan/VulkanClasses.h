@@ -462,7 +462,7 @@ class VulkanStagingDevice final {
                     VkFormat format,
                     void* outData);
 
- private:
+private:
   enum { kStagingBufferAlignment = 16 }; // updated to support BC7 compressed image
 
   struct MemoryRegionDesc {
@@ -549,6 +549,8 @@ class VulkanContext final : public IContext {
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
       const override;
 
+  [[nodiscard]] AccelStructSizes getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) override;
+
   ///////////////
 
   VkPipeline getVkPipeline(ComputePipelineHandle handle);
@@ -562,6 +564,7 @@ class VulkanContext final : public IContext {
   BufferHandle createBuffer(VkDeviceSize bufferSize,
                             VkBufferUsageFlags usageFlags,
                             VkMemoryPropertyFlags memFlags,
+                            VkDeviceSize overwrittenAlignment,
                             lvk::Result* outResult,
                             const char* debugName = nullptr);
   SamplerHandle createSampler(const VkSamplerCreateInfo& ci,
@@ -605,6 +608,8 @@ class VulkanContext final : public IContext {
   // for shaders debugging
   void invokeShaderModuleErrorCallback(int line, int col, const char* debugName, VkShaderModule sm);
 
+  [[nodiscard]] uint32_t getMaxStorageBufferSize() const override;
+
  private:
   void createInstance();
   void createSurface(void* window, void* display);
@@ -619,6 +624,11 @@ class VulkanContext final : public IContext {
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
   VkSampler getOrCreateYcbcrSampler(lvk::Format format);
   void addNextPhysicalDeviceProperties(void* properties);
+
+  void getBuildInfoBLAS(const AccelStructDesc& desc, VkAccelerationStructureGeometryKHR& geom,
+                        VkAccelerationStructureBuildSizesInfoKHR& sizeInfo);
+  void getBuildInfoTLAS(const AccelStructDesc& desc, VkAccelerationStructureGeometryKHR& geom,
+                        VkAccelerationStructureBuildSizesInfoKHR& sizeInfo);
 
  private:
   friend class lvk::VulkanSwapchain;

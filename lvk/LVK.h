@@ -208,6 +208,7 @@ namespace lvk {
 
 enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
 enum { LVK_MAX_MIP_LEVELS = 16 };
+enum { LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE = 4 };
 
 enum IndexFormat : uint8_t {
   IndexFormat_UI8,
@@ -684,15 +685,33 @@ struct ComputePipelineDesc final {
 };
 
 struct RayTracingPipelineDesc final {
-  ShaderModuleHandle smRayGen;
-  ShaderModuleHandle smAnyHit;
-  ShaderModuleHandle smClosestHit;
-  ShaderModuleHandle smMiss;
-  ShaderModuleHandle smIntersection;
-  ShaderModuleHandle smCallable;
+  ShaderModuleHandle smRayGen[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smAnyHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smClosestHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smMiss[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smIntersection[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  ShaderModuleHandle smCallable[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
   SpecializationConstantDesc specInfo = {};
   const char* entryPoint = "main";
   const char* debugName = "";
+
+#define GET_SHADER_GROUP_SIZE(name, module) \
+  [[nodiscard]] uint32_t getShaderGroupSize##name() const { \
+    uint32_t n = 0; \
+    while (n < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE && module[n]) { \
+      n++; \
+    } \
+    return n; \
+  }
+
+  GET_SHADER_GROUP_SIZE(RayGen, smRayGen)
+  GET_SHADER_GROUP_SIZE(AnyHit, smAnyHit)
+  GET_SHADER_GROUP_SIZE(ClosestHit, smClosestHit)
+  GET_SHADER_GROUP_SIZE(RayMiss, smMiss)
+  GET_SHADER_GROUP_SIZE(Intersection, smIntersection)
+  GET_SHADER_GROUP_SIZE(Callable, smCallable)
+
+#undef GET_SHADER_GROUP_SIZE
 };
 
 struct RenderPass final {
@@ -755,6 +774,7 @@ struct BufferDesc final {
   uint8_t usage = 0;
   StorageType storage = StorageType_HostVisible;
   size_t size = 0;
+  size_t overwrittenAlignment = 0;
   const void* data = nullptr;
   const char* debugName = "";
 };
@@ -862,6 +882,12 @@ enum AccelStructInstanceFlagBits : uint8_t {
   AccelStructInstanceFlagBits_TriangleFlipFacing = 1 << 1,
   AccelStructInstanceFlagBits_ForceOpaque = 1 << 2,
   AccelStructInstanceFlagBits_ForceNoOpaque = 1 << 3,
+};
+
+struct AccelStructSizes {
+  uint64_t accelerationStructureSize = 0;
+  uint64_t updateScratchSize = 0;
+  uint64_t buildScratchSize = 0;
 };
 
 struct AccelStructBuildRange {
@@ -1062,12 +1088,17 @@ class IContext {
 
   [[nodiscard]] virtual uint64_t gpuAddress(AccelStructHandle handle) const = 0;
 
+#pragma region Acceleration structure functions
+  [[nodiscard]] virtual AccelStructSizes getAccelStructSizes(const AccelStructDesc& desc, Result* outResult = nullptr) = 0;
+#pragma endregion
+
 #pragma region Buffer functions
   virtual Result upload(BufferHandle handle, const void* data, size_t size, size_t offset = 0) = 0;
   virtual Result download(BufferHandle handle, void* data, size_t size, size_t offset) = 0;
   [[nodiscard]] virtual uint8_t* getMappedPtr(BufferHandle handle) const = 0;
   [[nodiscard]] virtual uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const = 0;
   virtual void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
+  [[nodiscard]] virtual uint32_t getMaxStorageBufferSize() const = 0;
 #pragma endregion
 
 #pragma region Texture functions

@@ -718,7 +718,7 @@ lvk::Result lvk::compileShader(VkShaderStageFlagBits stage,
 }
 
 VkResult lvk::setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name) {
-  if (!name || !*name) {
+  if (!name || !*name || !vkSetDebugUtilsObjectNameEXT) {
     return VK_SUCCESS;
   }
   const VkDebugUtilsObjectNameInfoEXT ni = {
