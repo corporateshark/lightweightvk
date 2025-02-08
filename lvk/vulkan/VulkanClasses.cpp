@@ -971,12 +971,14 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
 
   const VkImageAspectFlags imageAspectFlags = getImageAspectFlags();
 
-  const VkDebugUtilsLabelEXT utilsLabel = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-      .pLabelName = "Generate mipmaps",
-      .color = {1.0f, 0.75f, 1.0f, 1.0f},
-  };
-  vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &utilsLabel);
+  if (vkCmdBeginDebugUtilsLabelEXT) {
+    const VkDebugUtilsLabelEXT utilsLabel = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = "Generate mipmaps",
+        .color = {1.0f, 0.75f, 1.0f, 1.0f},
+    };
+    vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &utilsLabel);
+  }
 
   const VkImageLayout originalImageLayout = vkImageLayout_;
 
@@ -1064,7 +1066,9 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
                           VK_PIPELINE_STAGE_TRANSFER_BIT, // srcStageMask
                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // dstStageMask
                           VkImageSubresourceRange{imageAspectFlags, 0, numLevels_, 0, numLayers_});
-  vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+  if (vkCmdEndDebugUtilsLabelEXT) {
+    vkCmdEndDebugUtilsLabelEXT(commandBuffer);
+  }
 
   vkImageLayout_ = originalImageLayout;
 }
@@ -1980,7 +1984,7 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
 void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA) const {
   LVK_ASSERT(label);
 
-  if (!label) {
+  if (!label || !vkCmdBeginDebugUtilsLabelEXT) {
     return;
   }
   const VkDebugUtilsLabelEXT utilsLabel = {
@@ -1998,7 +2002,7 @@ void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colo
 void lvk::CommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA) const {
   LVK_ASSERT(label);
 
-  if (!label) {
+  if (!label || !vkCmdInsertDebugUtilsLabelEXT) {
     return;
   }
   const VkDebugUtilsLabelEXT utilsLabel = {
@@ -2014,6 +2018,9 @@ void lvk::CommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t co
 }
 
 void lvk::CommandBuffer::cmdPopDebugGroupLabel() const {
+  if (!vkCmdEndDebugUtilsLabelEXT) {
+    return;
+  }
   vkCmdEndDebugUtilsLabelEXT(wrapper_->cmdBuf_);
 }
 
@@ -3549,7 +3556,10 @@ lvk::VulkanContext::~VulkanContext() {
   // Device has to be destroyed prior to Instance
   vkDestroyDevice(vkDevice_, nullptr);
 
-  vkDestroyDebugUtilsMessengerEXT(vkInstance_, vkDebugUtilsMessenger_, nullptr);
+  if (vkDebugUtilsMessenger_) {
+    vkDestroyDebugUtilsMessengerEXT(vkInstance_, vkDebugUtilsMessenger_, nullptr);
+  }
+
   vkDestroyInstance(vkInstance_, nullptr);
 
   glslang_finalize_process();
@@ -5786,9 +5796,29 @@ void lvk::VulkanContext::createInstance() {
     }();
   }
 
+  std::vector<VkExtensionProperties> allInstanceExtensions;
+  {
+    uint32_t count = 0;
+    VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
+    allInstanceExtensions.resize(count);
+    VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
+  }
+  // collect instance extensions from all validation layers
+    if (config_.enableValidation) {
+      for (const char* layer : kDefaultValidationLayers) {
+        uint32_t count = 0;
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
+        if (count > 0) {
+          const size_t sz = allInstanceExtensions.size();
+          allInstanceExtensions.resize(sz + count);
+          VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, allInstanceExtensions.data() + sz));
+        }
+      }
+    }
+
+
   std::vector<const char*> instanceExtensionNames = {
     VK_KHR_SURFACE_EXTENSION_NAME,
-    VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #if defined(_WIN32)
     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -5807,6 +5837,13 @@ void lvk::VulkanContext::createInstance() {
     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
   };
+
+  // check if we have the VK_EXT_debug_utils extension
+  const bool hasDebugUtils = hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, allInstanceExtensions);
+
+  if (hasDebugUtils) {
+    instanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
 
   if (config_.enableValidation) {
     instanceExtensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
@@ -5912,7 +5949,7 @@ void lvk::VulkanContext::createInstance() {
   volkLoadInstance(vkInstance_);
 
   // debug messenger
-  {
+  if (hasDebugUtils) {
     const VkDebugUtilsMessengerCreateInfoEXT ci = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
@@ -5924,13 +5961,6 @@ void lvk::VulkanContext::createInstance() {
     };
     VK_ASSERT(vkCreateDebugUtilsMessengerEXT(vkInstance_, &ci, nullptr, &vkDebugUtilsMessenger_));
   }
-
-  uint32_t count = 0;
-  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
-
-  std::vector<VkExtensionProperties> allInstanceExtensions(count);
-
-  VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
 
   // log available instance extensions
   LLOGL("\nVulkan instance extensions:\n");
