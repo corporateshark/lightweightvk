@@ -37,7 +37,11 @@
 #include <lvk/LVK.h>
 
 constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
+#if !defined(ANDROID)
 constexpr int kNumSamplesMSAA = 4;
+#else
+constexpr int kNumSamplesMSAA = 1;
+#endif
 #if defined(NDEBUG)
 constexpr bool kEnableValidationLayers = false;
 #else
@@ -403,8 +407,14 @@ bool mousePressed_ = false;
 bool enableShadows_ = true;
 bool enableAO_ = true;
 
+#if !defined(ANDROID)
 int aoSamples_ = 4;
 bool aoDistanceBased_ = false;
+#else
+int aoSamples_ = 2;
+bool aoDistanceBased_ = true;
+#endif
+
 float aoRadius_ = 8.0f;
 float aoPower_ = 1.0f;
 bool timeVaryingNoise = false;
@@ -937,11 +947,13 @@ void render(double delta, uint32_t frameIndex) {
     };
 
     const float indentSize = 16.0f;
-    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Controls:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+#if !defined(ANDROID)
     ImGui::Text("W/S/A/D - camera movement");
     ImGui::Text("1/2 - camera up/down");
     ImGui::Text("Shift - fast movement");
     ImGui::Separator();
+#endif
     ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
     ImGui::Checkbox("Ray traced shadows", &enableShadows_);
     ImGui::Indent(indentSize);
