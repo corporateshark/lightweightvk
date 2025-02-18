@@ -44,6 +44,10 @@ constexpr bool kEnableValidationLayers = false;
 constexpr bool kEnableValidationLayers = true;
 #endif // NDEBUG
 
+#if defined(ANDROID)
+constexpr int kFramebufferScalar = 2;
+#endif
+
 std::string folderThirdParty;
 std::string folderContentRoot;
 
@@ -512,8 +516,12 @@ bool init() {
   createOffscreenFramebuffer();
   createPipelines();
 
+  float fontSizePixels = float(height_) / 70.0f;
+#if defined(ANDROID)
+  fontSizePixels *= kFramebufferScalar;
+#endif
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
+      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), fontSizePixels);
 
   if (!initModel()) {
     return false;
@@ -1244,8 +1252,8 @@ void handle_cmd(android_app* app, int32_t cmd) {
   switch (cmd) {
   case APP_CMD_INIT_WINDOW:
     if (app->window != nullptr) {
-      width_ = ANativeWindow_getWidth(app->window);
-      height_ = ANativeWindow_getHeight(app->window);
+      width_ = ANativeWindow_getWidth(app->window) / kFramebufferScalar;
+      height_ = ANativeWindow_getHeight(app->window) / kFramebufferScalar;
       ctx_ = lvk::createVulkanContextWithSwapchain(app->window,
                                                    width_,
                                                    height_,
@@ -1265,8 +1273,8 @@ void handle_cmd(android_app* app, int32_t cmd) {
 }
 
 void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
-  int w = ANativeWindow_getWidth(window);
-  int h = ANativeWindow_getHeight(window);
+  int w = ANativeWindow_getWidth(window) / kFramebufferScalar;
+  int h = ANativeWindow_getHeight(window) / kFramebufferScalar;
   if (width_ != w || height_ != h) {
     width_ = w;
     height_ = h;
