@@ -4759,7 +4759,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // create pipeline layout
   {
 #define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                  \
-  if (sm) {                                                                 \
+  if (sm && sm->pushConstantsSize) {                                        \
     pushConstantsSize = std::max(pushConstantsSize, sm->pushConstantsSize); \
     rtps->shaderStageFlags_ |= bit;                                         \
   }
