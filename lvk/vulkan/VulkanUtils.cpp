@@ -990,6 +990,58 @@ VkExtent2D lvk::getImagePlaneExtent(VkExtent2D plane0, lvk::Format format, uint3
   return plane0;
 }
 
+StageAccess lvk::getPipelineStageAccess(VkImageLayout layout) {
+  switch (layout) {
+  case VK_IMAGE_LAYOUT_UNDEFINED:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        .access = VK_ACCESS_2_NONE,
+    };
+  case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+  case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+        .access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+    };
+  case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+                 VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT,
+        .access = VK_ACCESS_2_SHADER_READ_BIT,
+    };
+  case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .access = VK_ACCESS_2_TRANSFER_READ_BIT,
+    };
+  case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+    };
+  case VK_IMAGE_LAYOUT_GENERAL:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
+    };
+  case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        .access = VK_ACCESS_2_NONE | VK_ACCESS_2_SHADER_WRITE_BIT,
+    };
+  default:
+    LVK_ASSERT_MSG(false, "Unsupported image layout transition!");
+    return {
+        .stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+    };
+  }
+};
+
 VkDevice lvk::getVkDevice(const IContext* ctx) {
   if (!ctx)
     return VK_NULL_HANDLE;

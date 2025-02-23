@@ -58,6 +58,11 @@
 
 typedef struct glslang_resource_s glslang_resource_t;
 
+struct StageAccess {
+  VkPipelineStageFlags2 stage;
+  VkAccessFlags2 access;
+};
+
 namespace lvk {
 
 VkSemaphore createSemaphore(VkDevice device, const char* debugName);
@@ -95,6 +100,8 @@ VkPipelineShaderStageCreateInfo getPipelineShaderStageCreateInfo(VkShaderStageFl
                                                                  const char* entryPoint,
                                                                  const VkSpecializationInfo* specializationInfo);
 VkBindImageMemoryInfo getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* next, VkImage image, VkDeviceMemory memory);
+
+StageAccess getPipelineStageAccess(VkImageLayout state);
 
 void imageMemoryBarrier(VkCommandBuffer buffer,
                         VkImage image,

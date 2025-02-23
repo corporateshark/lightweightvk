@@ -634,9 +634,6 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
   LVK_ASSERT_MSG(colorTex->vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid color attachment format");
   colorTex->transitionLayout(buffer,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // wait for all subsequent
-                                                                                                           // fragment/compute shaders
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
@@ -854,80 +851,42 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
 
 void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
                                         VkImageLayout newImageLayout,
-                                        VkPipelineStageFlags srcStageMask,
-                                        VkPipelineStageFlags dstStageMask,
                                         const VkImageSubresourceRange& subresourceRange) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
-  VkAccessFlags srcAccessMask = 0;
-  VkAccessFlags dstAccessMask = 0;
+  const VkImageLayout oldImageLayout =
+      vkImageLayout_ == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL
+          ? (isDepthAttachment() ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+          : vkImageLayout_;
 
-  if (vkImageLayout_ == VK_IMAGE_LAYOUT_UNDEFINED) {
-    // we do not need to wait for any previous operations in this case
-    srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-  }
-
-  const VkPipelineStageFlags doNotRequireAccessMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT |
-                                                      VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-  VkPipelineStageFlags srcRemainingMask = srcStageMask & ~doNotRequireAccessMask;
-  VkPipelineStageFlags dstRemainingMask = dstStageMask & ~doNotRequireAccessMask;
-
-  if (srcStageMask & VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT) {
-    srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    srcRemainingMask &= ~VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-  }
-  if (srcStageMask & VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT) {
-    srcAccessMask |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    srcRemainingMask &= ~VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-  }
-  if (srcStageMask & VK_PIPELINE_STAGE_TRANSFER_BIT) {
-    srcAccessMask |= VK_ACCESS_TRANSFER_WRITE_BIT;
-    srcRemainingMask &= ~VK_PIPELINE_STAGE_TRANSFER_BIT;
-  }
-  if (srcStageMask & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) {
-    srcAccessMask |= VK_ACCESS_SHADER_WRITE_BIT;
-    srcRemainingMask &= ~VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-  }
-  if (srcStageMask & VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT) {
-    srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    srcAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    srcRemainingMask &= ~VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+  if (newImageLayout == VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL) {
+    newImageLayout = isDepthAttachment() ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   }
 
-  LVK_ASSERT_MSG(srcRemainingMask == 0, "Automatic access mask deduction is not implemented (yet) for this srcStageMask");
+  const StageAccess src = getPipelineStageAccess(oldImageLayout);
+  const StageAccess dst = getPipelineStageAccess(newImageLayout);
 
-  if (dstStageMask & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) {
-    dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
-    dstAccessMask |= VK_ACCESS_SHADER_WRITE_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-  }
-  if (dstStageMask & VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT) {
-    dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-  }
-  if (dstStageMask & VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT) {
-    dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    dstAccessMask |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-  }
-  if (dstStageMask & VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT) {
-    dstAccessMask |= VK_ACCESS_SHADER_READ_BIT;
-    dstAccessMask |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-  }
-  if (dstStageMask & VK_PIPELINE_STAGE_TRANSFER_BIT) {
-    dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_TRANSFER_BIT;
-  }
-  if (dstStageMask & VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR) {
-    dstAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    dstRemainingMask &= ~VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-  }
+  const VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = src.stage,
+      .srcAccessMask = src.access,
+      .dstStageMask = dst.stage,
+      .dstAccessMask = dst.access,
+      .oldLayout = vkImageLayout_,
+      .newLayout = newImageLayout,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = vkImage_,
+      .subresourceRange = subresourceRange,
+  };
 
-  LVK_ASSERT_MSG(dstRemainingMask == 0, "Automatic access mask deduction is not implemented (yet) for this dstStageMask");
+  const VkDependencyInfo depInfo{
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
 
-  lvk::imageMemoryBarrier(
-      commandBuffer, vkImage_, srcAccessMask, dstAccessMask, vkImageLayout_, newImageLayout, srcStageMask, dstStageMask, subresourceRange);
+  vkCmdPipelineBarrier2(commandBuffer, &depInfo);
 
   vkImageLayout_ = newImageLayout;
 }
@@ -985,11 +944,7 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
   LVK_ASSERT(originalImageLayout != VK_IMAGE_LAYOUT_UNDEFINED);
 
   // 0: Transition the first level and all layers into VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-  transitionLayout(commandBuffer,
-                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                   VK_PIPELINE_STAGE_TRANSFER_BIT,
-                   VkImageSubresourceRange{imageAspectFlags, 0, 1, 0, numLayers_});
+  transitionLayout(commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VkImageSubresourceRange{imageAspectFlags, 0, 1, 0, numLayers_});
 
   for (uint32_t layer = 0; layer < numLayers_; ++layer) {
     int32_t mipWidth = (int32_t)vkExtent_.width;
@@ -1904,20 +1859,9 @@ void lvk::CommandBuffer::transitionToShaderReadOnly(TextureHandle handle) const 
   // transition only non-multisampled images - MSAA images cannot be accessed from shaders
   if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
     const VkImageAspectFlags flags = img.getImageAspectFlags();
-    VkPipelineStageFlags srcStage = 0;
-    if (img.isSampledImage()) {
-      srcStage |= isDepthOrStencilVkFormat(img.vkImageFormat_) ? VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
-                                                               : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    }
-    if (img.isStorageImage()) {
-      srcStage |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    }
     // set the result of the previous render pass
     img.transitionLayout(wrapper_->cmdBuf_,
                          img.isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
-                         srcStage,
-                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, // wait for subsequent
-                                                                                                       // fragment/compute shaders
                          VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
   }
 }
@@ -2048,13 +1992,8 @@ void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStage
     return;
   }
 
-  // "frame graph" heuristics: if we are already in VK_IMAGE_LAYOUT_GENERAL, wait for the previous compute shader
-  const VkPipelineStageFlags srcStage = (tex.vkImageLayout_ == VK_IMAGE_LAYOUT_GENERAL) ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                                                                                        : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
   tex.transitionLayout(wrapper_->cmdBuf_,
                        VK_IMAGE_LAYOUT_GENERAL,
-                       srcStage,
-                       dstStage,
                        VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
@@ -2142,13 +2081,20 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   if (depthTex) {
     const lvk::VulkanImage& depthImg = *ctx_->texturesPool_.get(depthTex);
     LVK_ASSERT_MSG(depthImg.vkImageFormat_ != VK_FORMAT_UNDEFINED, "Invalid depth attachment format");
+    LVK_ASSERT_MSG(depthImg.isDepthFormat_, "Invalid depth attachment format");
     const VkImageAspectFlags flags = depthImg.getImageAspectFlags();
     depthImg.transitionLayout(wrapper_->cmdBuf_,
                               VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                              VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, // wait for all subsequent
-                                                                                                              // operations
                               VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+  }
+  // handle depth MSAA
+  if (TextureHandle handle = fb.depthStencil.resolveTexture) {
+    lvk::VulkanImage& depthResolveImg = *ctx_->texturesPool_.get(handle);
+    LVK_ASSERT_MSG(depthResolveImg.isDepthFormat_, "Invalid resolve depth attachment format");
+    const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
+    depthResolveImg.transitionLayout(wrapper_->cmdBuf_,
+                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                     VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
   }
 
   VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
@@ -2282,22 +2228,6 @@ void lvk::CommandBuffer::cmdEndRendering() {
   isRendering_ = false;
 
   vkCmdEndRendering(wrapper_->cmdBuf_);
-
-  const uint32_t numFbColorAttachments = framebuffer_.getNumColorAttachments();
-
-  // set image layouts after the render pass
-  for (uint32_t i = 0; i != numFbColorAttachments; i++) {
-    const lvk::Framebuffer::AttachmentDesc& attachment = framebuffer_.color[i];
-    const VulkanImage& tex = *ctx_->texturesPool_.get(attachment.texture);
-    // this must match the final layout of the render pass
-    tex.vkImageLayout_ = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  }
-
-  if (framebuffer_.depthStencil.texture) {
-    const VulkanImage& tex = *ctx_->texturesPool_.get(framebuffer_.depthStencil.texture);
-    // this must match the final layout of the render pass
-    tex.vkImageLayout_ = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-  }
 
   framebuffer_ = {};
 }
@@ -2673,8 +2603,8 @@ void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorV
 
   lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
                           img->vkImage_,
-                          VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+                          VK_ACCESS_TRANSFER_WRITE_BIT,
                           img->vkImageLayout_,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -2698,7 +2628,7 @@ void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorV
   lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
                           img->vkImage_,
                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                          0,
+                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           newLayout,
                           VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -2754,7 +2684,7 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
                           rangeSrc);
   lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
                           imgDst->vkImage_,
-                          0,
+                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                           VK_ACCESS_TRANSFER_WRITE_BIT,
                           VK_IMAGE_LAYOUT_UNDEFINED,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -2815,7 +2745,7 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
   lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
                           imgSrc->vkImage_,
                           VK_ACCESS_TRANSFER_READ_BIT,
-                          0,
+                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                           imgSrc->vkImageLayout_,
                           VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -2832,7 +2762,7 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
   lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
                           imgDst->vkImage_,
                           VK_ACCESS_TRANSFER_WRITE_BIT,
-                          0,
+                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           newLayout,
                           VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -3612,14 +3542,8 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
     LVK_ASSERT(tex.isSwapchainImage_);
 
-    // prepare image for presentation the image might be coming from a compute shader
-    const VkPipelineStageFlagBits srcStage = (tex.vkImageLayout_ == VK_IMAGE_LAYOUT_GENERAL)
-                                                 ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                                                 : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                         srcStage,
-                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, // wait for all subsequent operations
                          VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
   }
 
