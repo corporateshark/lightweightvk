@@ -111,6 +111,7 @@ struct VulkanImage final {
   uint32_t numLayers_ = 1u;
   bool isDepthFormat_ = false;
   bool isStencilFormat_ = false;
+  char debugName_[256] = {0};
   // current image layout
   mutable VkImageLayout vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
   // precached image views - owned by this VulkanImage

@@ -1095,8 +1095,21 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
     return imageViewForFramebuffer_[level][layer];
   }
 
-  imageViewForFramebuffer_[level][layer] =
-      createImageView(ctx.getVkDevice(), VK_IMAGE_VIEW_TYPE_2D, vkImageFormat_, getImageAspectFlags(), level, 1u, layer, 1u);
+  char debugNameImageView[256] = {0};
+  snprintf(
+      debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: '%s' imageViewForFramebuffer_[%u][%u]", debugName_, level, layer);
+
+  imageViewForFramebuffer_[level][layer] = createImageView(ctx.getVkDevice(),
+                                                           VK_IMAGE_VIEW_TYPE_2D,
+                                                           vkImageFormat_,
+                                                           getImageAspectFlags(),
+                                                           level,
+                                                           1u,
+                                                           layer,
+                                                           1u,
+                                                           {},
+                                                           nullptr,
+                                                           debugNameImageView);
 
   return imageViewForFramebuffer_[level][layer];
 }
@@ -3936,6 +3949,11 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
       .isDepthFormat_ = VulkanImage::isDepthFormat(vkFormat),
       .isStencilFormat_ = VulkanImage::isStencilFormat(vkFormat),
   };
+
+  if (hasDebugName) {
+    // store debug name
+    snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
+  }
 
   const uint32_t numPlanes = lvk::getNumImagePlanes(desc.format);
   const bool isDisjoint = numPlanes > 1;
