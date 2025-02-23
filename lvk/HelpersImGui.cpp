@@ -157,7 +157,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels)
                                      .dimensions = {(uint32_t)width, (uint32_t)height},
                                      .usage = lvk::TextureUsageBits_Sampled,
                                      .data = pixels},
-                                    nullptr);
+                                    "ImGuiRenderer::fontTexture_");
   io.Fonts->TexID = fontTexture_.index();
   io.FontDefault = font;
 }
