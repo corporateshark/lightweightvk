@@ -863,8 +863,16 @@ void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
     newImageLayout = isDepthAttachment() ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   }
 
-  const StageAccess src = getPipelineStageAccess(oldImageLayout);
-  const StageAccess dst = getPipelineStageAccess(newImageLayout);
+  StageAccess src = getPipelineStageAccess(oldImageLayout);
+  StageAccess dst = getPipelineStageAccess(newImageLayout);
+
+  if (isDepthAttachment() && isResolveAttachment) {
+    // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#renderpass-resolve-operations
+    src.stage |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dst.stage |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    src.access |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    dst.access |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+  }
 
   const VkImageMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -952,15 +960,13 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
 
     for (uint32_t i = 1; i < numLevels_; ++i) {
       // 1: Transition the i-th level to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; it will be copied into from the (i-1)-th layer
-      lvk::imageMemoryBarrier(commandBuffer,
-                              vkImage_,
-                              0, /* srcAccessMask */
-                              VK_ACCESS_TRANSFER_WRITE_BIT, // dstAccessMask
-                              VK_IMAGE_LAYOUT_UNDEFINED, // oldImageLayout
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // newImageLayout
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, // srcStageMask
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, // dstStageMask
-                              VkImageSubresourceRange{imageAspectFlags, i, 1, layer, 1});
+      lvk::imageMemoryBarrier2(commandBuffer,
+                               vkImage_,
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_NONE},
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+                               VK_IMAGE_LAYOUT_UNDEFINED, // oldImageLayout
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // newImageLayout
+                               VkImageSubresourceRange{imageAspectFlags, i, 1, layer, 1});
 
       const int32_t nextLevelWidth = mipWidth > 1 ? mipWidth / 2 : 1;
       const int32_t nextLevelHeight = mipHeight > 1 ? mipHeight / 2 : 1;
@@ -993,34 +999,31 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
                      1,
                      &blit,
                      blitFilter);
-      // 3: Transition i-th level to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL as it will be read from in
-      // the next iteration
-      lvk::imageMemoryBarrier(commandBuffer,
-                              vkImage_,
-                              VK_ACCESS_TRANSFER_WRITE_BIT, /* srcAccessMask */
-                              VK_ACCESS_TRANSFER_READ_BIT, /* dstAccessMask */
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, /* oldImageLayout */
-                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, /* newImageLayout */
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, /* srcStageMask */
-                              VK_PIPELINE_STAGE_TRANSFER_BIT /* dstStageMask */,
-                              VkImageSubresourceRange{imageAspectFlags, i, 1, layer, 1});
+      // 3: Transition i-th level to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL as it will be read from in the next iteration
+      lvk::imageMemoryBarrier2(commandBuffer,
+                               vkImage_,
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, /* oldImageLayout */
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, /* newImageLayout */
+                               VkImageSubresourceRange{imageAspectFlags, i, 1, layer, 1});
 
-      // Compute the size of the next mip level
+      // Compute the size of the next mip-level
       mipWidth = nextLevelWidth;
       mipHeight = nextLevelHeight;
     }
   }
 
   // 4: Transition all levels and layers (faces) to their final layout
-  lvk::imageMemoryBarrier(commandBuffer,
-                          vkImage_,
-                          VK_ACCESS_TRANSFER_WRITE_BIT, // srcAccessMask
-                          0, // dstAccessMask
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // oldImageLayout
-                          originalImageLayout, // newImageLayout
-                          VK_PIPELINE_STAGE_TRANSFER_BIT, // srcStageMask
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, // dstStageMask
-                          VkImageSubresourceRange{imageAspectFlags, 0, numLevels_, 0, numLayers_});
+  lvk::imageMemoryBarrier2(
+      commandBuffer,
+      vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // oldImageLayout
+      originalImageLayout, // newImageLayout
+      VkImageSubresourceRange{imageAspectFlags, 0, numLevels_, 0, numLayers_});
+
   if (vkCmdEndDebugUtilsLabelEXT) {
     vkCmdEndDebugUtilsLabelEXT(commandBuffer);
   }
@@ -1925,14 +1928,15 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
   LVK_ASSERT(!isRendering_);
 
   for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++) {
-    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
   for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
-    bufferBarrier(
-        deps.buffers[i], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    bufferBarrier(deps.buffers[i],
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
   vkCmdDispatch(wrapper_->cmdBuf_, threadgroupCount.width, threadgroupCount.height, threadgroupCount.depth);
@@ -1981,7 +1985,7 @@ void lvk::CommandBuffer::cmdPopDebugGroupLabel() const {
   vkCmdEndDebugUtilsLabelEXT(wrapper_->cmdBuf_);
 }
 
-void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStageFlags dstStage) {
+void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStageFlags2 dstStage) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   LVK_ASSERT(!handle.empty());
@@ -1992,19 +1996,23 @@ void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStage
     return;
   }
 
+  (void)dstStage; // TODO: add extra dstStage
+
   tex.transitionLayout(wrapper_->cmdBuf_,
                        VK_IMAGE_LAYOUT_GENERAL,
                        VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
-void lvk::CommandBuffer::bufferBarrier(BufferHandle handle, VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage) {
+void lvk::CommandBuffer::bufferBarrier(BufferHandle handle, VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(handle);
 
-  VkBufferMemoryBarrier barrier = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+  VkBufferMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+      .srcStageMask = srcStage,
       .srcAccessMask = 0,
+      .dstStageMask = dstStage,
       .dstAccessMask = 0,
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -2013,25 +2021,31 @@ void lvk::CommandBuffer::bufferBarrier(BufferHandle handle, VkPipelineStageFlags
       .size = VK_WHOLE_SIZE,
   };
 
-  if (srcStage & VK_PIPELINE_STAGE_TRANSFER_BIT) {
-    barrier.srcAccessMask |= VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  if (srcStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
+    barrier.srcAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
   } else {
-    barrier.srcAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.srcAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
   }
 
-  if (dstStage & VK_PIPELINE_STAGE_TRANSFER_BIT) {
-    barrier.dstAccessMask |= VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+  if (dstStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
+    barrier.dstAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
   } else {
-    barrier.dstAccessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
   }
-  if (dstStage & VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) {
-    barrier.dstAccessMask |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+  if (dstStage & VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT) {
+    barrier.dstAccessMask |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
   }
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
-    barrier.dstAccessMask |= VK_ACCESS_INDEX_READ_BIT;
+    barrier.dstAccessMask |= VK_ACCESS_2_INDEX_READ_BIT;
   }
 
-  vkCmdPipelineBarrier(wrapper_->cmdBuf_, srcStage, dstStage, VkDependencyFlags{}, 0, nullptr, 1, &barrier, 0, nullptr);
+  const VkDependencyInfo depInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .bufferMemoryBarrierCount = 1,
+      .pBufferMemoryBarriers = &barrier,
+  };
+
+  vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &depInfo);
 }
 
 void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& fb, const Dependencies& deps) {
@@ -2045,16 +2059,16 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     transitionToShaderReadOnly(deps.textures[i]);
   }
   for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
-    VkPipelineStageFlags dstStageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT(buf);
     if ((buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) || (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
-      dstStageFlags |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+      dstStageFlags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
     }
     if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
-      dstStageFlags |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+      dstStageFlags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
     }
-    bufferBarrier(deps.buffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, dstStageFlags);
+    bufferBarrier(deps.buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
   }
 
   const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
@@ -2073,6 +2087,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     // handle MSAA
     if (TextureHandle handle = fb.color[i].resolveTexture) {
       lvk::VulkanImage* colorResolveTex = ctx_->texturesPool_.get(handle);
+      colorResolveTex->isResolveAttachment = true;
       transitionToColorAttachment(wrapper_->cmdBuf_, colorResolveTex);
     }
   }
@@ -2091,6 +2106,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   if (TextureHandle handle = fb.depthStencil.resolveTexture) {
     lvk::VulkanImage& depthResolveImg = *ctx_->texturesPool_.get(handle);
     LVK_ASSERT_MSG(depthResolveImg.isDepthFormat_, "Invalid resolve depth attachment format");
+    depthResolveImg.isResolveAttachment = true;
     const VkImageAspectFlags flags = depthResolveImg.getImageAspectFlags();
     depthResolveImg.transitionLayout(wrapper_->cmdBuf_,
                                      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
@@ -2365,20 +2381,20 @@ void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset,
 
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(buffer);
 
-  bufferBarrier(buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  bufferBarrier(buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
   vkCmdFillBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
 
-  VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+  VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
 
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
-    dstStage |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    dstStage |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
   }
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
-    dstStage |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    dstStage |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
   }
 
-  bufferBarrier(buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, dstStage);
+  bufferBarrier(buffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, dstStage);
 }
 
 void lvk::CommandBuffer::cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) {
@@ -2391,20 +2407,20 @@ void lvk::CommandBuffer::cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffse
 
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(buffer);
 
-  bufferBarrier(buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  bufferBarrier(buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
   vkCmdUpdateBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
 
-  VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+  VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
 
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
-    dstStage |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    dstStage |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
   }
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
-    dstStage |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    dstStage |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
   }
 
-  bufferBarrier(buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, dstStage);
+  bufferBarrier(buffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, dstStage);
 }
 
 void lvk::CommandBuffer::cmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t baseInstance) {
@@ -2546,12 +2562,12 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
   LVK_ASSERT(!isRendering_);
 
   for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++) {
-    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
+    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
   }
   for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                  VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
+                  VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                  VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
   }
 
   vkCmdTraceRaysKHR(
@@ -2601,15 +2617,14 @@ void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorV
       .layerCount = layers.numLayers,
   };
 
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          img->vkImage_,
-                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_ACCESS_TRANSFER_WRITE_BIT,
-                          img->vkImageLayout_,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          range);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      img->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+      img->vkImageLayout_,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      range);
 
   vkCmdClearColorImage(wrapper_->cmdBuf_,
                        img->vkImage_,
@@ -2625,15 +2640,15 @@ void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorV
                                                                  : VK_IMAGE_LAYOUT_GENERAL)
                                       : img->vkImageLayout_;
 
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          img->vkImage_,
-                          VK_ACCESS_TRANSFER_WRITE_BIT,
-                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          newLayout,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          range);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      img->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      newLayout,
+      range);
+
   img->vkImageLayout_ = newLayout;
 }
 
@@ -2673,24 +2688,22 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
 
   LVK_ASSERT(imgSrc->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
 
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          imgSrc->vkImage_,
-                          VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_ACCESS_TRANSFER_READ_BIT,
-                          imgSrc->vkImageLayout_,
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          rangeSrc);
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          imgDst->vkImage_,
-                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_ACCESS_TRANSFER_WRITE_BIT,
-                          VK_IMAGE_LAYOUT_UNDEFINED,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          rangeDst);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      imgSrc->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+      imgSrc->vkImageLayout_,
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      rangeSrc);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      imgDst->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+      VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      rangeDst);
 
   const VkImageCopy regionCopy = {
       .srcSubresource =
@@ -2742,15 +2755,14 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
                                 &regionBlit,
                                 VK_FILTER_LINEAR);
 
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          imgSrc->vkImage_,
-                          VK_ACCESS_TRANSFER_READ_BIT,
-                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                          imgSrc->vkImageLayout_,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          rangeSrc);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      imgSrc->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      imgSrc->vkImageLayout_,
+      rangeSrc);
 
   // a ternary cascade...
   const VkImageLayout newLayout = imgDst->vkImageLayout_ == VK_IMAGE_LAYOUT_UNDEFINED
@@ -2759,15 +2771,15 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
                                                                     : VK_IMAGE_LAYOUT_GENERAL)
                                       : imgDst->vkImageLayout_;
 
-  lvk::imageMemoryBarrier(wrapper_->cmdBuf_,
-                          imgDst->vkImage_,
-                          VK_ACCESS_TRANSFER_WRITE_BIT,
-                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          newLayout,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          rangeSrc);
+  lvk::imageMemoryBarrier2(
+      wrapper_->cmdBuf_,
+      imgDst->vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      newLayout,
+      rangeSrc);
+
   imgDst->vkImageLayout_ = newLayout;
 }
 
@@ -3058,15 +3070,13 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
       LVK_ASSERT(mipLevel < image.numLevels_);
 
       // 1. Transition initial image layout into TRANSFER_DST_OPTIMAL
-      lvk::imageMemoryBarrier(wrapper.cmdBuf_,
-                              image.vkImage_,
-                              0,
-                              VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_IMAGE_LAYOUT_UNDEFINED,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                              VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+      lvk::imageMemoryBarrier2(wrapper.cmdBuf_,
+                               image.vkImage_,
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_NONE},
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+                               VK_IMAGE_LAYOUT_UNDEFINED,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
 
 #if LVK_VULKAN_PRINT_COMMANDS
       LLOGL("%p vkCmdCopyBufferToImage()\n", wrapper.cmdBuf_);
@@ -3100,15 +3110,14 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
       }
 
       // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
-      lvk::imageMemoryBarrier(wrapper.cmdBuf_,
-                              image.vkImage_,
-                              VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_ACCESS_SHADER_READ_BIT,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                              VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+      lvk::imageMemoryBarrier2(
+          wrapper.cmdBuf_,
+          image.vkImage_,
+          StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+          StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
 
       offset += lvk::getTextureBytesPerLayer(imageRegion.extent.width, imageRegion.extent.height, texFormat, currentMipLevel);
     }
@@ -3154,15 +3163,13 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
   const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
 
   // 1. Transition initial image layout into TRANSFER_DST_OPTIMAL
-  lvk::imageMemoryBarrier(wrapper.cmdBuf_,
-                          image.vkImage_,
-                          0,
-                          VK_ACCESS_TRANSFER_WRITE_BIT,
-                          VK_IMAGE_LAYOUT_UNDEFINED,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+  lvk::imageMemoryBarrier2(wrapper.cmdBuf_,
+                           image.vkImage_,
+                           StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_NONE},
+                           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+                           VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
   // 2. Copy the pixel data from the staging buffer into the image
   const VkBufferImageCopy copy = {
@@ -3176,15 +3183,14 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
   vkCmdCopyBufferToImage(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, image.vkImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 
   // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
-  lvk::imageMemoryBarrier(wrapper.cmdBuf_,
-                          image.vkImage_,
-                          VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
-                          VK_ACCESS_SHADER_READ_BIT,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT,
-                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                          VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+  lvk::imageMemoryBarrier2(
+      wrapper.cmdBuf_,
+      image.vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
   image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -3224,15 +3230,14 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper1 = ctx_.immediate_->acquire();
 
   // 1. Transition to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-  lvk::imageMemoryBarrier(wrapper1.cmdBuf_,
-                          image.vkImage_,
-                          0, // srcAccessMask
-                          VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT, // dstAccessMask
-                          image.vkImageLayout_,
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // wait for all previous operations
-                          VK_PIPELINE_STAGE_TRANSFER_BIT, // dstStageMask
-                          range);
+  lvk::imageMemoryBarrier2(
+      wrapper1.cmdBuf_,
+      image.vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+      image.vkImageLayout_,
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      range);
 
   // 2.  Copy the pixel data from the image into the staging buffer
   const VkBufferImageCopy copy = {
@@ -3266,15 +3271,14 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   // 4. Transition back to the initial image layout
   const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper2 = ctx_.immediate_->acquire();
 
-  lvk::imageMemoryBarrier(wrapper2.cmdBuf_,
-                          image.vkImage_,
-                          VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT, // srcAccessMask
-                          0, // dstAccessMask
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                          image.vkImageLayout_,
-                          VK_PIPELINE_STAGE_TRANSFER_BIT, // srcStageMask
-                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, // dstStageMask
-                          range);
+  lvk::imageMemoryBarrier2(
+      wrapper2.cmdBuf_,
+      image.vkImage_,
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_READ_BIT},
+      StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      image.vkImageLayout_,
+      range);
 
   ctx_.immediate_->wait(ctx_.immediate_->submit(wrapper2));
 }

@@ -103,6 +103,7 @@ struct VulkanImage final {
   void* mappedPtr_ = nullptr;
   bool isSwapchainImage_ = false;
   bool isOwningVkImage_ = true;
+  bool isResolveAttachment = false; // autoset by cmdBeginRendering() for extra synchronization
   uint32_t numLevels_ = 1u;
   uint32_t numLayers_ = 1u;
   bool isDepthFormat_ = false;
@@ -413,8 +414,8 @@ class CommandBuffer final : public ICommandBuffer {
   }
 
  private:
-  void useComputeTexture(TextureHandle texture, VkPipelineStageFlags dstStage);
-  void bufferBarrier(BufferHandle handle, VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage);
+  void useComputeTexture(TextureHandle texture, VkPipelineStageFlags2 dstStage);
+  void bufferBarrier(BufferHandle handle, VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage);
 
  private:
   friend class VulkanContext;

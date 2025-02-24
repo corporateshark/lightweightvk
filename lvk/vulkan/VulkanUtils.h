@@ -103,15 +103,6 @@ VkBindImageMemoryInfo getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* n
 
 StageAccess getPipelineStageAccess(VkImageLayout state);
 
-void imageMemoryBarrier(VkCommandBuffer buffer,
-                        VkImage image,
-                        VkAccessFlags srcAccessMask,
-                        VkAccessFlags dstAccessMask,
-                        VkImageLayout oldImageLayout,
-                        VkImageLayout newImageLayout,
-                        VkPipelineStageFlags srcStageMask,
-                        VkPipelineStageFlags dstStageMask,
-                        VkImageSubresourceRange subresourceRange);
 void imageMemoryBarrier2(VkCommandBuffer buffer,
                          VkImage image,
                          StageAccess src,
