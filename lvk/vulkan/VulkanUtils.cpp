@@ -866,6 +866,36 @@ void lvk::imageMemoryBarrier(VkCommandBuffer buffer,
   vkCmdPipelineBarrier(buffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
+void lvk::imageMemoryBarrier2(VkCommandBuffer buffer,
+                              VkImage image,
+                              StageAccess src,
+                              StageAccess dst,
+                              VkImageLayout oldImageLayout,
+                              VkImageLayout newImageLayout,
+                              VkImageSubresourceRange subresourceRange) {
+  const VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = src.stage,
+      .srcAccessMask = src.access,
+      .dstStageMask = dst.stage,
+      .dstAccessMask = dst.access,
+      .oldLayout = oldImageLayout,
+      .newLayout = newImageLayout,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = image,
+      .subresourceRange = subresourceRange,
+  };
+
+  const VkDependencyInfo depInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+
+  vkCmdPipelineBarrier2(buffer, &depInfo);
+}
+
 VkSampleCountFlagBits lvk::getVulkanSampleCountFlags(uint32_t numSamples, VkSampleCountFlags maxSamplesMask) {
   if (numSamples <= 1 || VK_SAMPLE_COUNT_2_BIT > maxSamplesMask) {
     return VK_SAMPLE_COUNT_1_BIT;

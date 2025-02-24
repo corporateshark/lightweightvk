@@ -112,6 +112,13 @@ void imageMemoryBarrier(VkCommandBuffer buffer,
                         VkPipelineStageFlags srcStageMask,
                         VkPipelineStageFlags dstStageMask,
                         VkImageSubresourceRange subresourceRange);
+void imageMemoryBarrier2(VkCommandBuffer buffer,
+                         VkImage image,
+                         StageAccess src,
+                         StageAccess dst,
+                         VkImageLayout oldImageLayout,
+                         VkImageLayout newImageLayout,
+                         VkImageSubresourceRange subresourceRange);
 
 VkSampleCountFlagBits getVulkanSampleCountFlags(uint32_t numSamples, VkSampleCountFlags maxSamplesMask);
 
