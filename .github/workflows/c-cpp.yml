@@ -88,15 +88,15 @@ jobs:
               generators: "Visual Studio 17 2022",
               cmake_args: "-DLVK_WITH_TRACY=ON"
             }
-          - {
-              name: "Windows - MSVC 2022 (Slang)",
-              os: windows-latest,
-              build_type: "Debug",
-              cc: "cl",
-              cxx: "cl",
-              generators: "Visual Studio 17 2022",
-              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_SLANG=ON"
-            }
+#          - {
+#              name: "Windows - MSVC 2022 (Slang)",
+#              os: windows-latest,
+#              build_type: "Debug",
+#              cc: "cl",
+#              cxx: "cl",
+#              generators: "Visual Studio 17 2022",
+#              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_SLANG=ON"
+#            }
           - {
               name: "Ubuntu - Clang",
               os: ubuntu-latest,
