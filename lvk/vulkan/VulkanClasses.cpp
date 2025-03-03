@@ -6820,7 +6820,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-    vmaCreateBuffer((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
+    vmaCreateBufferWithAlignment((VmaAllocator)getVmaAllocator(), &ci, &vmaAllocInfo, 16, &buf.vkBuffer_, &buf.vmaAllocation_, nullptr);
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
