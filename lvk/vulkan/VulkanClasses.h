@@ -641,7 +641,14 @@ public:
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
   // provided by Vulkan 1.2
-  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES, nullptr};
+  VkPhysicalDeviceDepthStencilResolveProperties vkPhysicalDeviceDepthStencilResolveProperties_ = {
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES,
+      nullptr,
+  };
+  VkPhysicalDeviceDriverProperties vkPhysicalDeviceDriverProperties_ = {
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+      &vkPhysicalDeviceDepthStencilResolveProperties_,
+  };
   VkPhysicalDeviceVulkan12Properties vkPhysicalDeviceVulkan12Properties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES,
       &vkPhysicalDeviceDriverProperties_,
@@ -657,6 +664,8 @@ public:
   std::vector<VkSurfaceFormatKHR> deviceSurfaceFormats_;
   VkSurfaceCapabilitiesKHR deviceSurfaceCaps_;
   std::vector<VkPresentModeKHR> devicePresentModes_;
+
+  VkResolveModeFlagBits depthResolveMode_ = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 
  public:
   DeviceQueues deviceQueues_;
