@@ -388,14 +388,14 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #error Unsupported OS
 #endif
 
-  HWDeviceDesc device;
-  uint32_t numDevices = ctx->queryDevices(preferredDeviceType, &device, 1);
+  HWDeviceDesc devices[8];
+  uint32_t numDevices = ctx->queryDevices(preferredDeviceType, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
 
   if (!numDevices) {
     if (preferredDeviceType == HWDeviceType_Discrete) {
-      numDevices = ctx->queryDevices(HWDeviceType_Integrated, &device);
+      numDevices = ctx->queryDevices(HWDeviceType_Integrated, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
     } else if (preferredDeviceType == HWDeviceType_Integrated) {
-      numDevices = ctx->queryDevices(HWDeviceType_Discrete, &device);
+      numDevices = ctx->queryDevices(HWDeviceType_Discrete, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
     }
   }
 
@@ -404,7 +404,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
     return nullptr;
   }
 
-  Result res = ctx->initContext(device);
+  Result res = ctx->initContext(devices[0]);
 
   if (!res.isOk()) {
     LVK_ASSERT_MSG(false, "createVulkanContextWithSwapchain() failed");
