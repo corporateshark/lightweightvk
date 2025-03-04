@@ -42,11 +42,12 @@ jobs:
             cmake --version
 
       - name: Prepare Vulkan SDK
-        uses: humbletim/setup-vulkan-sdk@v1.2.0
+        uses: jakoch/install-vulkan-sdk-action@v1.1.1
         with:
-          vulkan-query-version: 1.4.304.1
-          vulkan-components: Vulkan-Headers, Vulkan-Loader
-          vulkan-use-cache: true
+            vulkan_version: 1.4.304.1
+            install_runtime: true
+            cache: true
+            stripdown: true
 
       - name: Generate Android projects
         shell: bash
@@ -138,11 +139,12 @@ jobs:
             sudo pip install cmake --upgrade
 
         - name: Prepare Vulkan SDK
-          uses: humbletim/setup-vulkan-sdk@v1.2.0
+          uses: jakoch/install-vulkan-sdk-action@v1.1.1
           with:
-            vulkan-query-version: 1.4.304.1
-            vulkan-components: Vulkan-Headers, Vulkan-Loader
-            vulkan-use-cache: true
+            vulkan_version: 1.4.304.1
+            install_runtime: true
+            cache: true
+            stripdown: true
 
         - name: Get the number of CPU cores
           uses: SimenB/github-actions-cpu-cores@v2
@@ -179,11 +181,12 @@ jobs:
             submodules: recursive
 
         - name: Install Vulkan SDK
-          uses: humbletim/setup-vulkan-sdk@v1.2.0
+          uses: jakoch/install-vulkan-sdk-action@v1.1.1
           with:
-            vulkan-query-version: 1.4.304.1
-            vulkan-components: Vulkan-Headers, Vulkan-Loader
-            vulkan-use-cache: true
+            vulkan_version: 1.4.304.1
+            install_runtime: true
+            cache: true
+            stripdown: true
 
         - name: Get the number of CPU cores
           uses: SimenB/github-actions-cpu-cores@v2
