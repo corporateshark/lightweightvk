@@ -1991,15 +1991,15 @@ void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStage
   LVK_ASSERT(!handle.empty());
   lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
 
-  if (!tex.isStorageImage()) {
-    LVK_ASSERT_MSG(false, "Did you forget to specify TextureUsageBits::Storage on your texture?");
+  (void)dstStage; // TODO: add extra dstStage
+
+  if (!tex.isStorageImage() && !tex.isSampledImage()) {
+    LVK_ASSERT_MSG(false, "Did you forget to specify TextureUsageBits::Storage or TextureUsageBits::Sampled on your texture?");
     return;
   }
 
-  (void)dstStage; // TODO: add extra dstStage
-
   tex.transitionLayout(wrapper_->cmdBuf_,
-                       VK_IMAGE_LAYOUT_GENERAL,
+                       tex.isStorageImage() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
