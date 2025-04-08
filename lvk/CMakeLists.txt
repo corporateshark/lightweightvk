@@ -30,6 +30,8 @@ lvk_set_folder(LVKLibrary "LVK")
 add_subdirectory(vulkan)
 
 target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
+target_link_libraries(LVKVulkan PRIVATE minilog)
+
 if(LVK_WITH_GLFW)
   target_link_libraries(LVKLibrary PUBLIC glfw)
 endif()

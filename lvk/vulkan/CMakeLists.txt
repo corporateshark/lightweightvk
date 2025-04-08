@@ -75,7 +75,7 @@ if(LVK_WITH_VULKAN_PORTABILITY)
   add_definitions("-DLVK_WITH_VULKAN_PORTABILITY")
 endif()
 
-target_link_libraries(LVKVulkan PRIVATE LVKLibrary)
+target_link_libraries(LVKVulkan INTERFACE LVKLibrary)
 target_link_libraries(LVKVulkan PRIVATE glslang SPIRV glslang-default-resource-limits)
 target_link_libraries(LVKVulkan PRIVATE spirv-reflect-static)
 if(LVK_WITH_SLANG)
@@ -90,6 +90,7 @@ else()
   target_link_libraries(LVKVulkan PUBLIC Vulkan::Vulkan)
 endif()
 
+target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src")
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/volk")
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/vma/include")
 
