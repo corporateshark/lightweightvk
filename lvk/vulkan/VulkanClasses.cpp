@@ -6477,6 +6477,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   vkCmdSetDepthTestEnable = vkCmdSetDepthTestEnableEXT;
   vkCmdSetDepthCompareOp = vkCmdSetDepthCompareOpEXT;
   vkCmdSetDepthBiasEnable = vkCmdSetDepthBiasEnableEXT;
+  vkCmdPipelineBarrier2 = vkCmdPipelineBarrier2KHR;
+  vkQueueSubmit2 = vkQueueSubmit2KHR;
+  vkCmdBindVertexBuffers2 = vkCmdBindVertexBuffers2EXT;
 #endif
 
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
@@ -6710,7 +6713,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
       lvk::getDSLBinding(kBinding_Samplers, VK_DESCRIPTOR_TYPE_SAMPLER, maxSamplers, stageFlags),
       lvk::getDSLBinding(kBinding_StorageImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures, stageFlags),
       lvk::getDSLBinding(
-          kBinding_YUVImages, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, immutableSamplers.size(), stageFlags, immutableSamplersData),
+          kBinding_YUVImages, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)immutableSamplers.size(), stageFlags, immutableSamplersData),
       lvk::getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
   };
   const uint32_t flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
