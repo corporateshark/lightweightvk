@@ -2688,6 +2688,12 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
 
   LVK_ASSERT(imgSrc->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
 
+  const VkExtent3D dstExtent = imgDst->vkExtent_;
+  const bool coversFullDstImage = dstExtent.width == extent.width && dstExtent.height == extent.height && dstExtent.depth == extent.depth &&
+                                  dstOffset.x == 0 && dstOffset.y == 0 && dstOffset.z == 0;
+
+  LVK_ASSERT(coversFullDstImage || imgDst->vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
+
   lvk::imageMemoryBarrier2(
       wrapper_->cmdBuf_,
       imgSrc->vkImage_,
@@ -2701,7 +2707,7 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
       imgDst->vkImage_,
       StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
       StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
-      VK_IMAGE_LAYOUT_UNDEFINED,
+      coversFullDstImage ? VK_IMAGE_LAYOUT_UNDEFINED : imgDst->vkImageLayout_,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
       rangeDst);
 
