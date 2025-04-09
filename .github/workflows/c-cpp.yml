@@ -9,6 +9,7 @@ on:
 # https://github.com/git-lfs/git-lfs/issues/5749
 env:
   GIT_CLONE_PROTECTION_ACTIVE: false
+  GIT_LFS_SKIP_SMUDGE: true
 
 jobs:
   build:
