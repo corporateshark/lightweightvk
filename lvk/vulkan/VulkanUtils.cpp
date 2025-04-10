@@ -187,7 +187,7 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
   case lvk::Format_YUV_420p:
     return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
   }
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__GNUC__)
   LVK_ASSERT_MSG(false, "TextureFormat value not handled: %d", (int)format);
   return VK_FORMAT_UNDEFINED;
 #endif // _MSC_VER

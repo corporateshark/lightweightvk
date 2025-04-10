@@ -1053,7 +1053,7 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
     return imageViewForFramebuffer_[level][layer];
   }
 
-  char debugNameImageView[256] = {0};
+  char debugNameImageView[320] = {0};
   snprintf(
       debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: '%s' imageViewForFramebuffer_[%u][%u]", debugName_, level, layer);
 
