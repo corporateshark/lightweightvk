@@ -1206,6 +1206,10 @@ lvk::VulkanSwapchain::~VulkanSwapchain() {
   for (VkSemaphore sem : acquireSemaphore_) {
     vkDestroySemaphore(device_, sem, nullptr);
   }
+  for (VkFence fence : presentFence_) {
+    if (fence)
+      vkDestroyFence(device_, fence, nullptr);
+  }
 }
 
 VkImage lvk::VulkanSwapchain::getCurrentVkImage() const {
@@ -1228,6 +1232,11 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
   LVK_PROFILER_FUNCTION();
 
   if (getNextImage_) {
+    if (presentFence_[currentImageIndex_]) {
+      // VK_EXT_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
+      VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
+      VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
+    }
     const VkSemaphoreWaitInfo waitInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
@@ -1264,14 +1273,25 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   LVK_PROFILER_FUNCTION();
 
   LVK_PROFILER_ZONE("vkQueuePresent()", LVK_PROFILER_COLOR_PRESENT);
+  const VkSwapchainPresentFenceInfoEXT fenceInfo = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT,
+      .swapchainCount = 1,
+      .pFences = &presentFence_[currentImageIndex_],
+  };
   const VkPresentInfoKHR pi = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .pNext = ctx_.has_EXT_swapchain_maintenance1_ ? &fenceInfo : nullptr,
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &waitSemaphore,
       .swapchainCount = 1u,
       .pSwapchains = &swapchain_,
       .pImageIndices = &currentImageIndex_,
   };
+  if (ctx_.has_EXT_swapchain_maintenance1_) {
+    if (!presentFence_[currentImageIndex_]) {
+      presentFence_[currentImageIndex_] = lvk::createFence(device_, "Fence: present-fence");
+    }
+  }
   VkResult r = vkQueuePresentKHR(graphicsQueue_, &pi);
   if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
     VK_ASSERT(r);

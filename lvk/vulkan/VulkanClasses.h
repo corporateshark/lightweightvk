@@ -145,6 +145,7 @@ class VulkanSwapchain final {
   VkSurfaceFormatKHR surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
   TextureHandle swapchainTextures_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   VkSemaphore acquireSemaphore_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
+  VkFence presentFence_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   uint64_t timelineWaitValues_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
 };
 
