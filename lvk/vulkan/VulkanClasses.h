@@ -696,6 +696,7 @@ public:
   bool hasRayTracingPipeline_ = false;
   bool has8BitIndices_ = false;
   bool hasCalibratedTimestamps_ = false;
+  bool has_EXT_swapchain_maintenance1_ = false;
 
   TextureHandle dummyTexture_;
 
