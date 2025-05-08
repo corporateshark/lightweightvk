@@ -16,7 +16,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/glslang.git",
-        "revision": "15.1.0"
+        "revision": "15.3.0"
     }
 },
 {
