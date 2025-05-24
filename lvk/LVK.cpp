@@ -181,7 +181,7 @@ bool lvk::Assert(bool cond, const char* file, int line, const char* format, ...)
     va_list ap;
     va_start(ap, format);
     LLOGW("[LVK] Assertion failed in %s:%d: ", file, line);
-    LLOGW(format, ap);
+    MINILOG_LOG_PROC(minilog::Warning, format, ap);
     LLOGW("\n");
     va_end(ap);
     assert(false);
