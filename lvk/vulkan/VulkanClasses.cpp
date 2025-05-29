@@ -1114,7 +1114,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     vkGetPhysicalDeviceFormatProperties(pd, format, &props);
 
     const bool isStorageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
-    const bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
+    const bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) > 0;
 
     if (isStorageSupported && isTilingOptimalSupported) {
       usageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
