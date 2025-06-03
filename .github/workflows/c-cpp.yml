@@ -36,7 +36,7 @@ jobs:
         run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-12 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            sudo apt-get install -y gcc-13 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
             which make
@@ -120,8 +120,8 @@ jobs:
 #              name: "Ubuntu - GCC",
 #              os: ubuntu-latest,
 #              build_type: "Debug",
-#              cc: "gcc-12",
-#              cxx: "g++-12",
+#              cc: "gcc-13",
+#              cxx: "g++-13",
 #              generators: "Unix Makefiles"
 #            }
       runs-on: ${{ matrix.config.os }}
@@ -135,7 +135,7 @@ jobs:
           run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-12 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
+            sudo apt-get install -y gcc-13 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
 
