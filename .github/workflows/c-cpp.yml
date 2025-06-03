@@ -36,7 +36,7 @@ jobs:
         run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-12 clang-15 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            sudo apt-get install -y gcc-12 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
             which make
@@ -53,8 +53,8 @@ jobs:
       - name: Generate Android projects
         shell: bash
         env:
-          CC: "clang-15"
-          CXX: "clang++-15"
+          CC: "clang-16"
+          CXX: "clang++-16"
         run: |
           cmake -G "Unix Makefiles" -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
 
@@ -103,16 +103,16 @@ jobs:
               name: "Ubuntu - Clang",
               os: ubuntu-latest,
               build_type: "Debug",
-              cc: "clang-15",
-              cxx: "clang++-15",
+              cc: "clang-16",
+              cxx: "clang++-16",
               generators: "Unix Makefiles",
             }
           - {
               name: "Ubuntu - Clang (Wayland)",
               os: ubuntu-latest,
               build_type: "Debug",
-              cc: "clang-15",
-              cxx: "clang++-15",
+              cc: "clang-16",
+              cxx: "clang++-16",
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_WAYLAND=ON"
             }
@@ -135,7 +135,7 @@ jobs:
           run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-12 clang-15 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
+            sudo apt-get install -y gcc-12 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
 
