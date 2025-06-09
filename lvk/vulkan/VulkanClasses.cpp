@@ -2595,6 +2595,8 @@ void lvk::CommandBuffer::cmdDrawIndexed(uint32_t indexCount,
     return;
   }
 
+  LVK_ASSERT(ctx_->awaitingCreation_ == false);
+
   vkCmdDrawIndexed(wrapper_->cmdBuf_, indexCount, instanceCount, firstIndex, vertexOffset, baseInstance);
 }
 
@@ -3743,6 +3745,18 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
   SubmitHandle handle = vkCmdBuffer->lastSubmitHandle_;
 
+  // assign the last submit handle to all previous "orphan" dsets
+  const size_t numSets = DSets_.size();
+  for (size_t count = 0; count != numSets; count++) {
+    // calculate index wrapping backwards
+    const size_t idx = (lastUpdatedDSet_ + numSets - 1 - count) % numSets;
+    if (!DSets_[idx].handle_.empty()) {
+      // break once we reach a "non-orphan" dset
+      break;
+    }
+    DSets_[idx].handle_ = handle;
+  }
+
   // reset
   pimpl_->currentCommandBuffer_ = {};
 
@@ -4582,6 +4596,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     return VK_NULL_HANDLE;
   }
 
+  checkAndUpdateDescriptorSets();
+
   const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->viewMask_ != viewMask) {
@@ -4783,6 +4799,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     return VK_NULL_HANDLE;
   }
 
+  checkAndUpdateDescriptorSets();
+
   const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rtps->lastVkDescriptorSetLayout_ != dset.vkDSL) {
@@ -4798,8 +4816,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   if (rtps->pipeline_) {
     return rtps->pipeline_;
   }
-
-  checkAndUpdateDescriptorSets();
 
   // build a new Vulkan ray tracing pipeline
   const RayTracingPipelineDesc& desc = rtps->desc_;
@@ -7322,7 +7338,21 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   // update Vulkan descriptor set here
 
+  lastUpdatedDSet_ = (lastUpdatedDSet_ + 1) % DSets_.size();
+
+  if (const DescriptorSet& dset = DSets_[lastUpdatedDSet_]; dset.vkDSet) {
+    // we can't reuse a dset that's either waiting to be submitted in a draw call
+    // (which happens when textures are created mid-frame) or is still being processed
+    if (dset.handle_.empty() || !immediate_->isReady(dset.handle_)) {
+      // add a new empty dset to be populated right away
+      lastUpdatedDSet_ = DSets_.size();
+      DSets_.push_back({});
+    }
+  }
+
   DescriptorSet& dset = DSets_[lastUpdatedDSet_];
+
+  dset.handle_ = {};
 
   // make sure the guard values are always there
   LVK_ASSERT(texturesPool_.numObjects() >= 1);
@@ -7494,7 +7524,6 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 #if LVK_VULKAN_PRINT_COMMANDS
     LLOGL("vkUpdateDescriptorSets()\n");
 #endif // LVK_VULKAN_PRINT_COMMANDS
-    immediate_->wait(immediate_->getLastSubmitHandle());
     LVK_PROFILER_ZONE("vkUpdateDescriptorSets()", LVK_PROFILER_COLOR_PRESENT);
     vkUpdateDescriptorSets(vkDevice_, numWrites, write, 0, nullptr);
     LVK_PROFILER_ZONE_END();

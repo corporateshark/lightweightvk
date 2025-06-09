@@ -624,6 +624,7 @@ class VulkanContext final : public IContext {
     VkDescriptorSetLayout vkDSL = VK_NULL_HANDLE;
     VkDescriptorPool vkDPool = VK_NULL_HANDLE;
     VkDescriptorSet vkDSet = VK_NULL_HANDLE;
+    SubmitHandle handle_ = {}; // last use
   };
 
   void createInstance();
