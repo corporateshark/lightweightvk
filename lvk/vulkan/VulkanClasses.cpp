@@ -2595,6 +2595,8 @@ void lvk::CommandBuffer::cmdDrawIndexed(uint32_t indexCount,
     return;
   }
 
+  LVK_ASSERT(ctx_->awaitingCreation_ == false);
+
   vkCmdDrawIndexed(wrapper_->cmdBuf_, indexCount, instanceCount, firstIndex, vertexOffset, baseInstance);
 }
 
@@ -3660,8 +3662,10 @@ lvk::VulkanContext::~VulkanContext() {
 
   immediate_.reset(nullptr);
 
-  vkDestroyDescriptorPool(vkDevice_, DSets_.vkDPool, nullptr);
-  vkDestroyDescriptorSetLayout(vkDevice_, DSets_.vkDSL, nullptr);
+  for (const DescriptorSet& dset : DSets_) {
+    vkDestroyDescriptorPool(vkDevice_, dset.vkDPool, nullptr);
+    vkDestroyDescriptorSetLayout(vkDevice_, dset.vkDSL, nullptr);
+  }
   vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
   vkDestroyPipelineCache(vkDevice_, pipelineCache_, nullptr);
 
@@ -4580,7 +4584,9 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     return VK_NULL_HANDLE;
   }
 
-  const DescriptorSet& dset = DSets_;
+  LVK_ASSERT(!awaitingCreation_); // no need to update descriptor sets here - they were updated in cmdBeginRendering()
+
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->viewMask_ != viewMask) {
     deferredTask(std::packaged_task<void()>(
@@ -4781,7 +4787,9 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     return VK_NULL_HANDLE;
   }
 
-  const DescriptorSet& dset = DSets_;
+  checkAndUpdateDescriptorSets();
+
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rtps->lastVkDescriptorSetLayout_ != dset.vkDSL) {
     deferredTask(
@@ -4796,8 +4804,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   if (rtps->pipeline_) {
     return rtps->pipeline_;
   }
-
-  checkAndUpdateDescriptorSets();
 
   // build a new Vulkan ray tracing pipeline
   const RayTracingPipelineDesc& desc = rtps->desc_;
@@ -5042,7 +5048,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
 
   checkAndUpdateDescriptorSets();
 
-  const DescriptorSet& dset = DSets_;
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (cps->lastVkDescriptorSetLayout_ != dset.vkDSL) {
     deferredTask(
@@ -7208,7 +7214,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
 void lvk::VulkanContext::bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const {
   LVK_PROFILER_FUNCTION();
-  VkDescriptorSet dset = DSets_.vkDSet;
+  VkDescriptorSet dset = DSets_[lastUpdatedDSet_].vkDSet;
   const VkDescriptorSet dsets[4] = {dset, dset, dset, dset};
   vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, (uint32_t)LVK_ARRAY_NUM_ELEMENTS(dsets), dsets, 0, nullptr);
 }
@@ -7224,7 +7230,9 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   // update Vulkan descriptor set here
 
-  DescriptorSet& dset = DSets_;
+  lastUpdatedDSet_ = (lastUpdatedDSet_ + 1) % LVK_ARRAY_NUM_ELEMENTS(DSets_);
+
+  DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   // make sure the guard values are always there
   LVK_ASSERT(texturesPool_.numObjects() >= 1);
@@ -7394,10 +7402,11 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 #if LVK_VULKAN_PRINT_COMMANDS
     LLOGL("vkUpdateDescriptorSets()\n");
 #endif // LVK_VULKAN_PRINT_COMMANDS
-    immediate_->wait(immediate_->getLastSubmitHandle());
+    // immediate_->wait(immediate_->getLastSubmitHandle());
     LVK_PROFILER_ZONE("vkUpdateDescriptorSets()", LVK_PROFILER_COLOR_PRESENT);
     vkUpdateDescriptorSets(vkDevice_, numWrites, write, 0, nullptr);
     LVK_PROFILER_ZONE_END();
+    // LLOGL("vkUpdateDescriptorSets(%u)\n", lastUpdatedDSet_);
   }
 
   awaitingCreation_ = false;
