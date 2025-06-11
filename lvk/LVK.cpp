@@ -400,6 +400,11 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   }
 
   if (!numDevices) {
+    // LavaPipe etc
+    numDevices = ctx->queryDevices(HWDeviceType_Software, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
+  }
+
+  if (!numDevices) {
     LVK_ASSERT_MSG(false, "GPU is not found");
     return nullptr;
   }
