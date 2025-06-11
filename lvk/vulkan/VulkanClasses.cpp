@@ -5957,7 +5957,7 @@ void lvk::VulkanContext::createHeadlessSurface() {
       .pNext = nullptr,
       .flags = 0,
   };
-  LVK_ASSERT(vkCreateHeadlessSurfaceEXT(vkInstance_, &ci, nullptr, &vkSurface_));
+  VK_ASSERT(vkCreateHeadlessSurfaceEXT(vkInstance_, &ci, nullptr, &vkSurface_));
 }
 
 void lvk::VulkanContext::createSurface(void* window, void* display) {
