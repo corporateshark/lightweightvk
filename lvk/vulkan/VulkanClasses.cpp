@@ -6034,7 +6034,7 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceType deviceType, HWDeviceDesc*
     const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
 
     // filter non-suitable hardware devices
-    if (desiredDeviceType != HWDeviceType_Software && desiredDeviceType != deviceType) {
+    if (desiredDeviceType != deviceType) {
       continue;
     }
 
