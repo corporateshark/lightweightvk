@@ -1319,7 +1319,7 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device, uint32_t 
       .queueFamilyIndex = queueFamilyIndex,
   };
   VK_ASSERT(vkCreateCommandPool(device, &ci, nullptr, &commandPool_));
-  lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)commandPool_, debugName);
+  VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)commandPool_, debugName));
 
   const VkCommandBufferAllocateInfo ai = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -3697,7 +3697,7 @@ lvk::Holder<lvk::QueryPoolHandle> lvk::VulkanContext::createQueryPool(uint32_t n
   }
 
   if (debugName && *debugName) {
-    lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_QUERY_POOL, (uint64_t)queryPool, debugName);
+    VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_QUERY_POOL, (uint64_t)queryPool, debugName));
   }
 
   lvk::QueryPoolHandle handle = queriesPool_.create(std::move(queryPool));
@@ -6631,8 +6631,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
         .queueFamilyIndex = deviceQueues_.graphicsQueueFamilyIndex,
     };
     VK_ASSERT(vkCreateCommandPool(vkDevice_, &ciCommandPool, nullptr, &pimpl_->tracyCommandPool_));
-    lvk::setDebugObjectName(
-        vkDevice_, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)pimpl_->tracyCommandPool_, "Command Pool: VulkanContextImpl::tracyCommandPool_");
+    VK_ASSERT(lvk::setDebugObjectName(
+        vkDevice_, VK_OBJECT_TYPE_COMMAND_POOL, (uint64_t)pimpl_->tracyCommandPool_, "Command Pool: VulkanContextImpl::tracyCommandPool_"));
     const VkCommandBufferAllocateInfo aiCommandBuffer = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = pimpl_->tracyCommandPool_,
