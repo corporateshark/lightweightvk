@@ -137,4 +137,5 @@ VkBuffer getVkBuffer(const IContext* ctx, AccelStructHandle accelStruct);
 VkPipeline getVkPipeline(const IContext* ctx, RayTracingPipelineHandle pipeline);
 VkPipelineLayout getVkPipelineLayout(const IContext* ctx, RayTracingPipelineHandle pipeline);
 
+VkDeviceSize getBufferSize(const IContext* ctx, lvk::BufferHandle handle);
 } // namespace lvk

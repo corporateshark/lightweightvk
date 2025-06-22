@@ -706,11 +706,6 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
   return formats[0];
 }
 
-VkDeviceSize bufferSize(lvk::VulkanContext& ctx, const lvk::Holder<lvk::BufferHandle>& handle) {
-  lvk::VulkanBuffer* buffer = ctx.buffersPool_.get(handle);
-  return buffer ? buffer->bufferSize_ : 0;
-}
-
 } // namespace
 
 namespace lvk {
@@ -2865,7 +2860,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
                                           &as->buildRangeInfo.primitiveCount,
                                           &accelerationStructureBuildSizesInfo);
 
-  if (!as->scratchBuffer.valid() || bufferSize(*ctx_, as->scratchBuffer) < accelerationStructureBuildSizesInfo.buildScratchSize) {
+  if (!as->scratchBuffer.valid() || getBufferSize(ctx_, as->scratchBuffer) < accelerationStructureBuildSizesInfo.buildScratchSize) {
     LLOGD("Recreating scratch buffer for TLAS update");
     as->scratchBuffer = ctx_->createBuffer(
         lvk::BufferDesc{

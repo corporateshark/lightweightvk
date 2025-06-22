@@ -248,7 +248,7 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
   case VK_FORMAT_D32_SFLOAT_S8_UINT:
     return Format_Z_F32_S_UI8;
   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
-     return Format_YUV_NV12;
+    return Format_YUV_NV12;
   case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
     return Format_YUV_420p;
   default:;
@@ -305,8 +305,7 @@ uint32_t lvk::findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags)
   std::vector<VkQueueFamilyProperties> props(queueFamilyCount);
   vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueFamilyCount, props.data());
 
-  auto findDedicatedQueueFamilyIndex = [&props](VkQueueFlags require,
-                                                VkQueueFlags avoid) -> uint32_t {
+  auto findDedicatedQueueFamilyIndex = [&props](VkQueueFlags require, VkQueueFlags avoid) -> uint32_t {
     for (uint32_t i = 0; i != props.size(); i++) {
       const bool isSuitable = (props[i].queueFlags & require) == require;
       const bool isDedicated = (props[i].queueFlags & avoid) == 0;
@@ -334,10 +333,7 @@ uint32_t lvk::findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags)
   return findDedicatedQueueFamilyIndex(flags, 0);
 }
 
-VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev,
-                                     VkDevice device,
-                                     VkInstance instance,
-                                     uint32_t apiVersion) {
+VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, VkInstance instance, uint32_t apiVersion) {
   const VmaVulkanFunctions funcs = {
       .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
       .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
@@ -543,7 +539,7 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(lvk::SamplerWrap mode
   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
-} // namespace 
+} // namespace
 
 VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits) {
   LVK_ASSERT_MSG(desc.mipLodMax >= desc.mipLodMin,
@@ -1130,4 +1126,9 @@ VkPipelineLayout lvk::getVkPipelineLayout(const IContext* ctx, RayTracingPipelin
     return 0;
 
   return static_cast<const VulkanContext*>(ctx)->rayTracingPipelinesPool_.get(pipeline)->pipelineLayout_;
+}
+
+VkDeviceSize lvk::getBufferSize(const IContext* ctx, lvk::BufferHandle handle) {
+  const lvk::VulkanBuffer* buffer = static_cast<const VulkanContext*>(ctx)->buffersPool_.get(handle);
+  return buffer ? buffer->bufferSize_ : 0;
 }
