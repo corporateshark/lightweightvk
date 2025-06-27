@@ -610,7 +610,7 @@ struct ShaderModuleDesc {
 
 struct SpecializationConstantEntry {
   uint32_t constantId = 0;
-  uint32_t offset = 0; // offset within ShaderSpecializationConstantDesc::data
+  uint32_t offset = 0; // offset within SpecializationConstantDesc::data
   size_t size = 0;
 };
 
