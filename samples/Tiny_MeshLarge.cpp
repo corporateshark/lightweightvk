@@ -2058,7 +2058,8 @@ void showTimeGPU() {
       ImGui::TableNextRow();
       const ImVec4 color = toVec4(stats.colors[i]);
       RowLeadIn(stats.names[i], stats.avg[i], color);
-      if (stats.avg[i] > 0.01)
+      if (stats.avg[i] > 0.01) {
+        ImGui::PushID(i);
         Sparkline("##spark",
                   stats.timelines[i].data(),
                   stats.timelines[i].size(),
@@ -2066,8 +2067,9 @@ void showTimeGPU() {
                   stats.minmax[i].vmax * 1.2f,
                   color,
                   ImVec2(-1, 30));
+        ImGui::PopID();
+      }
     }
-
     ImGui::EndTable();
   }
 
