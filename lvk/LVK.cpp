@@ -138,6 +138,7 @@ uint32_t lvk::getVertexFormatSize(lvk::VertexFormat format) {
     return 0;
   }
 #undef SIZE4
+#undef SIZE2_4_NORM
 }
 
 uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Format format, uint32_t level) {
