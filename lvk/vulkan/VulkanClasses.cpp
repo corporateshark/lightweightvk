@@ -6662,13 +6662,14 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
 
   if (swapchain_) {
     // destroy the old swapchain first
+    // TODO: replace with VK_EXT_swapchain_maintenance1
     VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
     swapchain_ = nullptr;
     vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }
 
   if (!width || !height) {
-    return Result();
+    return Result(Result::Code::ArgumentOutOfRange, "Width and Height cannot be 0");
   }
 
   swapchain_ = std::make_unique<lvk::VulkanSwapchain>(*this, width, height);
