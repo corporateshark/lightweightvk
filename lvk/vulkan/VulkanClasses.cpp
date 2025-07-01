@@ -5309,7 +5309,7 @@ lvk::Result lvk::VulkanContext::upload(lvk::BufferHandle handle, const void* dat
   LVK_PROFILER_FUNCTION();
 
   if (!LVK_VERIFY(data)) {
-    return lvk::Result();
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   LVK_ASSERT_MSG(size, "Data size should be non-zero");
@@ -5317,23 +5317,23 @@ lvk::Result lvk::VulkanContext::upload(lvk::BufferHandle handle, const void* dat
   lvk::VulkanBuffer* buf = buffersPool_.get(handle);
 
   if (!LVK_VERIFY(buf)) {
-    return lvk::Result();
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   if (!LVK_VERIFY(offset + size <= buf->bufferSize_)) {
-    return lvk::Result(Result::Code::ArgumentOutOfRange, "Out of range");
+    return Result(Result::Code::ArgumentOutOfRange, "Out of range");
   }
 
   stagingDevice_->bufferSubData(*buf, offset, size, data);
 
-  return lvk::Result();
+  return Result();
 }
 
 lvk::Result lvk::VulkanContext::download(lvk::BufferHandle handle, void* data, size_t size, size_t offset) {
   LVK_PROFILER_FUNCTION();
 
   if (!LVK_VERIFY(data)) {
-    return lvk::Result();
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   LVK_ASSERT_MSG(size, "Data size should be non-zero");
@@ -5341,16 +5341,16 @@ lvk::Result lvk::VulkanContext::download(lvk::BufferHandle handle, void* data, s
   lvk::VulkanBuffer* buf = buffersPool_.get(handle);
 
   if (!LVK_VERIFY(buf)) {
-    return lvk::Result();
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   if (!LVK_VERIFY(offset + size <= buf->bufferSize_)) {
-    return lvk::Result(Result::Code::ArgumentOutOfRange, "Out of range");
+    return Result(Result::Code::ArgumentOutOfRange, "Out of range");
   }
 
   buf->getBufferSubData(*this, offset, size, data);
 
-  return lvk::Result();
+  return Result();
 }
 
 uint8_t* lvk::VulkanContext::getMappedPtr(BufferHandle handle) const {
@@ -5415,20 +5415,22 @@ lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const Textur
 }
 
 lvk::Result lvk::VulkanContext::upload(lvk::TextureHandle handle, const TextureRangeDesc& range, const void* data) {
-  if (!data) {
+  LVK_PROFILER_FUNCTION();
+
+  if (!LVK_VERIFY(data)) {
     return Result(Result::Code::ArgumentOutOfRange);
   }
 
   lvk::VulkanImage* texture = texturesPool_.get(handle);
 
-  if (!texture) {
-    return Result(Result::Code::RuntimeError);
+  if (!LVK_VERIFY(texture)) {
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   const Result result = validateRange(texture->vkExtent_, texture->numLevels_, range);
 
   if (!LVK_VERIFY(result.isOk())) {
-    return result;
+    return Result(Result::Code::ArgumentOutOfRange);
   }
 
   const uint32_t numLayers = std::max(range.numLayers, 1u);
