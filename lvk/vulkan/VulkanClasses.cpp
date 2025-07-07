@@ -4613,7 +4613,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle) {
     const VkPushConstantRange range = {
         .stageFlags = rps->shaderStageFlags_,
         .offset = 0,
-        .size = pushConstantsSize,
+        .size = (uint32_t)getAlignedSize(pushConstantsSize, 16),
     };
     const VkPipelineLayoutCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -4751,7 +4751,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     const VkDescriptorSetLayout dsls[] = {vkDSL_, vkDSL_, vkDSL_, vkDSL_};
     const VkPushConstantRange range = {
         .stageFlags = rtps->shaderStageFlags_,
-        .size = pushConstantsSize,
+        .size = (uint32_t)getAlignedSize(pushConstantsSize, 16),
     };
 
     const VkPipelineLayoutCreateInfo ciPipelineLayout = {
@@ -4943,7 +4943,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
       const VkPushConstantRange range = {
           .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
           .offset = 0,
-          .size = sm->pushConstantsSize,
+          .size = (uint32_t)getAlignedSize(sm->pushConstantsSize, 16),
       };
       const VkPipelineLayoutCreateInfo ci = {
           .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
