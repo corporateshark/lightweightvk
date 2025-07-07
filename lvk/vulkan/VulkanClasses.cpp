@@ -6212,6 +6212,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceVulkan13Features deviceFeatures13 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
       .pNext = &deviceFeatures12,
+      .shaderDemoteToHelperInvocation = vkFeatures13_.shaderDemoteToHelperInvocation, // enable if supported
       .subgroupSizeControl = VK_TRUE,
       .synchronization2 = VK_TRUE,
       .dynamicRendering = VK_TRUE,
