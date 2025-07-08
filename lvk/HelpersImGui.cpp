@@ -18,6 +18,10 @@
 
 #include <math.h>
 
+#include <vector>
+
+namespace {
+
 static const char* codeVS = R"(
 layout (location = 0) out vec4 out_color;
 layout (location = 1) out vec2 out_uv;
@@ -76,7 +80,13 @@ void main() {
   out_color = kNonLinearColorSpace ? vec4(pow(c.rgb, vec3(2.2)), c.a) : c;
 })";
 
+} // namespace
+
 namespace lvk {
+
+struct ImGuiRendererImpl {
+  std::vector<lvk::Holder<lvk::TextureHandle>> textures_;
+};
 
 lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(const lvk::Framebuffer& desc) {
   const uint32_t nonLinearColorSpace = ctx_.getSwapchainColorSpace() == ColorSpace_SRGB_NONLINEAR ? 1u : 0u;
@@ -100,7 +110,8 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
       nullptr);
 }
 
-ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, float fontSizePixels) : ctx_(device) {
+ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, float fontSizePixels) :
+  ctx_(device), pimpl_(new ImGuiRendererImpl) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
@@ -109,9 +120,10 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, 
   ImGuiIO& io = ImGui::GetIO();
   io.BackendRendererName = "imgui-lvk";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 
   updateFont(defaultFontTTF, fontSizePixels);
-  
+
   vert_ = ctx_.createShaderModule({codeVS, Stage_Vert, "Shader Module: imgui (vert)"});
   frag_ = ctx_.createShaderModule({codeFS, Stage_Frag, "Shader Module: imgui (frag)"});
   samplerClamp_ = ctx_.createSampler({
@@ -128,6 +140,8 @@ ImGuiRenderer::~ImGuiRenderer() {
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
   ImGui::DestroyContext();
+
+  delete (pimpl_);
 }
 
 void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels) {
@@ -150,17 +164,19 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels)
   io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
 
   // init fonts
-  unsigned char* pixels;
-  int width, height;
-  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-  fontTexture_ = ctx_.createTexture({.type = lvk::TextureType_2D,
-                                     .format = lvk::Format_RGBA_UN8,
-                                     .dimensions = {(uint32_t)width, (uint32_t)height},
-                                     .usage = lvk::TextureUsageBits_Sampled,
-                                     .data = pixels},
-                                    "ImGuiRenderer::fontTexture_");
-  io.Fonts->TexID = fontTexture_.index();
   io.FontDefault = font;
+  if ((io.BackendFlags & ImGuiBackendFlags_RendererHasTextures) == 0) {
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    fontTexture_ = ctx_.createTexture({.type = lvk::TextureType_2D,
+                                       .format = lvk::Format_RGBA_UN8,
+                                       .dimensions = {(uint32_t)width, (uint32_t)height},
+                                       .usage = lvk::TextureUsageBits_Sampled,
+                                       .data = pixels},
+                                      "ImGuiRenderer::fontTexture_");
+    io.Fonts->TexID = fontTexture_.index();
+  }
 }
 
 void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
@@ -190,6 +206,57 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
   if (fb_width <= 0 || fb_height <= 0 || dd->CmdListsCount == 0) {
     return;
+  }
+
+  if (dd->Textures) {
+    for (ImTextureData* tex : *dd->Textures) {
+      switch (tex->Status) {
+      case ImTextureStatus_OK:
+        continue;
+      case ImTextureStatus_Destroyed:
+        continue;
+      case ImTextureStatus_WantCreate:
+        LVK_ASSERT(tex->TexID == ImTextureID_Invalid && !tex->BackendUserData);
+        LVK_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+        LVK_ASSERT(tex->BytesPerPixel == 4);
+        pimpl_->textures_.emplace_back(ctx_.createTexture({
+            .type = lvk::TextureType_2D,
+            .format = lvk::Format_RGBA_UN8,
+            .dimensions = {(uint32_t)tex->Width, (uint32_t)tex->Height},
+            .usage = lvk::TextureUsageBits_Sampled,
+            .data = tex->Pixels,
+            .debugName = "ImGuiTexture",
+        }));
+        tex->SetTexID((ImTextureID)pimpl_->textures_.back().index());
+        tex->BackendUserData = pimpl_->textures_.back().handleAsVoid();
+        tex->SetStatus(ImTextureStatus_OK);
+        continue;
+      case ImTextureStatus_WantUpdates:
+        LVK_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+        LVK_ASSERT(tex->BytesPerPixel == 4);
+        ctx_.upload(TextureHandle(tex->BackendUserData),
+                    TextureRangeDesc{
+                        .offset = {tex->UpdateRect.x, tex->UpdateRect.y, 0},
+                        .dimensions = {tex->UpdateRect.w, tex->UpdateRect.h, 1},
+                    },
+                    tex->GetPixelsAt(tex->UpdateRect.x, tex->UpdateRect.y),
+                    tex->Width);
+        tex->SetStatus(ImTextureStatus_OK);
+        continue;
+      case ImTextureStatus_WantDestroy:
+        for (lvk::Holder<TextureHandle>& holder : pimpl_->textures_) {
+          if (holder.handleAsVoid() == tex->BackendUserData) {
+            std::swap(holder, pimpl_->textures_.back());
+            pimpl_->textures_.pop_back();
+            break;
+          }
+        }
+        tex->SetTexID(ImTextureID_Invalid);
+        tex->SetStatus(ImTextureStatus_Destroyed);
+        tex->BackendUserData = nullptr;
+        continue;
+      }
+    }
   }
 
   cmdBuffer.cmdPushDebugGroupLabel("ImGui Rendering", 0xff00ff00);
