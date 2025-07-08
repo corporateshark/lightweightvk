@@ -122,7 +122,7 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, 
 
 ImGuiRenderer::~ImGuiRenderer() {
   ImGuiIO& io = ImGui::GetIO();
-  io.Fonts->TexID = 0;
+  io.Fonts->TexRef = ImTextureRef();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
@@ -276,7 +276,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
       } bindData = {
           .LRTB = {L, R, T, B},
           .vb = ctx_.gpuAddress(drawableData.vb_),
-          .textureId = static_cast<uint32_t>(cmd.TextureId),
+          .textureId = static_cast<uint32_t>(cmd.GetTexID()),
           .samplerId = samplerClamp_.index(),
       };
       cmdBuffer.cmdPushConstants(bindData);
