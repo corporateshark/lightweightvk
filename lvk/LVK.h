@@ -68,6 +68,8 @@ template<typename ObjectType>
 class Handle final {
  public:
   Handle() = default;
+  explicit Handle(void* ptr) :
+    index_(reinterpret_cast<ptrdiff_t>(ptr) & 0xffffffff), gen_((reinterpret_cast<ptrdiff_t>(ptr) >> 32) & 0xffffffff) {}
 
   bool empty() const {
     return gen_ == 0;
@@ -83,6 +85,10 @@ class Handle final {
   }
   void* indexAsVoid() const {
     return reinterpret_cast<void*>(static_cast<ptrdiff_t>(index_));
+  }
+  void* handleAsVoid() const {
+    static_assert(sizeof(void*) >= sizeof(uint64_t));
+    return reinterpret_cast<void*>((static_cast<ptrdiff_t>(gen_) << 32) + static_cast<ptrdiff_t>(index_));
   }
   bool operator==(const Handle<ObjectType>& other) const {
     return index_ == other.index_ && gen_ == other.gen_;
@@ -184,6 +190,9 @@ class Holder final {
   }
   void* indexAsVoid() const {
     return handle_.indexAsVoid();
+  }
+  void* handleAsVoid() const {
+    return handle_.handleAsVoid();
   }
 
  private:
