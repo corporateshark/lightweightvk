@@ -52,9 +52,6 @@ https://github.com/thisistherk/fast_obj/blob/master/LICENSE
 fmt
 https://github.com/fmtlib/fmt/blob/master/LICENSE.rst
 
-glew
-https://github.com/nigels-com/glew/blob/master/LICENSE.txt
-
 glfw
 https://github.com/glfw/glfw/blob/master/LICENSE.md
 
