@@ -234,8 +234,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   {
     ImDrawVert* vtx = (ImDrawVert*)ctx_.getMappedPtr(drawableData.vb_);
     uint16_t* idx = (uint16_t*)ctx_.getMappedPtr(drawableData.ib_);
-    for (int n = 0; n < dd->CmdListsCount; n++) {
-      const ImDrawList* cmdList = dd->CmdLists[n];
+    for (const ImDrawList* cmdList : dd->CmdLists) {
       memcpy(vtx, cmdList->VtxBuffer.Data, cmdList->VtxBuffer.Size * sizeof(ImDrawVert));
       memcpy(idx, cmdList->IdxBuffer.Data, cmdList->IdxBuffer.Size * sizeof(ImDrawIdx));
       vtx += cmdList->VtxBuffer.Size;
@@ -251,9 +250,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, lvk::IndexFormat_UI16);
   cmdBuffer.cmdBindRenderPipeline(pipeline_);
 
-  for (int n = 0; n < dd->CmdListsCount; n++) {
-    const ImDrawList* cmdList = dd->CmdLists[n];
-
+  for (const ImDrawList* cmdList : dd->CmdLists) {
     for (int cmd_i = 0; cmd_i < cmdList->CmdBuffer.Size; cmd_i++) {
       const ImDrawCmd cmd = cmdList->CmdBuffer[cmd_i];
       LVK_ASSERT(cmd.UserCallback == nullptr);
