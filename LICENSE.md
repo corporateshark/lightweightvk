@@ -46,9 +46,6 @@ https://github.com/corporateshark/bootstrapping/blob/master/LICENSE
 Damaged Helmet
 https://github.com/KhronosGroup/glTF-Sample-Models/blob/master/2.0/DamagedHelmet/README.md
 
-EGL
-https://github.com/McNopper/EGL/blob/master/EGL/LICENCE.txt
-
 fast_obj
 https://github.com/thisistherk/fast_obj/blob/master/LICENSE
 

@@ -176,14 +176,6 @@
     }
 },
 {
-    "name": "EGL",
-    "source": {
-        "type": "git",
-        "url": "https://github.com/McNopper/EGL.git",
-        "revision": "f20cdac3745a0d45ce8a8358ea40389278ae91e5"
-    }
-},
-{
     "name": "minilog",
     "source": {
         "type": "git",
