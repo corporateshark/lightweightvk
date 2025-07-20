@@ -37,7 +37,7 @@ There are no plans to keep this fork in sync with the upstream.
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
 
-On MacOS, MoltenVK 1.3+ and VulkanSDK 1.4.321+ are required.
+On MacOS, `MoltenVK 1.3+` and `VulkanSDK 1.4.321+` are required.
 
 ## Build
 
@@ -69,7 +69,9 @@ cmake .. -G "Unix Makefiles"
 
 ### MacOS
 
-:heavy_exclamation_mark: Be sure that VulkanSDK 1.4.321.0 for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
+:heavy_exclamation_mark: Be sure that `VulkanSDK 1.4.321+` for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
+
+:heavy_exclamation_mark: Not all demos work on MacOS due to missing features and bugs in SPIRV-Cross https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7512
 
 ```
 cd build
