@@ -14,12 +14,11 @@ There are no plans to keep this fork in sync with the upstream.
 
 ## Supported rendering backends
 
- * Vulkan 1.3 (Windows, Linux, Android)
+ * Vulkan 1.3 (Windows, Linux, MacOS, Android)
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)
    * optional **VK_EXT_mesh_shader** (Windows, Linux)
- * Vulkan 1.2 + extensions (MacOS)
 
 ## Supported platforms
 
@@ -32,19 +31,13 @@ There are no plans to keep this fork in sync with the upstream.
 
 |                               | Windows                    | Linux                      | MacOS                      | Android                    |
 | ----------------------------- | -------------------------- | -------------------------- | -------------------------- | -------------------------- |
-| Vulkan 1.3                    | :heavy_check_mark:         | :heavy_check_mark:         | :heavy_exclamation_mark:   | :heavy_check_mark:         |
-| Vulkan 1.2                    |                            |                            | :heavy_check_mark:         |                            |
+| Vulkan 1.3                    | :heavy_check_mark:         | :heavy_check_mark:         | :heavy_check_mark:         | :heavy_check_mark:         |
 | VK_KHR_acceleration_structure | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_KHR_ray_tracing_pipeline   | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
 
-On MacOS, features required by LightweightVK are enabled via extensions `VK_KHR_dynamic_rendering`, `VK_EXT_subgroup_size_control`,
-`VK_EXT_extended_dynamic_state`, `VK_EXT_extended_dynamic_state2`, and `VK_KHR_synchronization2`.
-
-:heavy_exclamation_mark: `VK_KHR_maintenance4` is not yet supported in MoltenVK :heavy_exclamation_mark:
-
-Check the status of [Vulkan 1.3 support](https://github.com/KhronosGroup/MoltenVK/issues/1930) in MoltenVK.
+On MacOS, MoltenVK 1.3+ and VulkanSDK 1.4.321+ are required.
 
 ## Build
 
@@ -76,7 +69,7 @@ cmake .. -G "Unix Makefiles"
 
 ### MacOS
 
-:heavy_exclamation_mark: Be sure that VulkanSDK 1.3.296.0 for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
+:heavy_exclamation_mark: Be sure that VulkanSDK 1.4.321.0 for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
 
 ```
 cd build
