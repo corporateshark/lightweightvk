@@ -6132,29 +6132,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   const uint32_t numQueues = ciQueue[0].queueFamilyIndex == ciQueue[1].queueFamilyIndex ? 1 : 2;
 
   std::vector<const char*> deviceExtensionNames = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#if defined(__APPLE__)
-    // All supported Vulkan 1.3 extensions
-    // https://github.com/KhronosGroup/MoltenVK/issues/1930
-    VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-    VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
-    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-    VK_EXT_4444_FORMATS_EXTENSION_NAME,
-    VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
-    VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME,
-    VK_EXT_IMAGE_ROBUSTNESS_EXTENSION_NAME,
-    VK_EXT_INLINE_UNIFORM_BLOCK_EXTENSION_NAME,
-    VK_EXT_PIPELINE_CREATION_CACHE_CONTROL_EXTENSION_NAME,
-    VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME,
-    VK_EXT_PRIVATE_DATA_EXTENSION_NAME,
-    VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME,
-    VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME,
-    VK_EXT_TEXEL_BUFFER_ALIGNMENT_EXTENSION_NAME,
-    VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME,
-#endif
+      VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 #if defined(LVK_WITH_VULKAN_PORTABILITY)
-    "VK_KHR_portability_subset",
+      "VK_KHR_portability_subset",
 #endif
   };
 
@@ -6219,29 +6199,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .maintenance4 = VK_TRUE,
   };
 
-#ifdef __APPLE__
-  VkPhysicalDeviceExtendedDynamicStateFeaturesEXT dynamicStateFeature = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
-      .pNext = &deviceFeatures13,
-      .extendedDynamicState = VK_TRUE,
-  };
-
-  VkPhysicalDeviceExtendedDynamicState2FeaturesEXT dynamicState2Feature = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
-      .pNext = &dynamicStateFeature,
-      .extendedDynamicState2 = VK_TRUE,
-  };
-
-  VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2Feature = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
-      .pNext = &dynamicState2Feature,
-      .synchronization2 = VK_TRUE,
-  };
-
-  void* createInfoNext = &synchronization2Feature;
-#else
   void* createInfoNext = &deviceFeatures13;
-#endif
+
   VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
       .accelerationStructure = VK_TRUE,
@@ -6501,18 +6460,6 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
 
   volkLoadDevice(vkDevice_);
-
-#if defined(__APPLE__)
-  vkCmdBeginRendering = vkCmdBeginRenderingKHR;
-  vkCmdEndRendering = vkCmdEndRenderingKHR;
-  vkCmdSetDepthWriteEnable = vkCmdSetDepthWriteEnableEXT;
-  vkCmdSetDepthTestEnable = vkCmdSetDepthTestEnableEXT;
-  vkCmdSetDepthCompareOp = vkCmdSetDepthCompareOpEXT;
-  vkCmdSetDepthBiasEnable = vkCmdSetDepthBiasEnableEXT;
-  vkCmdPipelineBarrier2 = vkCmdPipelineBarrier2KHR;
-  vkQueueSubmit2 = vkQueueSubmit2KHR;
-  vkCmdBindVertexBuffers2 = vkCmdBindVertexBuffers2EXT;
-#endif
 
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
   vkGetDeviceQueue(vkDevice_, deviceQueues_.computeQueueFamilyIndex, 0, &deviceQueues_.computeQueue);
