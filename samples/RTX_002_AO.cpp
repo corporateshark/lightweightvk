@@ -399,9 +399,9 @@ bool enableDenoise_ = false;
 int aoSamples_ = 2;
 bool aoDistanceBased_ = true;
 
-float aoRadius_ = 8.0f;
-float aoPower_ = 1.0f;
-bool timeVaryingNoise = false;
+float aoRadius_ = 16.0f;
+float aoPower_ = 2.0f;
+bool timeVaryingNoise = true;
 
 uint32_t frameId = 0;
 
