@@ -617,6 +617,15 @@ class VulkanContext final : public IContext {
   [[nodiscard]] uint32_t getMaxStorageBufferRange() const override;
 
  private:
+  struct DescriptorSet {
+    uint32_t maxTextures = 0;
+    uint32_t maxSamplers = 0;
+    uint32_t maxAccelStructs = 0;
+    VkDescriptorSetLayout vkDSL = VK_NULL_HANDLE;
+    VkDescriptorPool vkDPool = VK_NULL_HANDLE;
+    VkDescriptorSet vkDSet = VK_NULL_HANDLE;
+  };
+
   void createInstance();
   void createSurface(void* window, void* display);
   void createHeadlessSurface();
@@ -624,7 +633,7 @@ class VulkanContext final : public IContext {
   void processDeferredTasks() const;
   void waitDeferredTasks();
   void generateMipmap(TextureHandle handle) const;
-  lvk::Result growDescriptorPool(uint32_t maxTextures, uint32_t maxSamplers, uint32_t maxAccelStructs);
+  lvk::Result growDescriptorPool(VulkanContext::DescriptorSet& dset, uint32_t maxTextures, uint32_t maxSamplers, uint32_t maxAccelStructs);
   ShaderModuleState createShaderModuleFromSPIRV(const void* spirv, size_t numBytes, const char* debugName, Result* outResult) const;
   ShaderModuleState createShaderModuleFromGLSL(ShaderStage stage, const char* source, const char* debugName, Result* outResult) const;
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
@@ -709,12 +718,7 @@ class VulkanContext final : public IContext {
   VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
   std::unique_ptr<lvk::VulkanImmediateCommands> immediate_;
   std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
-  uint32_t currentMaxTextures_ = 16;
-  uint32_t currentMaxSamplers_ = 16;
-  uint32_t currentMaxAccelStructs_ = 1;
-  VkDescriptorSetLayout vkDSL_ = VK_NULL_HANDLE;
-  VkDescriptorPool vkDPool_ = VK_NULL_HANDLE;
-  VkDescriptorSet vkDSet_ = VK_NULL_HANDLE;
+  DescriptorSet DSets_ = {};
   // don't use staging on devices with shared host-visible memory
   bool useStaging_ = true;
 
