@@ -2426,7 +2426,7 @@ void lvk::CommandBuffer::cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffse
 
   vkCmdUpdateBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, size, data);
 
-  VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+  VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
 
   if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
     dstStage |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
