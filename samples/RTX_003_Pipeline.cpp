@@ -20,6 +20,7 @@ vec3 lightDir_ = normalize(vec3(0.05f, 1.0f, 0.01f));
 #define CACHE_FILE_NAME "cache2.data"
 vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
+bool enableShadows_ = true;
 
 #define UBOS_AND_PUSH_CONSTANTS \
   R"(
@@ -60,8 +61,9 @@ layout(push_constant) uniform constants {
   Vertices vertices;
   uint outTexture;
   uint tlas;
-};
-)"
+  bool enableShadows;
+} pc;
+)"\
 
 const char* codeRayGen = R"(
 #version 460
@@ -76,22 +78,22 @@ layout (set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
                          R"(
 layout(location = 0) rayPayloadEXT vec4 payload;
 
-const float tmin = 0.001;
-const float tmax = 500.0;
+const float tmin = 0.01;
+const float tmax = 1000.0;
 
 void main() {
   vec2 pixelCenter = gl_LaunchIDEXT.xy + vec2(0.5);
   vec2 d = 2.0 * (pixelCenter / gl_LaunchSizeEXT.xy) - 1.0;
 
-  vec4 origin = perFrame.viewInverse * vec4(0,0,0,1);
-  vec4 target = perFrame.projInverse * vec4(d, 1, 1);
-  vec4 direction = perFrame.viewInverse * vec4(normalize(target.xyz), 0);
+  vec4 origin = pc.perFrame.viewInverse * vec4(0,0,0,1);
+  vec4 target = pc.perFrame.projInverse * vec4(d, 1, 1);
+  vec4 direction = pc.perFrame.viewInverse * vec4(normalize(target.xyz), 0);
 
   payload = vec4(0.0, 0.0, 0.0, 1.0);
 
-  traceRayEXT(kTLAS[tlas], gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+  traceRayEXT(kTLAS[pc.tlas], gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
 
-  imageStore(kTextures2DInOut[outTexture], ivec2(gl_LaunchIDEXT.xy), payload);
+  imageStore(kTextures2DInOut[pc.outTexture], ivec2(gl_LaunchIDEXT.xy), payload);
 }
 )";
 
@@ -102,7 +104,7 @@ const char* codeMiss = R"(
 layout(location = 0) rayPayloadInEXT vec4 payload;
 
 void main() {
-  payload = vec4(1.0, 1.0, 1.0, 1.0);
+  payload = vec4(0.1, 0.1, 1.0, 1.0);
 })";
 
 const char* codeMissShadow = R"(
@@ -118,6 +120,7 @@ void main() {
 const char* codeClosestHit = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_query : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_shader_16bit_storage : require
@@ -153,32 +156,47 @@ void main() {
   const vec3 baryCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 
   uint index = 3 * gl_PrimitiveID;
-  ivec3 triangleIndex = ivec3(indices.idx[index + 0], indices.idx[index + 1], indices.idx[index + 2]);
+  ivec3 triangleIndex = ivec3(pc.indices.idx[index + 0],
+                              pc.indices.idx[index + 1],
+                              pc.indices.idx[index + 2]);
 
-  vec3 nrm0 = unpackOctahedral16(uint(vertices.vtx[triangleIndex.x].normal));
-  vec3 nrm1 = unpackOctahedral16(uint(vertices.vtx[triangleIndex.y].normal));
-  vec3 nrm2 = unpackOctahedral16(uint(vertices.vtx[triangleIndex.z].normal));
+  vec3 nrm0 = unpackOctahedral16(uint(pc.vertices.vtx[triangleIndex.x].normal));
+  vec3 nrm1 = unpackOctahedral16(uint(pc.vertices.vtx[triangleIndex.y].normal));
+  vec3 nrm2 = unpackOctahedral16(uint(pc.vertices.vtx[triangleIndex.z].normal));
   vec3 normal = normalize(nrm0 * baryCoords.x + nrm1 * baryCoords.y + nrm2 * baryCoords.z);
   vec3 worldNormal = normalize(vec3(normal * gl_WorldToObjectEXT));
 
-  Material mat = materials.mtl[uint(vertices.vtx[triangleIndex.x].mtlIndex)];
+  Material mat = pc.materials.mtl[uint(pc.vertices.vtx[triangleIndex.x].mtlIndex)];
 
-  float shadow = 1.0;
-  if (dot(lightDir.xyz, worldNormal) > 0) {
-    isShadowed = true;
+  const float tmin = 0.01;
+  const float tmax = 1000.0;
+
+  isShadowed = pc.enableShadows;
+
+  if (pc.enableShadows) {
     vec3 hitPoint = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
-    traceRayEXT(kTLAS[tlas], gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
-                0xff, 0, 0, 1, hitPoint, tmin, lightDir.xyz, tmax, 1);
-    if (isShadowed) {
-      shadow = 0.6;
-    }
+
+    traceRayEXT(
+      kTLAS[pc.tlas],
+      gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
+      0xff,             // cull mask
+      0,                // sbtRecordOffset
+      0,                // sbtRecordStride
+      2,                // missIndex
+      hitPoint,         // ray origin
+      tmin,
+      pc.lightDir.xyz,  // ray direction
+      tmax,
+      1                 // payload location
+    );
   }
+  float occlusion = isShadowed ? 0.5 : 1.0;
 
   float NdotL1 = clamp(dot(worldNormal, normalize(vec3(-1, 1,+1))), 0.0, 1.0);
   float NdotL2 = clamp(dot(worldNormal, normalize(vec3(-1, 1,-1))), 0.0, 1.0);
   float NdotL = 0.5 * (NdotL1 + NdotL2);
 
-  payload = vec4(mat.diffuse.rgb * shadow * max(NdotL, 0.0), mat.diffuse.a);
+  payload = vec4(mat.diffuse.rgb * occlusion * max(NdotL, 0.0), mat.diffuse.a);
 }
 )";
 
@@ -327,9 +345,7 @@ bool initModel(const std::string& folderContentRoot) {
     blasDesc.buildRange.primitiveCount = (primitiveCount < rest) ? primitiveCount : rest;
     res.BLAS_.emplace_back(ctx_->createAccelerationStructure(blasDesc));
     instances.emplace_back(lvk::AccelStructInstance{
-        // clang-format off
         .transform = (const lvk::mat3x4&)transform,
-        // clang-format on
         .instanceCustomIndex = 0,
         .mask = 0xff,
         .instanceShaderBindingTableRecordOffset = 0,
@@ -439,6 +455,7 @@ VULKAN_APP_MAIN {
         uint64_t vertices;
         uint32_t outTexture;
         uint32_t tlas;
+        uint32_t enableShadows;
       } pc = {
           .lightDir = vec4(lightDir_, 0.0f),
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
@@ -447,6 +464,7 @@ VULKAN_APP_MAIN {
           .vertices = ctx_->gpuAddress(res.vb0_),
           .outTexture = res.rayTracingOutputImage_.index(),
           .tlas = res.TLAS_.index(),
+          .enableShadows = enableShadows_ ? 1u : 0u,
       };
 
       buffer.cmdBindRayTracingPipeline(res.rayTracingPipeline_);
@@ -476,9 +494,36 @@ VULKAN_APP_MAIN {
         buffer.cmdDraw(3);
         buffer.cmdPopDebugGroupLabel();
 
-        app.imgui_->beginFrame(fbMain);
-        app.drawFPS();
-        app.imgui_->endFrame(buffer);
+        // ImGui
+        {
+          app.imgui_->beginFrame(fbMain);
+          auto imGuiPushFlagsAndStyles = [](bool value) {
+            ImGui::BeginDisabled(!value);
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * (value ? 1.0f : 0.3f));
+          };
+          auto imGuiPopFlagsAndStyles = []() {
+            ImGui::PopStyleVar();
+            ImGui::EndDisabled();
+          };
+#if !defined(ANDROID)
+          const float indentSize = 16.0f;
+          ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+          ImGui::Text("W/S/A/D - camera movement");
+          ImGui::Text("1/2 - camera up/down");
+          ImGui::Text("Shift - fast movement");
+          ImGui::Separator();
+          ImGui::Checkbox("Ray traced shadows", &enableShadows_);
+          ImGui::Indent(indentSize);
+          imGuiPushFlagsAndStyles(enableShadows_);
+          ImGui::SliderFloat3("Light dir", glm::value_ptr(lightDir_), -1, 1);
+          imGuiPopFlagsAndStyles();
+          lightDir_ = glm::normalize(lightDir_);
+          ImGui::Unindent(indentSize);
+          ImGui::End();
+#endif // !defined(ANDROID)
+          app.drawFPS();
+          app.imgui_->endFrame(buffer);
+        }
       }
       buffer.cmdEndRendering();
     }
