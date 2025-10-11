@@ -6289,7 +6289,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                       .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
                   },
           },
-      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+      .flags = geometryFlags,
   };
 
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
@@ -6322,6 +6322,15 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
   LVK_ASSERT(desc.buildRange.primitiveCount);
   LVK_ASSERT(buffersPool_.get(desc.instancesBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
 
+  VkGeometryFlagsKHR geometryFlags = 0;
+
+  if (desc.geometryFlags & AccelStructGeometryFlagBits_Opaque) {
+    geometryFlags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
+  }
+  if (desc.geometryFlags & AccelStructGeometryFlagBits_NoDuplicateAnyHit) {
+    geometryFlags |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+  }
+
   outGeometry = VkAccelerationStructureGeometryKHR{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
       .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
@@ -6334,7 +6343,7 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
                       .data = {.deviceAddress = gpuAddress(desc.instancesBuffer)},
                   },
           },
-      .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+      .flags = geometryFlags,
   };
 
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = {
