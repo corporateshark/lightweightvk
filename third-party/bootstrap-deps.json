@@ -12,7 +12,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/glslang.git",
-        "revision": "15.4.0"
+        "revision": "16.0.0"
     }
 },
 {
@@ -20,7 +20,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Reflect.git",
-        "revision": "74cd6a01f274d6cc7fc9f14c9e3608047b09c5af"
+        "revision": "ef913b3ab3da1becca3cf46b15a10667c67bebe5"
     }
 },
 {
@@ -116,7 +116,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/OpenXR-SDK.git",
-        "sha1": "release-1.1.49"
+        "sha1": "release-1.1.53"
     }
 },
 {
@@ -140,7 +140,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/ocornut/imgui.git",
-        "revision": "v1.92.1"
+        "revision": "v1.92.4"
     }
 },
 {
@@ -180,7 +180,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/minilog",
-        "revision": "a981e9888308e8060f2995de0c638d3b1d8c87d6"
+        "revision": "release-1.2.0"
     }
 },
 {
@@ -203,7 +203,7 @@
     "name": "android-validation-layers",
     "source": {
         "type": "archive",
-        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.304.1/android-binaries-1.4.304.1.zip",
+        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.321.0/android-binaries-1.4.321.0.zip",
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"
     }
 },
@@ -212,7 +212,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/KTX-Software.git",
-        "revision": "v4.4.0",
+        "revision": "v4.4.2",
         "recursive": false
     }
 }
