@@ -2727,7 +2727,7 @@ void lvk::CommandBuffer::cmdSetBlendColor(const float color[4]) {
   vkCmdSetBlendConstants(wrapper_->cmdBuf_, color);
 }
 
-void lvk::CommandBuffer::cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp) {
+void lvk::CommandBuffer::cmdSetDepthBias(float constantFactor, float clamp, float slopeFactor) {
   vkCmdSetDepthBias(wrapper_->cmdBuf_, constantFactor, clamp, slopeFactor);
 }
 

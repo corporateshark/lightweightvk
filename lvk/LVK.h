@@ -1028,7 +1028,7 @@ class ICommandBuffer {
   virtual void cmdTraceRays(uint32_t width, uint32_t height, uint32_t depth = 1, const Dependencies& deps = {}) = 0;
 
   virtual void cmdSetBlendColor(const float color[4]) = 0;
-  virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
+  virtual void cmdSetDepthBias(float constantFactor, float clamp, float slopeFactor) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
 
   virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
