@@ -1028,6 +1028,7 @@ class ICommandBuffer {
   virtual void cmdTraceRays(uint32_t width, uint32_t height, uint32_t depth = 1, const Dependencies& deps = {}) = 0;
 
   virtual void cmdSetBlendColor(const float color[4]) = 0;
+  // the argument order is correct, so the `clamp` parameter can have a default value
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
 
