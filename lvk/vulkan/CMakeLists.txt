@@ -10,7 +10,7 @@ project(LVKVulkan CXX C)
 file(GLOB SRC_FILES LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.c)
 file(GLOB HEADER_FILES LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h)
 
-add_library(LVKVulkan ${SRC_FILES} ${HEADER_FILES})
+add_library(LVKVulkan STATIC ${SRC_FILES} ${HEADER_FILES})
 
 lvk_setup_target(LVKVulkan)
 lvk_set_folder(LVKVulkan "LVK")
