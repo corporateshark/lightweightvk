@@ -162,6 +162,7 @@ ADD_DEMO_LINK_LIBRARIES("Tiny_MeshLarge" ktx)
 # Slang
 if(LVK_WITH_SLANG)
   ADD_DEMO("001_HelloTriangle_Slang")
+  ADD_DEMO("009_TriplanarMapping_Slang")
   target_compile_definitions(LVKVulkanApp PUBLIC "LVK_WITH_SLANG=1")
   target_link_libraries(LVKVulkanApp PUBLIC slang-rt core)
   target_include_directories(LVKVulkanApp PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/slang/include")

@@ -14,42 +14,42 @@
 
 const char* codeSlang = R"(
 static const float2 pos[3] = float2[3](
-	float2(-0.6, -0.4),
-	float2( 0.6, -0.4),
-	float2( 0.0,  0.6)
+  float2(-0.6, -0.4),
+  float2( 0.6, -0.4),
+  float2( 0.0,  0.6)
 );
 static const float3 col[3] = float3[3](
-	float3(1.0, 0.0, 0.0),
-	float3(0.0, 1.0, 0.0),
-	float3(0.0, 0.0, 1.0)
+  float3(1.0, 0.0, 0.0),
+  float3(0.0, 1.0, 0.0),
+  float3(0.0, 0.0, 1.0)
 );
 
 struct OutVertex {
-	float3 color;
+  float3 color;
 };
 
 struct Fragment {
-	float4 color;
+  float4 color;
 };
 
 struct VertexStageOutput {
-	OutVertex    vertex       : OutVertex;
-	float4       sv_position  : SV_Position;
+  OutVertex    vertex       : OutVertex;
+  float4       sv_position  : SV_Position;
 };
 
 [shader("vertex")]
 VertexStageOutput vertexMain(uint vertexID : SV_VertexID) {
-	VertexStageOutput output;
+  VertexStageOutput output;
 
-	output.vertex.color = col[vertexID];
-	output.sv_position = float4(pos[vertexID], 0.0, 1.0);
+  output.vertex.color = col[vertexID];
+  output.sv_position = float4(pos[vertexID], 0.0, 1.0);
 
-	return output;
+  return output;
 }
 
 [shader("fragment")]
 float4 fragmentMain(OutVertex vertex : OutVertex) : SV_Target {
-	return float4(vertex.color, 1.0);
+  return float4(vertex.color, 1.0);
 }
 )";
 

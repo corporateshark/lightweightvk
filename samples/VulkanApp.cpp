@@ -423,10 +423,30 @@ std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stag
     return {};
   }
 
+  slang::CompilerOptionEntry compilerOptions[] = {
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "SPV_GOOGLE_user_type"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvDerivativeControl"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvImageQuery"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvImageGatherExtended"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvSparseResidency"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvMinLod"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvFragmentFullyCoveredEXT"}},
+  };
+
   const slang::TargetDesc targetDesc = {
       .format = SLANG_SPIRV,
       .profile = slangGlobalSession->findProfile("spirv_1_6"),
       .flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY,
+      .forceGLSLScalarBufferLayout = true,
+      .compilerOptionEntries = &compilerOptions[0],
+      .compilerOptionEntryCount = LVK_ARRAY_NUM_ELEMENTS(compilerOptions),
   };
 
   const slang::SessionDesc sessionDesc = {
