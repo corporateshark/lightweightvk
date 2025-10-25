@@ -129,3 +129,11 @@ class VulkanApp {
 
   uint64_t frameCount_ = 0;
 };
+
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stage);
+lvk::Holder<lvk::ShaderModuleHandle> slangCreateShaderModule(lvk::IContext* ctx,
+                                                             const char* code,
+                                                             lvk::ShaderStage stage,
+                                                             const char* debugName);
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG

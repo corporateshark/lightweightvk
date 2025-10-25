@@ -15,6 +15,13 @@
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
 
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+#include <slang.h>
+#include <slang-com-helper.h>
+#include <slang-com-ptr.h>
+#include <core/slang-basic.h>
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+
 #if defined(ANDROID)
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
@@ -405,3 +412,96 @@ void VulkanApp::drawFPS() {
   }
   ImGui::End();
 }
+
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+
+std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stage) {
+  using namespace Slang;
+
+  ComPtr<slang::IGlobalSession> slangGlobalSession;
+  if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession.writeRef()))) {
+    return {};
+  }
+
+  const slang::TargetDesc targetDesc = {
+      .format = SLANG_SPIRV,
+      .profile = slangGlobalSession->findProfile("spirv_1_6"),
+      .flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY,
+  };
+
+  const slang::SessionDesc sessionDesc = {
+      .targets = &targetDesc,
+      .targetCount = 1,
+  };
+
+  ComPtr<slang::ISession> session;
+  if (SLANG_FAILED(slangGlobalSession->createSession(sessionDesc, session.writeRef()))) {
+    return {};
+  }
+
+  slang::IModule* slangModule = nullptr;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    slangModule = session->loadModuleFromSourceString("", "", code, diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (!slangModule) {
+      return {};
+    }
+  }
+
+  ComPtr<slang::IEntryPoint> entryPointVert;
+  ComPtr<slang::IEntryPoint> entryPointFrag;
+  slangModule->findEntryPointByName("vertexMain", entryPointVert.writeRef());
+  slangModule->findEntryPointByName("fragmentMain", entryPointFrag.writeRef());
+
+  Slang::List<slang::IComponentType*> componentTypes;
+  componentTypes.add(slangModule);
+  int entryPointCount = 0;
+  int vertexEntryPointIndex = entryPointCount++;
+  componentTypes.add(entryPointVert);
+  int fragmentEntryPointIndex = entryPointCount++;
+  componentTypes.add(entryPointFrag);
+
+  ComPtr<slang::IComponentType> composedProgram;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    SlangResult result = session->createCompositeComponentType(
+        componentTypes.getBuffer(), componentTypes.getCount(), composedProgram.writeRef(), diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (SLANG_FAILED(result)) {
+      return {};
+    }
+  }
+
+  ComPtr<slang::IBlob> spirvCode;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    const int entryPoint = stage == lvk::Stage_Vert ? vertexEntryPointIndex : fragmentEntryPointIndex;
+    SlangResult result = composedProgram->getEntryPointCode(entryPoint, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (SLANG_FAILED(result)) {
+      return {};
+    }
+  }
+
+  const uint8_t* ptr = reinterpret_cast<const uint8_t*>(spirvCode->getBufferPointer());
+
+  return std::vector<uint8_t>(ptr, ptr + spirvCode->getBufferSize());
+}
+
+lvk::Holder<lvk::ShaderModuleHandle> slangCreateShaderModule(lvk::IContext* ctx,
+                                                             const char* code,
+                                                             lvk::ShaderStage stage,
+                                                             const char* debugName) {
+  const std::vector<uint8_t> spirv = compileSlangToSPIRV(code, stage);
+
+  return ctx ? ctx->createShaderModule({spirv.data(), spirv.size(), stage, debugName}) : lvk::Holder<lvk::ShaderModuleHandle>();
+}
+
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
