@@ -473,8 +473,14 @@ std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stag
 
   ComPtr<slang::IEntryPoint> entryPointVert;
   ComPtr<slang::IEntryPoint> entryPointFrag;
-  slangModule->findEntryPointByName("vertexMain", entryPointVert.writeRef());
-  slangModule->findEntryPointByName("fragmentMain", entryPointFrag.writeRef());
+  if (SLANG_FAILED(slangModule->findEntryPointByName("vertexMain", entryPointVert.writeRef()))) {
+    LVK_ASSERT_MSG(entryPointVert, "vertexMain() not found");
+    return {};
+  }
+  if (SLANG_FAILED(slangModule->findEntryPointByName("fragmentMain", entryPointFrag.writeRef()))) {
+    LVK_ASSERT_MSG(entryPointFrag, "fragmentMain() not found");
+    return {};
+  }
 
   Slang::List<slang::IComponentType*> componentTypes;
   componentTypes.add(slangModule);
