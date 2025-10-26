@@ -36,7 +36,7 @@ if(ANDROID)
   target_link_libraries(LVKVulkanApp PUBLIC android)
 endif()
 
-macro(ADD_DEMO app)
+macro(ADD_DEMO app) # optional arg `demo_has_slang`
   if(NOT ANDROID)
     add_executable(${app} "${app}.cpp")
     lvk_set_cxxstd(${app} 20)
@@ -45,6 +45,25 @@ macro(ADD_DEMO app)
     target_link_libraries(${app} PRIVATE meshoptimizer)
     target_link_libraries(${app} PRIVATE fast_obj_lib)
     target_link_libraries(${app} PRIVATE LVKVulkanApp)
+
+    # default value for the optional arg
+    set(demo_has_slang FALSE)
+
+    # check if a second arg was provided
+    if(${ARGC} GREATER 1)
+        set(demo_has_slang ${ARGV1})
+    endif()
+
+    if(LVK_WITH_SLANG AND demo_has_slang)
+      add_executable(${app}_Slang "${app}.cpp")
+      lvk_set_cxxstd(${app}_Slang 20)
+      lvk_set_folder(${app}_Slang ${PROJECT_NAME})
+      target_link_libraries(${app}_Slang PRIVATE LVKLibrary)
+      target_link_libraries(${app}_Slang PRIVATE meshoptimizer)
+      target_link_libraries(${app}_Slang PRIVATE fast_obj_lib)
+      target_link_libraries(${app}_Slang PRIVATE LVKVulkanApp)
+      target_compile_definitions(${app}_Slang PRIVATE "LVK_DEMO_WITH_SLANG=1")
+    endif()
   endif()
 
   # Android
@@ -128,7 +147,7 @@ macro(ADD_DEMO_LINK_LIBRARIES app libs)
   endif()
 endmacro()
 
-ADD_DEMO("001_HelloTriangle")
+ADD_DEMO("001_HelloTriangle" LVK_WITH_SLANG)
 ADD_DEMO("002_RenderToCubeMap")
 ADD_DEMO("003_RenderToCubeMapSinglePass")
 ADD_DEMO("004_YUV")
@@ -161,8 +180,6 @@ ADD_DEMO_LINK_LIBRARIES("Tiny_MeshLarge" ktx)
 
 # Slang
 if(LVK_WITH_SLANG)
-  ADD_DEMO("001_HelloTriangle_Slang")
-  ADD_DEMO("009_TriplanarMapping_Slang")
   target_compile_definitions(LVKVulkanApp PUBLIC "LVK_WITH_SLANG=1")
   target_link_libraries(LVKVulkanApp PUBLIC slang-rt core)
   target_include_directories(LVKVulkanApp PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/slang/include")

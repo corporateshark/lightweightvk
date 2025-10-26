@@ -7,6 +7,51 @@
 
 #include "VulkanApp.h"
 
+// Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
+
+// Slang
+const char* codeSlang = R"(
+static const float2 pos[3] = float2[3](
+  float2(-0.6, -0.4),
+  float2( 0.6, -0.4),
+  float2( 0.0,  0.6)
+);
+static const float3 col[3] = float3[3](
+  float3(1.0, 0.0, 0.0),
+  float3(0.0, 1.0, 0.0),
+  float3(0.0, 0.0, 1.0)
+);
+
+struct OutVertex {
+  float3 color;
+};
+
+struct Fragment {
+  float4 color;
+};
+
+struct VertexStageOutput {
+  OutVertex vertex       : OutVertex;
+  float4    sv_position  : SV_Position;
+};
+
+[shader("vertex")]
+VertexStageOutput vertexMain(uint vertexID : SV_VertexID) {
+  VertexStageOutput output;
+
+  output.vertex.color = col[vertexID];
+  output.sv_position = float4(pos[vertexID], 0.0, 1.0);
+
+  return output;
+}
+
+[shader("fragment")]
+float4 fragmentMain(OutVertex vertex : OutVertex) : SV_Target {
+  return float4(vertex.color, 1.0);
+}
+)";
+
+// GLSL
 const char* codeVS = R"(
 #version 460
 layout (location=0) out vec3 color;
@@ -47,8 +92,13 @@ VULKAN_APP_MAIN {
   lvk::IContext* ctx = app.ctx_.get();
 
   {
+#if defined(LVK_DEMO_WITH_SLANG)
+    lvk::Holder<lvk::ShaderModuleHandle> vert_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)");
+    lvk::Holder<lvk::ShaderModuleHandle> frag_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)");
+#else
     lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_ = ctx->createRenderPipeline(
         {
