@@ -156,7 +156,7 @@ if(WIN32 OR UNIX AND NOT (APPLE))
   ADD_DEMO("005_MeshShaders")
 endif()
 ADD_DEMO("006_SwapchainHDR")
-ADD_DEMO("009_TriplanarMapping")
+ADD_DEMO("009_TriplanarMapping" LVK_WITH_SLANG)
 if((WIN32 OR UNIX AND NOT (APPLE)) OR LVK_WITH_SAMPLES_ANDROID)
   # Windows, Linux and Android
   ADD_DEMO("RTX_001_Hello")

@@ -14,6 +14,99 @@
 
 constexpr uint32_t kNumObjects = 16;
 
+// Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
+
+const char* codeSlang = R"(
+struct Vertex {
+  float x, y, z;
+  float r, g, b;
+};
+
+struct PerFrame {
+  float4x4 proj;
+  float4x4 view;
+  uint texture0;
+  uint texture1;
+  uint sampler0;
+};
+
+struct PerObject {
+  float4x4 model[];
+};
+
+struct VertexBuffer {
+  Vertex vertices[];
+};
+
+struct PushConstants {
+  PerFrame* perFrame;
+  PerObject* perObject;
+  VertexBuffer* vb;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct VertexStageOutput {
+  float4 position : SV_Position;
+  float3 color;
+  float3 normal;
+};
+
+[shader("vertex")]
+void vertexMain(uint vertexID   : SV_VertexID,
+                uint instanceID : SV_InstanceID,
+                out VertexStageOutput output)
+{
+  float4x4 proj = pc.perFrame->proj;
+  float4x4 view = pc.perFrame->view;
+  float4x4 model = pc.perObject->model[instanceID];
+
+  Vertex v = pc.vb->vertices[vertexID];
+
+  output.position = mul(float4(v.x, v.y, v.z, 1.0), mul(model, mul(view, proj)));
+  output.color = float3(v.r, v.g, v.b);
+  output.normal = normalize(float3(v.x, v.y, v.z)); // object space normal
+}
+
+// bindless texture and sampler arrays
+[[vk::binding(0, 0)]] Texture2D    kTextures2D[];
+[[vk::binding(1, 0)]] SamplerState kSamplers[];
+
+float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {
+  return kTextures2D[NonUniformResourceIndex(textureid)].Sample(
+    kSamplers[NonUniformResourceIndex(samplerid)], uv);
+}
+
+float4 triplanar(uint tex, float3 worldPos, float3 normal) {
+  // generate weights, show texture on both sides of the object (positive and negative)
+  float3 weights = abs(normal);
+  // make the transition sharper
+  weights = pow(weights, float3(8.0, 8.0, 8.0));
+  // make sure the sum of all components is 1
+  weights = weights / (weights.x + weights.y + weights.z);
+
+  // sample the texture for 3 different projections
+  float4 cXY = textureBindless2D(tex, pc.perFrame->sampler0, worldPos.xy);
+  float4 cZY = textureBindless2D(tex, pc.perFrame->sampler0, worldPos.zy);
+  float4 cXZ = textureBindless2D(tex, pc.perFrame->sampler0, worldPos.xz);
+
+  // combine the projected colors
+  return cXY * weights.z + cZY * weights.x + cXZ * weights.y;
+}
+
+[shader("fragment")]
+float4 fragmentMain(
+  VertexStageOutput input,
+  float4 position : SV_Position) : SV_Target
+{
+  // triplanar mapping in object-space; for our icosahedron, object-space position and normal vectors are the same
+  float4 t0 = triplanar(pc.perFrame->texture0, input.normal, input.normal);
+  float4 t1 = triplanar(pc.perFrame->texture1, input.normal, input.normal);
+
+  return float4(input.color * (t0.rgb + t1.rgb), 1.0);
+}
+)";
+
 const char* codeVS = R"(
 layout (location=0) out vec3 color;
 layout (location=1) out vec3 normal;
@@ -234,8 +327,13 @@ VULKAN_APP_MAIN {
     v = glm::sphericalRand(1.0f);
   }
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  lvk::Holder<lvk::ShaderModuleHandle> vert_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)");
+  lvk::Holder<lvk::ShaderModuleHandle> frag_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)");
+#else
   lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
   lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Mesh_ = ctx->createRenderPipeline({
       .smVert = vert_,
