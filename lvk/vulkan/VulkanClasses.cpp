@@ -5721,85 +5721,88 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     return {};
   }
 
+  auto addCode = [source, &sourcePatched](const char* substr, const char* code) -> void {
+    if (strstr(source, substr)) {
+      sourcePatched.append(code);
+    }
+  };
+
   if (strstr(source, "#version ") == nullptr) {
     if (vkStage == VK_SHADER_STAGE_TASK_BIT_EXT || vkStage == VK_SHADER_STAGE_MESH_BIT_EXT) {
-      sourcePatched += R"(
-      #version 460
-      #extension GL_EXT_buffer_reference : require
-      #extension GL_EXT_buffer_reference_uvec2 : require
-      #extension GL_EXT_debug_printf : enable
-      #extension GL_EXT_nonuniform_qualifier : require
-      #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-      #extension GL_EXT_mesh_shader : require
-      )";
+      sourcePatched +=
+          "#version 460\n"
+          "#extension GL_EXT_buffer_reference : require\n"
+          "#extension GL_EXT_buffer_reference_uvec2 : require\n"
+          "#extension GL_EXT_debug_printf : enable\n"
+          "#extension GL_EXT_nonuniform_qualifier : require\n"
+          "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
+          "#extension GL_EXT_mesh_shader : require\n";
     }
     if (vkStage == VK_SHADER_STAGE_VERTEX_BIT || vkStage == VK_SHADER_STAGE_COMPUTE_BIT ||
         vkStage == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT || vkStage == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
-      sourcePatched += R"(
-      #version 460
-      #extension GL_EXT_buffer_reference : require
-      #extension GL_EXT_buffer_reference_uvec2 : require
-      #extension GL_EXT_debug_printf : enable
-      #extension GL_EXT_nonuniform_qualifier : require
-      #extension GL_EXT_samplerless_texture_functions : require
-      #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-      )";
+      sourcePatched +=
+          "#version 460\n"
+          "#extension GL_EXT_buffer_reference : require\n"
+          "#extension GL_EXT_buffer_reference_uvec2 : require\n"
+          "#extension GL_EXT_debug_printf : enable\n"
+          "#extension GL_EXT_nonuniform_qualifier : require\n"
+          "#extension GL_EXT_samplerless_texture_functions : require\n"
+          "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n";
     }
     if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
-      const bool bInjectTLAS = strstr(source, "kTLAS[") != nullptr;
       // Note how nonuniformEXT() should be used:
       // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/nonuniform-quads.frag#L33-L39
-      sourcePatched += R"(
-      #version 460
-      #extension GL_EXT_buffer_reference_uvec2 : require
-      #extension GL_EXT_debug_printf : enable
-      #extension GL_EXT_nonuniform_qualifier : require
-      #extension GL_EXT_samplerless_texture_functions : require
-      #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-      )";
-      if (bInjectTLAS) {
-        sourcePatched += R"(
-      #extension GL_EXT_buffer_reference : require
-      #extension GL_EXT_ray_query : require
-
-      layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
-      )";
-      }
-      sourcePatched += R"(
-      layout (set = 0, binding = 0) uniform texture2D kTextures2D[];
-      layout (set = 1, binding = 0) uniform texture3D kTextures3D[];
-      layout (set = 2, binding = 0) uniform textureCube kTexturesCube[];
-      layout (set = 3, binding = 0) uniform texture2D kTextures2DShadow[];
-      layout (set = 0, binding = 1) uniform sampler kSamplers[];
-      layout (set = 3, binding = 1) uniform samplerShadow kSamplersShadow[];
-
-      layout (set = 0, binding = 3) uniform sampler2D kSamplerYUV[];
-
-      vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {
-        return texture(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv);
-      }
-      vec4 textureBindless2DLod(uint textureid, uint samplerid, vec2 uv, float lod) {
-        return textureLod(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv, lod);
-      }
-      float textureBindless2DShadow(uint textureid, uint samplerid, vec3 uvw) {
-        return texture(nonuniformEXT(sampler2DShadow(kTextures2DShadow[textureid], kSamplersShadow[samplerid])), uvw);
-      }
-      ivec2 textureBindlessSize2D(uint textureid) {
-        return textureSize(nonuniformEXT(kTextures2D[textureid]), 0);
-      }
-      vec4 textureBindlessCube(uint textureid, uint samplerid, vec3 uvw) {
-        return texture(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw);
-      }
-      vec4 textureBindlessCubeLod(uint textureid, uint samplerid, vec3 uvw, float lod) {
-        return textureLod(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw, lod);
-      }
-      int textureBindlessQueryLevels2D(uint textureid) {
-        return textureQueryLevels(nonuniformEXT(kTextures2D[textureid]));
-      }
-      int textureBindlessQueryLevelsCube(uint textureid) {
-        return textureQueryLevels(nonuniformEXT(kTexturesCube[textureid]));
-      }
-      )";
+      sourcePatched +=
+          "#version 460\n"
+          "#extension GL_EXT_buffer_reference_uvec2 : require\n"
+          "#extension GL_EXT_debug_printf : enable\n"
+          "#extension GL_EXT_nonuniform_qualifier : require\n"
+          "#extension GL_EXT_samplerless_texture_functions : require\n"
+          "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n";
+      addCode("kTLAS[",
+              "#extension GL_EXT_buffer_reference : require\n"
+              "#extension GL_EXT_ray_query : require\n"
+              "layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];\n");
+      sourcePatched +=
+          "layout (set = 0, binding = 0) uniform texture2D   kTextures2D[];\n"
+          "layout (set = 1, binding = 0) uniform texture3D   kTextures3D[];\n"
+          "layout (set = 2, binding = 0) uniform textureCube kTexturesCube[];\n"
+          "layout (set = 3, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
+          "layout (set = 0, binding = 1) uniform sampler       kSamplers[];\n"
+          "layout (set = 3, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
+          "layout (set = 0, binding = 3) uniform sampler2D     kSamplerYUV[];\n";
+      addCode("textureBindless2D(",
+              "vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {\n"
+              "  return texture(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv);\n"
+              "}\n");
+      addCode("textureBindless2DLod(",
+              "vec4 textureBindless2DLod(uint textureid, uint samplerid, vec2 uv, float lod) {\n"
+              "  return textureLod(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv, lod);\n"
+              "}\n");
+      addCode("textureBindless2DShadow(",
+              "float textureBindless2DShadow(uint textureid, uint samplerid, vec3 uvw) {"
+              "  return texture(nonuniformEXT(sampler2DShadow(kTextures2DShadow[textureid], kSamplersShadow[samplerid])), uvw);\n"
+              "}\n");
+      addCode("textureBindlessSize2D(",
+              "ivec2 textureBindlessSize2D(uint textureid) {\n"
+              "  return textureSize(nonuniformEXT(kTextures2D[textureid]), 0);\n"
+              "}\n");
+      addCode("textureBindlessCube(",
+              "vec4 textureBindlessCube(uint textureid, uint samplerid, vec3 uvw) {\n"
+              "  return texture(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw);\n"
+              "}\n");
+      addCode("textureBindlessCubeLod(",
+              "vec4 textureBindlessCubeLod(uint textureid, uint samplerid, vec3 uvw, float lod) {\n"
+              "  return textureLod(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw, lod);\n"
+              "}\n");
+      addCode("textureBindlessQueryLevels2D(",
+              "int textureBindlessQueryLevels2D(uint textureid) {\n"
+              "  return textureQueryLevels(nonuniformEXT(kTextures2D[textureid]));\n"
+              "}\n");
+      addCode("textureBindlessQueryLevelsCube(",
+              "int textureBindlessQueryLevelsCube(uint textureid) {\n"
+              "  return textureQueryLevels(nonuniformEXT(kTexturesCube[textureid]));\n"
+              "}\n");
     }
     sourcePatched += source;
     source = sourcePatched.c_str();
