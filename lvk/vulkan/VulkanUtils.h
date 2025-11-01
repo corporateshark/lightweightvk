@@ -83,10 +83,10 @@ VkResult allocateMemory2(VkPhysicalDevice physDev,
                          VkDeviceMemory* outMemory);
 
 glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits);
-Result compileShader(VkShaderStageFlagBits stage,
-                     const char* code,
-                     std::vector<uint8_t>* outSPIRV,
-                     const glslang_resource_t* glslLangResource = nullptr);
+Result compileShaderGlslang(VkShaderStageFlagBits stage,
+                            const char* code,
+                            std::vector<uint8_t>* outSPIRV,
+                            const glslang_resource_t* glslLangResource = nullptr);
 
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
 VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,

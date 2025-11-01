@@ -624,10 +624,10 @@ static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
   return GLSLANG_STAGE_COUNT;
 }
 
-lvk::Result lvk::compileShader(VkShaderStageFlagBits stage,
-                               const char* code,
-                               std::vector<uint8_t>* outSPIRV,
-                               const glslang_resource_t* glslLangResource) {
+lvk::Result lvk::compileShaderGlslang(VkShaderStageFlagBits stage,
+                                      const char* code,
+                                      std::vector<uint8_t>* outSPIRV,
+                                      const glslang_resource_t* glslLangResource) {
   LVK_PROFILER_FUNCTION();
 
   if (!outSPIRV) {
