@@ -5811,7 +5811,17 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
   const glslang_resource_t glslangResource = lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits);
 
   std::vector<uint8_t> spirv;
-  const Result result = lvk::compileShaderGlslang(stage, source, &spirv, &glslangResource);
+  lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, &glslangResource));
+
+  return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
+}
+
+lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderStage stage,
+                                                                       const char* source,
+                                                                       const char* debugName,
+                                                                       Result* outResult) const {
+  std::vector<uint8_t> spirv;
+  lvk::Result::setResult(outResult, lvk::compileShaderSlang(stage, source, &spirv));
 
   return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
 }
