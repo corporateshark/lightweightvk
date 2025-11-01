@@ -5648,8 +5648,15 @@ lvk::Format lvk::VulkanContext::getFormat(TextureHandle handle) const {
 
 lvk::Holder<lvk::ShaderModuleHandle> lvk::VulkanContext::createShaderModule(const ShaderModuleDesc& desc, Result* outResult) {
   Result result;
+  auto isSlang = [](const char* code) {
+    if (!code)
+      return false;
+    return strstr(code, "[shader(\"") != nullptr;
+  };
   ShaderModuleState sm = desc.dataSize ? createShaderModuleFromSPIRV(desc.data, desc.dataSize, desc.debugName, &result) // binary
-                                       : createShaderModuleFromGLSL(desc.stage, desc.data, desc.debugName, &result); // text
+                         : isSlang(desc.data) // text
+                             ? createShaderModuleFromSlang(desc.stage, desc.data, desc.debugName, &result)
+                             : createShaderModuleFromGLSL(desc.stage, desc.data, desc.debugName, &result);
 
   if (!result.isOk()) {
     Result::setResult(outResult, result);
