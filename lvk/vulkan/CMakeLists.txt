@@ -71,6 +71,9 @@ if(LVK_WITH_SLANG)
   lvk_set_folder(slang-rhi-copy-files   "third-party/slang")
   lvk_set_folder(slang-rhi-resources    "third-party/slang")
   lvk_set_folder(slang-rhi-tests        "third-party/slang")
+  target_compile_definitions(LVKVulkan PUBLIC "LVK_WITH_SLANG=1")
+  target_link_libraries(LVKVulkan PRIVATE slang-rt core)
+  target_include_directories(LVKVulkan PRIVATE "${LVK_ROOT_DIR}/third-party/deps/src/slang/include")
 endif()
 # cmake-format: on
 

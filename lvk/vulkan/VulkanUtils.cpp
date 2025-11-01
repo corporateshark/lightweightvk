@@ -12,6 +12,13 @@
 #include <glslang/Include/glslang_c_interface.h>
 #include <ldrutils/lutils/ScopeExit.h>
 
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+#include <slang.h>
+#include <slang-com-helper.h>
+#include <slang-com-ptr.h>
+#include <core/slang-basic.h>
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+
 const char* lvk::getVulkanResultString(VkResult result) {
 #define RESULT_CASE(res) \
   case res:              \
@@ -753,6 +760,129 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
   *outSPIRV = std::vector(spirv, spirv + numBytes);
 
   return Result();
+}
+
+lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
+                                    const char* code,
+                                    std::vector<uint8_t>* outSPIRV) {
+  LVK_PROFILER_FUNCTION();
+
+  if (!outSPIRV) {
+    return Result(Result::Code::ArgumentOutOfRange, "outSPIRV is NULL");
+  }
+
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+  using namespace Slang;
+
+  ComPtr<slang::IGlobalSession> slangGlobalSession;
+  if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession.writeRef()))) {
+    return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
+  }
+
+  slang::CompilerOptionEntry compilerOptions[] = {
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "SPV_GOOGLE_user_type"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvDerivativeControl"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvImageQuery"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvImageGatherExtended"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvSparseResidency"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvMinLod"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvFragmentFullyCoveredEXT"}},
+  };
+
+  const slang::TargetDesc targetDesc = {
+      .format = SLANG_SPIRV,
+      .profile = slangGlobalSession->findProfile("spirv_1_6"),
+      .flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY,
+      .forceGLSLScalarBufferLayout = true,
+      .compilerOptionEntries = &compilerOptions[0],
+      .compilerOptionEntryCount = LVK_ARRAY_NUM_ELEMENTS(compilerOptions),
+  };
+
+  const slang::SessionDesc sessionDesc = {
+      .targets = &targetDesc,
+      .targetCount = 1,
+  };
+
+  ComPtr<slang::ISession> session;
+  if (SLANG_FAILED(slangGlobalSession->createSession(sessionDesc, session.writeRef()))) {
+    return Result(Result::Code::RuntimeError, "slang::createSession() failed");
+  }
+
+  slang::IModule* slangModule = nullptr;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    slangModule = session->loadModuleFromSourceString("", "", code, diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (!slangModule) {
+      return Result(Result::Code::RuntimeError, "slang::loadModuleFromSourceString() failed");
+    }
+  }
+
+  ComPtr<slang::IEntryPoint> entryPointVert;
+  ComPtr<slang::IEntryPoint> entryPointFrag;
+  if (SLANG_FAILED(slangModule->findEntryPointByName("vertexMain", entryPointVert.writeRef()))) {
+    LVK_ASSERT_MSG(entryPointVert, "vertexMain() not found");
+    return Result(Result::Code::RuntimeError, "vertexMain() not found");
+  }
+  if (SLANG_FAILED(slangModule->findEntryPointByName("fragmentMain", entryPointFrag.writeRef()))) {
+    LVK_ASSERT_MSG(entryPointFrag, "fragmentMain() not found");
+    return Result(Result::Code::RuntimeError, "fragmentMain() not found");
+  }
+
+  Slang::List<slang::IComponentType*> componentTypes;
+  componentTypes.add(slangModule);
+  int entryPointCount = 0;
+  int vertexEntryPointIndex = entryPointCount++;
+  componentTypes.add(entryPointVert);
+  int fragmentEntryPointIndex = entryPointCount++;
+  componentTypes.add(entryPointFrag);
+
+  ComPtr<slang::IComponentType> composedProgram;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    SlangResult result = session->createCompositeComponentType(
+        componentTypes.getBuffer(), componentTypes.getCount(), composedProgram.writeRef(), diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (SLANG_FAILED(result)) {
+      LVK_ASSERT_MSG(false, "slang::createCompositeComponentType() failed");
+      return Result(Result::Code::RuntimeError, "slang::createCompositeComponentType() failed");
+    }
+  }
+
+  ComPtr<slang::IBlob> spirvCode;
+  {
+    ComPtr<slang::IBlob> diagnosticBlob;
+    const int entryPoint = stage == lvk::Stage_Vert ? vertexEntryPointIndex : fragmentEntryPointIndex;
+    SlangResult result = composedProgram->getEntryPointCode(entryPoint, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
+    if (diagnosticBlob) {
+      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
+    }
+    if (SLANG_FAILED(result)) {
+      LVK_ASSERT_MSG(false, "slang::getEntryPointCode() failed");
+      return Result(Result::Code::RuntimeError, "slang::getEntryPointCode() failed");
+    }
+  }
+
+  const uint8_t* ptr = reinterpret_cast<const uint8_t*>(spirvCode->getBufferPointer());
+
+  *outSPIRV = std::vector<uint8_t>(ptr, ptr + spirvCode->getBufferSize());
+
+  return Result();
+#else
+  LVK_ASSERT_MSG(false, "No Slang support available");
+  return Result(Result::Code::RuntimeError, "No Slang support available");
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 }
 
 VkResult lvk::setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name) {

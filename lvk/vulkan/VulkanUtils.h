@@ -82,6 +82,7 @@ Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
                             const glslang_resource_t* glslLangResource = nullptr);
+Result compileShaderSlang(lvk::ShaderStage stage, const char* code, std::vector<uint8_t>* outSPIRV);
 
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
 VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,
