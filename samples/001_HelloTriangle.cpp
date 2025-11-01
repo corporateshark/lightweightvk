@@ -93,8 +93,8 @@ VULKAN_APP_MAIN {
 
   {
 #if defined(LVK_DEMO_WITH_SLANG)
-    lvk::Holder<lvk::ShaderModuleHandle> vert_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)");
-    lvk::Holder<lvk::ShaderModuleHandle> frag_ = slangCreateShaderModule(ctx, codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)");
+    lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+    lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
 #else
     lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
