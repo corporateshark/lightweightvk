@@ -496,9 +496,10 @@ std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stag
     SlangResult result = session->createCompositeComponentType(
         componentTypes.getBuffer(), componentTypes.getCount(), composedProgram.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
-      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
     }
     if (SLANG_FAILED(result)) {
+      LVK_ASSERT_MSG(false, "Slang failed");
       return {};
     }
   }
@@ -509,9 +510,10 @@ std::vector<uint8_t> compileSlangToSPIRV(const char* code, lvk::ShaderStage stag
     const int entryPoint = stage == lvk::Stage_Vert ? vertexEntryPointIndex : fragmentEntryPointIndex;
     SlangResult result = composedProgram->getEntryPointCode(entryPoint, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
-      LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
+      LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
     }
     if (SLANG_FAILED(result)) {
+      LVK_ASSERT_MSG(false, "Slang failed");
       return {};
     }
   }
