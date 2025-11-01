@@ -78,7 +78,7 @@ VkResult allocateMemory2(VkPhysicalDevice physDev,
                          VkDeviceMemory* outMemory);
 
 glslang_resource_t getGlslangResource(const VkPhysicalDeviceLimits& limits);
-Result compileShaderGlslang(VkShaderStageFlagBits stage,
+Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
                             const glslang_resource_t* glslLangResource = nullptr);

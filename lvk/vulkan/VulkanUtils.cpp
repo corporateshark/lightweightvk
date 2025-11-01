@@ -627,37 +627,37 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
   return ci;
 }
 
-static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
+static glslang_stage_t getGLSLangShaderStage(lvk::ShaderStage stage) {
   switch (stage) {
-  case VK_SHADER_STAGE_VERTEX_BIT:
+  case lvk::ShaderStage::Stage_Vert:
     return GLSLANG_STAGE_VERTEX;
-  case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:
+  case lvk::ShaderStage::Stage_Tesc:
     return GLSLANG_STAGE_TESSCONTROL;
-  case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:
+  case lvk::ShaderStage::Stage_Tese:
     return GLSLANG_STAGE_TESSEVALUATION;
-  case VK_SHADER_STAGE_GEOMETRY_BIT:
+  case lvk::ShaderStage::Stage_Geom:
     return GLSLANG_STAGE_GEOMETRY;
-  case VK_SHADER_STAGE_FRAGMENT_BIT:
+  case lvk::ShaderStage::Stage_Frag:
     return GLSLANG_STAGE_FRAGMENT;
-  case VK_SHADER_STAGE_COMPUTE_BIT:
+  case lvk::ShaderStage::Stage_Comp:
     return GLSLANG_STAGE_COMPUTE;
-  case VK_SHADER_STAGE_TASK_BIT_EXT:
+  case lvk::ShaderStage::Stage_Task:
     return GLSLANG_STAGE_TASK;
-  case VK_SHADER_STAGE_MESH_BIT_EXT:
+  case lvk::ShaderStage::Stage_Mesh:
     return GLSLANG_STAGE_MESH;
 
   // ray tracing
-  case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
+  case lvk::ShaderStage::Stage_RayGen:
     return GLSLANG_STAGE_RAYGEN;
-  case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+  case lvk::ShaderStage::Stage_AnyHit:
     return GLSLANG_STAGE_ANYHIT;
-  case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+  case lvk::ShaderStage::Stage_ClosestHit:
     return GLSLANG_STAGE_CLOSESTHIT;
-  case VK_SHADER_STAGE_MISS_BIT_KHR:
+  case lvk::ShaderStage::Stage_Miss:
     return GLSLANG_STAGE_MISS;
-  case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+  case lvk::ShaderStage::Stage_Intersection:
     return GLSLANG_STAGE_INTERSECT;
-  case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
+  case lvk::ShaderStage::Stage_Callable:
     return GLSLANG_STAGE_CALLABLE;
   default:
     assert(false);
@@ -666,7 +666,7 @@ static glslang_stage_t getGLSLangShaderStage(VkShaderStageFlagBits stage) {
   return GLSLANG_STAGE_COUNT;
 }
 
-lvk::Result lvk::compileShaderGlslang(VkShaderStageFlagBits stage,
+lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
                                       const char* code,
                                       std::vector<uint8_t>* outSPIRV,
                                       const glslang_resource_t* glslLangResource) {
