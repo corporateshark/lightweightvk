@@ -10,6 +10,36 @@
 
 #include <filesystem>
 
+const char* codeSlang = R"(
+struct VertexOutput {
+  float4 sv_Position : SV_Position;
+  float2 uv          : TEXCOORD0;
+};
+
+static const float2 pos[4] = {
+  float2(-1.0, -1.0),
+  float2(-1.0, +1.0),
+  float2(+1.0, -1.0),
+  float2(+1.0, +1.0)
+};
+
+[[vk::constant_id(0)]] const uint textureId = 0;
+
+[shader("vertex")]
+VertexOutput vertexMain(uint vertexID : SV_VertexID) {
+  VertexOutput out;
+  out.sv_Position = float4(pos[vertexID], 0.0, 1.0);
+  out.uv = pos[vertexID] * 0.5 + 0.5;
+  out.uv.y = 1.0 - out.uv.y;
+  return out;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VertexOutput input) : SV_Target0 {
+  return kSamplersYUV[textureId].Sample(input.uv);
+}
+)";
+
 const char* codeVS = R"(
 #version 460
 layout (location=0) out vec2 uv;
@@ -116,8 +146,13 @@ VULKAN_APP_MAIN {
 
   lvk::IContext* ctx = app.ctx_.get();
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res_.vert = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+  res_.frag = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#else
   res_.vert = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
   res_.frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   createDemo(ctx, app.folderContentRoot_.c_str(), "YUV NV12", lvk::Format_YUV_NV12, "igl-samples/output_frame_900.nv12.yuv");
   createDemo(ctx, app.folderContentRoot_.c_str(), "YUV 420p", lvk::Format_YUV_420p, "igl-samples/output_frame_900.420p.yuv");

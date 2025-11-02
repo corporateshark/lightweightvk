@@ -150,7 +150,7 @@ endmacro()
 ADD_DEMO("001_HelloTriangle" LVK_WITH_SLANG)
 ADD_DEMO("002_RenderToCubeMap" LVK_WITH_SLANG)
 ADD_DEMO("003_RenderToCubeMapSinglePass" LVK_WITH_SLANG)
-ADD_DEMO("004_YUV")
+ADD_DEMO("004_YUV" LVK_WITH_SLANG)
 if(WIN32 OR UNIX AND NOT (APPLE))
   # Windows and Linux
   ADD_DEMO("005_MeshShaders")
