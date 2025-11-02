@@ -5777,7 +5777,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "layout (set = 3, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
           "layout (set = 0, binding = 1) uniform sampler       kSamplers[];\n"
           "layout (set = 3, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
-          "layout (set = 0, binding = 3) uniform sampler2D     kSamplerYUV[];\n";
+          "layout (set = 0, binding = 3) uniform sampler2D     kSamplersYUV[];\n";
       addCode("textureBindless2D(",
               "vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {\n"
               "  return texture(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv);\n"

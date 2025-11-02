@@ -14,15 +14,15 @@ const char* codeVS = R"(
 #version 460
 layout (location=0) out vec2 uv;
 const vec2 pos[4] = vec2[4](
-	vec2(-1.0, -1.0),
-   vec2(-1.0, +1.0),
-	vec2(+1.0, -1.0),
-	vec2(+1.0, +1.0)
+  vec2(-1.0, -1.0),
+  vec2(-1.0, +1.0),
+  vec2(+1.0, -1.0),
+  vec2(+1.0, +1.0)
 );
 void main() {
-	gl_Position = vec4(pos[gl_VertexIndex], 0.0, 1.0);
-	uv = pos[gl_VertexIndex] * 0.5 + 0.5;
-   uv.y = 1.0-uv.y;
+  gl_Position = vec4(pos[gl_VertexIndex], 0.0, 1.0);
+  uv = pos[gl_VertexIndex] * 0.5 + 0.5;
+    uv.y = 1.0-uv.y;
 }
 )";
 
@@ -33,8 +33,8 @@ layout (location=0) out vec4 out_FragColor;
 layout (constant_id = 0) const uint textureId = 0;
 
 void main() {
-  out_FragColor = texture(kSamplerYUV[textureId], uv);
-};
+  out_FragColor = texture(kSamplersYUV[textureId], uv);
+}
 )";
 
 size_t currentDemo_ = 0;
