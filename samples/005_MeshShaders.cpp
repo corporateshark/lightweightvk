@@ -10,6 +10,65 @@
 // we are going to use raw Vulkan here to initialize VK_EXT_mesh_shader
 #include <lvk/vulkan/VulkanUtils.h>
 
+const char* codeSlang = R"(
+struct VertexOutput {
+  float4 sv_Position : SV_Position;
+  float3 color       : COLOR0;
+};
+
+struct PrimitiveOutput {
+  bool sv_CullPrimitive : SV_CullPrimitive;
+};
+
+struct MeshPayload {
+  uint unused;
+};
+
+[shader("amplification")]
+[numthreads(1, 1, 1)]
+void taskMain() {
+  MeshPayload p;
+  DispatchMesh(1, 1, 1, p); // Slang requires the payload arg
+}
+
+[shader("mesh")]
+[numthreads(1, 1, 1)]
+[outputtopology("triangle")]
+void meshMain(
+  in payload MeshPayload meshPayload,
+  OutputVertices<VertexOutput, 3> verts,
+  OutputIndices<uint3, 1> triangles,
+  OutputPrimitives<PrimitiveOutput, 1> primitives)
+{
+  const float2 pos[3] = {
+    float2(-0.6, -0.4),
+    float2( 0.6, -0.4),
+    float2( 0.0,  0.6)
+  };
+
+  const float3 col[3] = {
+    float3(1.0, 0.0, 0.0),
+    float3(0.0, 1.0, 0.0),
+    float3(0.0, 0.0, 1.0)
+  };
+
+  SetMeshOutputCounts(3, 1);
+
+  for (uint i = 0; i < 3; i++) {
+    verts[i].sv_Position = float4(pos[i], 0.0, 1.0);
+    verts[i].color = col[i];
+  }
+
+  primitives[0].sv_CullPrimitive = false;
+  triangles[0] = uint3(0, 1, 2);
+}
+
+[shader("fragment")]
+float4 fragmentMain(VertexOutput input) : SV_Target {
+  return float4(input.color, 1.0);
+}
+)";
+
 const char* codeTask = R"(
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
@@ -83,9 +142,15 @@ VULKAN_APP_MAIN {
 
   lvk::IContext* ctx = app.ctx_.get();
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res.task_ = ctx->createShaderModule({codeSlang, lvk::Stage_Task, "Shader Module: main (task)"});
+  res.mesh_ = ctx->createShaderModule({codeSlang, lvk::Stage_Mesh, "Shader Module: main (mesh)"});
+  res.frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#else
   res.task_ = ctx->createShaderModule({codeTask, lvk::Stage_Task, "Shader Module: main (task)"});
   res.mesh_ = ctx->createShaderModule({codeMesh, lvk::Stage_Mesh, "Shader Module: main (mesh)"});
   res.frag_ = ctx->createShaderModule({codeFrag, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   res.renderPipelineState_Triangle_ = ctx->createRenderPipeline(
       {

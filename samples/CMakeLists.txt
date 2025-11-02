@@ -153,7 +153,7 @@ ADD_DEMO("003_RenderToCubeMapSinglePass" LVK_WITH_SLANG)
 ADD_DEMO("004_YUV" LVK_WITH_SLANG)
 if(WIN32 OR UNIX AND NOT (APPLE))
   # Windows and Linux
-  ADD_DEMO("005_MeshShaders")
+  ADD_DEMO("005_MeshShaders" LVK_WITH_SLANG)
 endif()
 ADD_DEMO("006_SwapchainHDR")
 ADD_DEMO("009_TriplanarMapping" LVK_WITH_SLANG)
