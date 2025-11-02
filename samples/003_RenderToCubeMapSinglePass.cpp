@@ -9,19 +9,61 @@
 
 #include <lvk/vulkan/VulkanClasses.h>
 
+// Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
+
+const char* codeTriangleSlang = R"(
+struct PushConstants {
+  float time;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+static const float2 pos[3] = {
+  float2(-0.6, -0.6),
+  float2( 0.6, -0.6),
+  float2( 0.0,  0.6)
+};
+
+struct FragmentOutput {
+  float4 color0 : SV_Target0;
+  float4 color1 : SV_Target1;
+  float4 color2 : SV_Target2;
+  float4 color3 : SV_Target3;
+  float4 color4 : SV_Target4;
+  float4 color5 : SV_Target5;
+};
+
+[shader("vertex")]
+float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position {
+  return float4(pos[vertexID] * (1.5 + sin(pc.time)) * 0.5, 0.0, 1.0);
+}
+
+[shader("fragment")]
+FragmentOutput fragmentMain() {
+  return {
+    float4(1.0, 0.0, 0.0, 1.0),
+    float4(0.0, 1.0, 0.0, 1.0),
+    float4(0.0, 0.0, 1.0, 1.0),
+    float4(1.0, 0.0, 1.0, 1.0),
+    float4(1.0, 1.0, 0.0, 1.0),
+    float4(0.0, 1.0, 1.0, 1.0),
+  };
+}
+)";
+
 const char* codeTriangleVS = R"(
 #version 460
 const vec2 pos[3] = vec2[3](
-	vec2(-0.6, -0.6),
-	vec2( 0.6, -0.6),
-	vec2( 0.0,  0.6)
+  vec2(-0.6, -0.6),
+  vec2( 0.6, -0.6),
+  vec2( 0.0,  0.6)
 );
 layout(push_constant) uniform constants {
   float time;
 } pc;
 
 void main() {
-	gl_Position = vec4(pos[gl_VertexIndex] * (1.5 + sin(pc.time)) * 0.5, 0.0, 1.0);
+  gl_Position = vec4(pos[gl_VertexIndex] * (1.5 + sin(pc.time)) * 0.5, 0.0, 1.0);
 }
 )";
 
@@ -44,13 +86,55 @@ void main() {
 };
 )";
 
+const char* codeSlang = R"(
+struct VertexStageOutput {
+  float4 sv_Position             : SV_Position;
+  float3 dir                     : COLOR0;
+  nointerpolation uint textureId : TEXTUREID;
+};
+
+struct PushConstants {
+  float4x4 mvp;
+  uint texture0;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+static const float3 vertices[8] = {
+  float3(-1.0, -1.0,  1.0), float3( 1.0, -1.0,  1.0),
+  float3( 1.0,  1.0,  1.0), float3(-1.0,  1.0,  1.0),
+  float3(-1.0, -1.0, -1.0), float3( 1.0, -1.0, -1.0),
+  float3( 1.0,  1.0, -1.0), float3(-1.0,  1.0, -1.0)
+};
+
+[shader("vertex")]
+VertexStageOutput vertexMain(uint vertexID : SV_VertexID) {
+  VertexStageOutput out;
+  float3 v = vertices[vertexID];
+  out.sv_Position = mul(float4(v, 1.0), pc.mvp);
+  out.dir = v;
+  out.textureId = pc.texture0;
+  return out;
+}
+
+struct PSInput {
+  float3 dir                     : COLOR0;
+  nointerpolation uint textureId : TEXTUREID;
+};
+
+[shader("fragment")]
+float4 fragmentMain(PSInput input) {
+  return textureBindlessCube(input.textureId, 0, normalize(input.dir));
+}
+)";
+
 const char* codeVS = R"(
 layout (location=0) out vec3 dir;
 layout (location=1) out flat uint textureId;
 
 const vec3 vertices[8] = vec3[8](
-	vec3(-1.0,-1.0, 1.0), vec3( 1.0,-1.0, 1.0), vec3( 1.0, 1.0, 1.0), vec3(-1.0, 1.0, 1.0),
-	vec3(-1.0,-1.0,-1.0), vec3( 1.0,-1.0,-1.0), vec3( 1.0, 1.0,-1.0), vec3(-1.0, 1.0,-1.0)
+  vec3(-1.0,-1.0, 1.0), vec3( 1.0,-1.0, 1.0), vec3( 1.0, 1.0, 1.0), vec3(-1.0, 1.0, 1.0),
+  vec3(-1.0,-1.0,-1.0), vec3( 1.0,-1.0,-1.0), vec3( 1.0, 1.0,-1.0), vec3(-1.0, 1.0,-1.0)
 );
 
 layout(push_constant) uniform constants {
@@ -112,12 +196,21 @@ VULKAN_APP_MAIN {
         .debugName = "CubeMap",
     });
 
+#if defined(LVK_DEMO_WITH_SLANG)
+    lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+    lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+    lvk::Holder<lvk::ShaderModuleHandle> vertTriangle_ =
+        ctx->createShaderModule({codeTriangleSlang, lvk::Stage_Vert, "Shader Module: triangle (vert)"});
+    lvk::Holder<lvk::ShaderModuleHandle> fragTriangle_ =
+        ctx->createShaderModule({codeTriangleSlang, lvk::Stage_Frag, "Shader Module: triangle (frag)"});
+#else
     lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
     lvk::Holder<lvk::ShaderModuleHandle> vertTriangle_ =
         ctx->createShaderModule({codeTriangleVS, lvk::Stage_Vert, "Shader Module: triangle (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> fragTriangle_ =
         ctx->createShaderModule({codeTriangleFS, lvk::Stage_Frag, "Shader Module: triangle (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Mesh_ = ctx->createRenderPipeline({
         .smVert = vert_,
