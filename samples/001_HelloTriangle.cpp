@@ -22,32 +22,22 @@ static const float3 col[3] = float3[3](
   float3(0.0, 0.0, 1.0)
 );
 
-struct OutVertex {
-  float3 color;
-};
-
-struct Fragment {
-  float4 color;
-};
-
 struct VertexStageOutput {
-  OutVertex vertex       : OutVertex;
-  float4    sv_position  : SV_Position;
+  float4 sv_Position  : SV_Position;
+  float3 color        : COLOR0;
 };
 
 [shader("vertex")]
 VertexStageOutput vertexMain(uint vertexID : SV_VertexID) {
-  VertexStageOutput output;
-
-  output.vertex.color = col[vertexID];
-  output.sv_position = float4(pos[vertexID], 0.0, 1.0);
-
-  return output;
+  return {
+    float4(pos[vertexID], 0.0, 1.0),
+    col[vertexID],
+  };
 }
 
 [shader("fragment")]
-float4 fragmentMain(OutVertex vertex : OutVertex) : SV_Target {
-  return float4(vertex.color, 1.0);
+float4 fragmentMain(float3 color : COLOR0) : SV_Target {
+  return float4(color, 1.0);
 }
 )";
 

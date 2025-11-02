@@ -47,15 +47,14 @@ struct PushConstants {
 [[vk::push_constant]] PushConstants pc;
 
 struct VertexStageOutput {
-  float4 position : SV_Position;
+  float4 sv_Position : SV_Position;
   float3 color;
   float3 normal;
 };
 
 [shader("vertex")]
-void vertexMain(uint vertexID   : SV_VertexID,
-                uint instanceID : SV_InstanceID,
-                out VertexStageOutput output)
+VertexStageOutput vertexMain(uint vertexID   : SV_VertexID,
+                             uint instanceID : SV_InstanceID)
 {
   float4x4 proj = pc.perFrame->proj;
   float4x4 view = pc.perFrame->view;
@@ -63,9 +62,13 @@ void vertexMain(uint vertexID   : SV_VertexID,
 
   Vertex v = pc.vb->vertices[vertexID];
 
-  output.position = mul(float4(v.x, v.y, v.z, 1.0), mul(model, mul(view, proj)));
-  output.color = float3(v.r, v.g, v.b);
-  output.normal = normalize(float3(v.x, v.y, v.z)); // object space normal
+  VertexStageOutput out;
+
+  out.sv_Position = mul(float4(v.x, v.y, v.z, 1.0), mul(model, mul(view, proj)));
+  out.color = float3(v.r, v.g, v.b);
+  out.normal = normalize(float3(v.x, v.y, v.z)); // object space normal
+
+  return out;
 }
 
 float4 triplanar(uint tex, float3 worldPos, float3 normal) {
@@ -86,9 +89,7 @@ float4 triplanar(uint tex, float3 worldPos, float3 normal) {
 }
 
 [shader("fragment")]
-float4 fragmentMain(
-  VertexStageOutput input,
-  float4 position : SV_Position) : SV_Target
+float4 fragmentMain(VertexStageOutput input) : SV_Target
 {
   // triplanar mapping in object-space; for our icosahedron, object-space position and normal vectors are the same
   float4 t0 = triplanar(pc.perFrame->texture0, input.normal, input.normal);
