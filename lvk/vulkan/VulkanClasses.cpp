@@ -5845,7 +5845,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(0, 0)]] Texture2D    kTextures2D[];\n"
       "[[vk::binding(0, 1)]] Texture3D    kTextures3D[];\n"
       "[[vk::binding(0, 2)]] TextureCube  kTexturesCube[];\n"
-      "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n";
+      "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
+      "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
   addCode("textureBindless2D(",
           "float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {\n"
           "  return kTextures2D[NonUniformResourceIndex(textureid)].Sample(\n"
