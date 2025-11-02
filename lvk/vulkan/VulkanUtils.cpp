@@ -772,9 +772,7 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
   }
 
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
-  using namespace Slang;
-
-  ComPtr<slang::IGlobalSession> slangGlobalSession;
+  Slang::ComPtr<slang::IGlobalSession> slangGlobalSession;
   if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession.writeRef()))) {
     return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
   }
@@ -810,14 +808,14 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
       .targetCount = 1,
   };
 
-  ComPtr<slang::ISession> session;
+  Slang::ComPtr<slang::ISession> session;
   if (SLANG_FAILED(slangGlobalSession->createSession(sessionDesc, session.writeRef()))) {
     return Result(Result::Code::RuntimeError, "slang::createSession() failed");
   }
 
   slang::IModule* slangModule = nullptr;
   {
-    ComPtr<slang::IBlob> diagnosticBlob;
+    Slang::ComPtr<slang::IBlob> diagnosticBlob;
     slangModule = session->loadModuleFromSourceString("", "", code, diagnosticBlob.writeRef());
     if (diagnosticBlob) {
       LLOGW("%s", (const char*)diagnosticBlob->getBufferPointer());
@@ -827,28 +825,32 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
     }
   }
 
-  ComPtr<slang::IEntryPoint> entryPointVert;
-  ComPtr<slang::IEntryPoint> entryPointFrag;
-  if (SLANG_FAILED(slangModule->findEntryPointByName("vertexMain", entryPointVert.writeRef()))) {
-    LVK_ASSERT_MSG(entryPointVert, "vertexMain() not found");
-    return Result(Result::Code::RuntimeError, "vertexMain() not found");
-  }
-  if (SLANG_FAILED(slangModule->findEntryPointByName("fragmentMain", entryPointFrag.writeRef()))) {
-    LVK_ASSERT_MSG(entryPointFrag, "fragmentMain() not found");
-    return Result(Result::Code::RuntimeError, "fragmentMain() not found");
+  Slang::ComPtr<slang::IEntryPoint> entryPoint;
+  const char* entryPointName = [stage]() {
+    switch (stage) {
+    case lvk::Stage_Vert:
+      return "vertexMain";
+    case lvk::Stage_Frag:
+      return "fragmentMain";
+    case lvk::Stage_Task:
+      return "taskMain";
+    case lvk::Stage_Mesh:
+      return "meshMain";
+    }
+    return "unknown shader type";
+  }();
+  if (SLANG_FAILED(slangModule->findEntryPointByName(entryPointName, entryPoint.writeRef()))) {
+    LVK_ASSERT_MSG(entryPoint, "Entry point %s() not found", entryPointName);
+    return Result(Result::Code::RuntimeError, "Entry point not found");
   }
 
   Slang::List<slang::IComponentType*> componentTypes;
   componentTypes.add(slangModule);
-  int entryPointCount = 0;
-  int vertexEntryPointIndex = entryPointCount++;
-  componentTypes.add(entryPointVert);
-  int fragmentEntryPointIndex = entryPointCount++;
-  componentTypes.add(entryPointFrag);
+  componentTypes.add(entryPoint);
 
-  ComPtr<slang::IComponentType> composedProgram;
+  Slang::ComPtr<slang::IComponentType> composedProgram;
   {
-    ComPtr<slang::IBlob> diagnosticBlob;
+    Slang::ComPtr<slang::IBlob> diagnosticBlob;
     SlangResult result = session->createCompositeComponentType(
         componentTypes.getBuffer(), componentTypes.getCount(), composedProgram.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
@@ -860,11 +862,11 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
     }
   }
 
-  ComPtr<slang::IBlob> spirvCode;
+  Slang::ComPtr<slang::IBlob> spirvCode;
   {
-    ComPtr<slang::IBlob> diagnosticBlob;
-    const int entryPoint = stage == lvk::Stage_Vert ? vertexEntryPointIndex : fragmentEntryPointIndex;
-    SlangResult result = composedProgram->getEntryPointCode(entryPoint, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
+    Slang::ComPtr<slang::IBlob> diagnosticBlob;
+    const int entryPointIndex = 0;
+    const SlangResult result = composedProgram->getEntryPointCode(entryPointIndex, 0, spirvCode.writeRef(), diagnosticBlob.writeRef());
     if (diagnosticBlob) {
       LLOGW("%s\n", (const char*)diagnosticBlob->getBufferPointer());
     }
