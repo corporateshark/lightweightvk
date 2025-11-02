@@ -779,7 +779,7 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
     return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
   }
 
-  slang::CompilerOptionEntry compilerOptions[] = {
+  const slang::CompilerOptionEntry compilerOptions[] = {
       {.name = slang::CompilerOptionName::Capability,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "SPV_GOOGLE_user_type"}},
       {.name = slang::CompilerOptionName::Capability,
