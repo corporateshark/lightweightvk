@@ -68,15 +68,6 @@ void vertexMain(uint vertexID   : SV_VertexID,
   output.normal = normalize(float3(v.x, v.y, v.z)); // object space normal
 }
 
-// bindless texture and sampler arrays
-[[vk::binding(0, 0)]] Texture2D    kTextures2D[];
-[[vk::binding(1, 0)]] SamplerState kSamplers[];
-
-float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {
-  return kTextures2D[NonUniformResourceIndex(textureid)].Sample(
-    kSamplers[NonUniformResourceIndex(samplerid)], uv);
-}
-
 float4 triplanar(uint tex, float3 worldPos, float3 normal) {
   // generate weights, show texture on both sides of the object (positive and negative)
   float3 weights = abs(normal);

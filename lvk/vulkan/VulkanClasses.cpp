@@ -5827,6 +5827,39 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
                                                                        const char* source,
                                                                        const char* debugName,
                                                                        Result* outResult) const {
+  std::string sourcePatched;
+
+  if (!source || !*source) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Shader source is empty");
+    return {};
+  }
+
+  auto addCode = [source, &sourcePatched](const char* substr, const char* code) -> void {
+    if (strstr(source, substr)) {
+      sourcePatched.append(code);
+    }
+  };
+
+  // bindless texture and sampler arrays
+  sourcePatched +=
+      "[[vk::binding(0, 0)]] Texture2D    kTextures2D[];\n"
+      "[[vk::binding(0, 1)]] Texture3D    kTextures3D[];\n"
+      "[[vk::binding(0, 2)]] TextureCube  kTexturesCube[];\n"
+      "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n";
+  addCode("textureBindless2D(",
+          "float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {\n"
+          "  return kTextures2D[NonUniformResourceIndex(textureid)].Sample(\n"
+          "    kSamplers[NonUniformResourceIndex(samplerid)], uv);\n"
+          "}\n");
+  addCode("textureBindlessCube(",
+          "float4 textureBindlessCube(uint textureid, uint samplerid, float3 dir) {\n"
+          "  return kTexturesCube[NonUniformResourceIndex(textureid)].Sample(\n"
+          "    kSamplers[NonUniformResourceIndex(samplerid)], dir);\n"
+          "}\n");
+
+  sourcePatched += source;
+  source = sourcePatched.c_str();
+
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderSlang(stage, source, &spirv));
 
