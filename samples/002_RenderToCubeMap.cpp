@@ -191,7 +191,7 @@ VULKAN_APP_MAIN {
         .debugName = "CubeMap",
     });
 
- #if defined(LVK_DEMO_WITH_SLANG)
+#if defined(LVK_DEMO_WITH_SLANG)
     lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
     lvk::Holder<lvk::ShaderModuleHandle> vertTriangle_ =
