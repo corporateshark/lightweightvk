@@ -148,7 +148,7 @@ macro(ADD_DEMO_LINK_LIBRARIES app libs)
 endmacro()
 
 ADD_DEMO("001_HelloTriangle" LVK_WITH_SLANG)
-ADD_DEMO("002_RenderToCubeMap")
+ADD_DEMO("002_RenderToCubeMap" LVK_WITH_SLANG)
 ADD_DEMO("003_RenderToCubeMapSinglePass")
 ADD_DEMO("004_YUV")
 if(WIN32 OR UNIX AND NOT (APPLE))
