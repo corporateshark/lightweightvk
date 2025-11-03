@@ -7,6 +7,39 @@
 
 #include "VulkanApp.h"
 
+const char* codeSlang = R"(
+struct PushConstants {
+  float3 col[3];
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct VSOutput {
+  float4 sv_Position : SV_Position;
+  float3 color : COLOR0;
+};
+
+[shader("vertex")]
+VSOutput vertexMain(uint vertexID : SV_VertexID) {
+  const float2 pos[3] = {
+    float2(-0.6, -0.4),
+    float2( 0.6, -0.4),
+    float2( 0.0,  0.6)
+  };
+
+  VSOutput out;
+  out.sv_Position = float4(pos[vertexID], 0.0, 1.0);
+  out.color = pc.col[vertexID];
+
+  return out;
+}
+
+[shader("fragment")]
+float4 fragmentMain(float3 color : COLOR0) : SV_Target0 {
+  return float4(color, 1.0);
+}
+)";
+
 const char* codeVS = R"(
 #version 460
 #extension GL_EXT_scalar_block_layout : require
@@ -54,8 +87,13 @@ VULKAN_APP_MAIN {
   LLOGL("Swapchain color space: %u\n", ctx->getSwapchainColorSpace());
 
   {
+#if defined(LVK_DEMO_WITH_SLANG)
+    lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+    lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#else
     lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
     lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_ = ctx->createRenderPipeline(
         {
