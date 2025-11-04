@@ -108,6 +108,16 @@ python3 deploy_content_android.py
 
 > NOTE: At the moment, demo apps do not support touch input on Android.
 
+## Using the Slang compiler
+
+By default, the [Slang](https://github.com/shader-slang/slang) compiler is disabled,
+and only GLSL shaders are supported through the [glslang](https://github.com/KhronosGroup/glslang) compiler.
+To enable [Slang](https://github.com/shader-slang/slang), configure the project with the following CMake option:
+
+```
+cmake .. -DLVK_WITH_SLANG=ON
+```
+
 ## Screenshots
 
 Check out [https://github.com/corporateshark/lightweightvk/samples](https://github.com/corporateshark/lightweightvk/tree/master/samples).
