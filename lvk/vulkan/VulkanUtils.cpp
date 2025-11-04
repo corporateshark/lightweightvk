@@ -836,6 +836,18 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
       return "taskMain";
     case lvk::Stage_Mesh:
       return "meshMain";
+    case lvk::Stage_RayGen:
+      return "rayGenMain";
+    case Stage_AnyHit:
+      return "anyHitMain";
+    case Stage_ClosestHit:
+      return "closestHitMain";
+    case Stage_Miss:
+      return "missMain";
+    case Stage_Intersection:
+      return "intersectionMain";
+    case Stage_Callable:
+      return "callableMain";
     }
     return "unknown shader type";
   }();

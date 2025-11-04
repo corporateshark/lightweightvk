@@ -7,6 +7,92 @@
 
 #include "VulkanApp.h"
 
+const char* codeSlang = R"(
+struct Camera {
+  float4x4 viewInverse;
+  float4x4 projInverse;
+};
+
+struct PushConstants {
+  Camera* cam;
+  uint outTexture;
+  uint tlas;
+  float time;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+[[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
+// cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
+[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];
+
+struct RayPayload {
+  float3 color;
+};
+
+[shader("raygeneration")]
+void rayGenMain() {
+  uint3 launchID = DispatchRaysIndex();
+  uint3 launchSize = DispatchRaysDimensions();
+
+  float2 pixelCenter = float2(launchID.xy) + float2(0.5, 0.5);
+  float2 d = 2.0 * (pixelCenter / float2(launchSize.xy)) - 1.0;
+
+  float4 origin = mul(float4(0, 0, 0, 1), pc.cam->viewInverse);
+  float4 target = mul(float4(d, 1, 1), pc.cam->projInverse);
+  float4 direction = mul(float4(normalize(target.xyz), 0), pc.cam->viewInverse);
+
+  RayDesc ray;
+  ray.Origin = origin.xyz;
+  ray.Direction = direction.xyz;
+  ray.TMin = 0.1;
+  ray.TMax = 500.0;
+
+  RayPayload payload = { float3(0.0, 0.0, 0.0) };
+
+  TraceRay(
+    kTLAS[NonUniformResourceIndex(pc.tlas)],
+    RAY_FLAG_FORCE_OPAQUE,
+    0xff,
+    0,
+    0,
+    0,
+    ray,
+    payload
+  );
+
+  kTextures2DInOut[NonUniformResourceIndex(pc.outTexture)][launchID.xy] = float4(payload.color, 1.0);
+}
+
+float2 rotate(float2 v, float angle) {
+  float2x2 r = float2x2(cos(angle), -sin(angle),
+                        sin(angle),  cos(angle));
+  return mul(v-0.5*DispatchRaysDimensions().xy, r);
+}
+
+// helper function for GLSL-style mod() that works with negative numbers
+float mod(float x, float y) {
+  return x - y * floor(x / y);
+}
+
+[shader("miss")]
+void missMain(inout RayPayload payload) {
+  float2 uv = rotate(DispatchRaysIndex().xy, 0.2 * pc.time);
+  float2 pos = floor(uv / 64.0);
+  payload.color = float3(mod(pos.x + mod(pos.y, 2.0), 2.0));
+}
+
+[shader("closesthit")]
+void closestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attribs) {
+  float3 baryCoords = float3(
+    1.0f - attribs.barycentrics.x - attribs.barycentrics.y,
+    attribs.barycentrics.x,
+    attribs.barycentrics.y
+  );
+  payload.color = baryCoords;
+}
+)";
+
 const char* codeRayGen = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
@@ -240,9 +326,15 @@ VULKAN_APP_MAIN {
       },
       "storageImage");
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res.raygen_ = ctx_->createShaderModule({codeSlang, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
+  res.miss_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Miss, "Shader Module: main (miss)"});
+  res.hit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+#else
   res.raygen_ = ctx_->createShaderModule({codeRayGen, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
   res.miss_ = ctx_->createShaderModule({codeMiss, lvk::Stage_Miss, "Shader Module: main (miss)"});
   res.hit_ = ctx_->createShaderModule({codeClosestHit, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   res.pipeline = ctx_->createRayTracingPipeline(lvk::RayTracingPipelineDesc{
       .smRayGen = {lvk::ShaderModuleHandle(res.raygen_)},
