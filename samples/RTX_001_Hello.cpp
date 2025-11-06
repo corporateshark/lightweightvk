@@ -8,6 +8,8 @@
 #include "VulkanApp.h"
 
 const char* codeSlang = R"(
+[[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
+
 struct Camera {
   float4x4 viewInverse;
   float4x4 projInverse;
@@ -21,10 +23,6 @@ struct PushConstants {
 };
 
 [[vk::push_constant]] PushConstants pc;
-
-[[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
-// cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
-[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];
 
 struct RayPayload {
   float3 color;

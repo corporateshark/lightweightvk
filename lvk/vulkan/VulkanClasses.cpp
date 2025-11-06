@@ -5847,6 +5847,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(0, 2)]] TextureCube  kTexturesCube[];\n"
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
+  // cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
+  addCode("kTLAS[", "[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];\n");
   addCode("textureBindless2D(",
           "float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {\n"
           "  return kTextures2D[NonUniformResourceIndex(textureid)].Sample(\n"
