@@ -111,7 +111,7 @@ static const float3 vertices[8] = {
 VertexStageOutput vertexMain(uint vertexID : SV_VertexID) {
   VertexStageOutput out;
   float3 v = vertices[vertexID];
-  out.sv_Position = mul(float4(v, 1.0), pc.mvp);
+  out.sv_Position = pc.mvp * float4(v, 1.0);
   out.dir = v;
   out.textureId = pc.texture0;
   return out;

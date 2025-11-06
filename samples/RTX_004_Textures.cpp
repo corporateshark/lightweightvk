@@ -46,9 +46,9 @@ void rayGenMain() {
   float2 pixelCenter = float2(launchID.xy) + float2(0.5, 0.5);
   float2 d = 2.0 * (pixelCenter / float2(launchSize.xy)) - 1.0;
 
-  float4 origin = mul(float4(0, 0, 0, 1), pc.cam->viewInverse);
-  float4 target = mul(float4(d, 1, 1), pc.cam->projInverse);
-  float4 direction = mul(float4(normalize(target.xyz), 0), pc.cam->viewInverse);
+  float4 origin    = pc.cam->viewInverse * float4(0, 0, 0, 1);
+  float4 target    = pc.cam->projInverse * float4(d, 1, 1);
+  float4 direction = pc.cam->viewInverse * float4(normalize(target.xyz), 0);
 
   RayDesc ray;
   ray.Origin = origin.xyz;

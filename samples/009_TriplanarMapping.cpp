@@ -64,7 +64,7 @@ VertexStageOutput vertexMain(uint vertexID   : SV_VertexID,
 
   VertexStageOutput out;
 
-  out.sv_Position = mul(float4(v.x, v.y, v.z, 1.0), mul(model, mul(view, proj)));
+  out.sv_Position = proj * view * model * float4(v.x, v.y, v.z, 1.0);
   out.color = float3(v.r, v.g, v.b);
   out.normal = normalize(float3(v.x, v.y, v.z)); // object space normal
 

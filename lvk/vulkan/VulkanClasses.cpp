@@ -5840,6 +5840,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
     }
   };
 
+  // overloaded operators to mimic GLSL matrix operations
+  sourcePatched +=
+      "float2x2 operator*(float2x2 a, float2x2 b) { return mul(b, a); }\n"
+      "float2   operator*(float2x2 a, float2   b) { return mul(b, a); }\n"
+      "float3x3 operator*(float3x3 a, float3x3 b) { return mul(b, a); }\n"
+      "float3   operator*(float3x3 a, float3   b) { return mul(b, a); }\n"
+      "float4x4 operator*(float4x4 a, float4x4 b) { return mul(b, a); }\n"
+      "float4   operator*(float4x4 a, float4   b) { return mul(b, a); }\n";
   // bindless texture and sampler arrays
   sourcePatched +=
       "[[vk::binding(0, 0)]] Texture2D    kTextures2D[];\n"
