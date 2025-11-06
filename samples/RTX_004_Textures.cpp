@@ -15,6 +15,102 @@
 // we are going to use raw Vulkan here to initialize VK_KHR_ray_tracing_position_fetch
 #include <lvk/vulkan/VulkanUtils.h>
 
+const char* codeSlang = R"(
+[[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
+
+struct Camera {
+  float4x4 viewInverse;
+  float4x4 projInverse;
+};
+
+struct PushConstants {
+  Camera* cam;
+  float2 dim;
+  uint outTexture;
+  uint texBackground;
+  uint texObject;
+  uint tlas;
+  float time;
+};
+[[vk::push_constant]] PushConstants pc;
+
+struct RayPayload {
+  float3 color;
+};
+
+[shader("raygeneration")]
+void rayGenMain() {
+  uint3 launchID = DispatchRaysIndex();
+  uint3 launchSize = DispatchRaysDimensions();
+
+  float2 pixelCenter = float2(launchID.xy) + float2(0.5, 0.5);
+  float2 d = 2.0 * (pixelCenter / float2(launchSize.xy)) - 1.0;
+
+  float4 origin = mul(float4(0, 0, 0, 1), pc.cam->viewInverse);
+  float4 target = mul(float4(d, 1, 1), pc.cam->projInverse);
+  float4 direction = mul(float4(normalize(target.xyz), 0), pc.cam->viewInverse);
+
+  RayDesc ray;
+  ray.Origin = origin.xyz;
+  ray.Direction = direction.xyz;
+  ray.TMin = 0.1;
+  ray.TMax = 500.0;
+
+  RayPayload payload = { float3(0.0, 0.0, 0.0) };
+
+  TraceRay(
+    kTLAS[NonUniformResourceIndex(pc.tlas)],
+    RAY_FLAG_FORCE_OPAQUE,
+    0xff,
+    0,
+    0,
+    0,
+    ray,
+    payload
+  );
+
+  kTextures2DInOut[NonUniformResourceIndex(pc.outTexture)][launchID.xy] = float4(payload.color, 1.0);
+}
+
+[shader("miss")]
+void missMain(inout RayPayload payload) {
+  float2 uv = float2(DispatchRaysIndex().xy) / pc.dim;
+  payload.color = textureBindless2D(pc.texBackground, 0, uv).rgb;
+}
+
+float4 triplanar(uint tex, float3 worldPos, float3 normal) {
+  // generate weights, show texture on both sides of the object (positive and negative)
+  float3 weights = abs(normal);
+  // make the transition sharper
+  weights = pow(weights, float3(8.0, 8.0, 8.0));
+  // make sure the sum of all components is 1
+  weights = weights / (weights.x + weights.y + weights.z);
+
+  // sample the texture for 3 different projections
+  float4 cXY = textureBindless2D(tex, 0, worldPos.xy);
+  float4 cZY = textureBindless2D(tex, 0, worldPos.zy);
+  float4 cXZ = textureBindless2D(tex, 0, worldPos.xz);
+
+  // combine the projected colors
+  return cXY * weights.z + cZY * weights.x + cXZ * weights.y;
+}
+
+[shader("closesthit")]
+void closestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attribs) {
+  float3 pos0 = HitTriangleVertexPosition(0);
+  float3 pos1 = HitTriangleVertexPosition(1);
+  float3 pos2 = HitTriangleVertexPosition(2);
+
+  float3 baryCoords = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y,
+                             attribs.barycentrics.x,
+                             attribs.barycentrics.y);
+  float3 pos = pos0 * baryCoords.x + pos1 * baryCoords.y + pos2 * baryCoords.z;
+
+  // triplanar mapping in object-space; for our icosahedron, object-space position and normal vectors are the same
+  payload.color = triplanar(pc.texObject, pos, normalize(pos)).rgb;
+}
+)";
+
 const char* codeRayGen = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
@@ -337,9 +433,15 @@ VULKAN_APP_MAIN {
   res.texBackground = createTextureFromFile(app, "src/bistro/BuildingTextures/wood_polished_01_diff.png");
   res.texObject = createTextureFromFile(app, "src/bistro/BuildingTextures/Cobble_02B_Diff.png");
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res.raygen_ = ctx_->createShaderModule({codeSlang, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
+  res.miss_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Miss, "Shader Module: main (miss)"});
+  res.hit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+#else
   res.raygen_ = ctx_->createShaderModule({codeRayGen, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
   res.miss_ = ctx_->createShaderModule({codeMiss, lvk::Stage_Miss, "Shader Module: main (miss)"});
   res.hit_ = ctx_->createShaderModule({codeClosestHit, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   res.pipeline = ctx_->createRayTracingPipeline(lvk::RayTracingPipelineDesc{
       .smRayGen = {lvk::ShaderModuleHandle(res.raygen_)},
