@@ -196,6 +196,7 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
 
 layout(std430, buffer_reference) readonly buffer PerObject {
   mat4 model;
+  mat4 normal;
 };
 
 layout(std430, buffer_reference) readonly buffer Materials {
@@ -241,9 +242,8 @@ void main() {
   mtl = pc.materials.mtl[mtlIndex];
   gl_Position = proj * view * model * vec4(pos, 1.0);
 
-  // Compute the normal in world-space
-  mat3 norm_matrix = transpose(inverse(mat3(model)));
-  vtx.normal = normalize(norm_matrix * unpackOctahedral16(normal));
+  // compute the normal in world-space
+  vtx.normal = normalize(mat3(pc.perObject.normal) * unpackOctahedral16(normal));
   vtx.uv = uv;
   vtx.shadowCoords = light * model * vec4(pos, 1.0);
 }
@@ -565,6 +565,7 @@ struct UniformsPerFrame {
 
 struct UniformsPerObject {
   mat4 model;
+  mat4 normal;
 };
 #define MAX_MATERIAL_NAME 128
 
@@ -1262,8 +1263,11 @@ void render(double delta) {
       .samplerShadow = samplerShadow_.index(),
   };
 
+  const mat4 modelMatrix = glm::scale(mat4(1.0f), vec3(0.05f));
+
   const UniformsPerObject perObject = {
-      .model = glm::scale(mat4(1.0f), vec3(0.05f)),
+      .model = modelMatrix,
+      .normal = glm::transpose(glm::inverse(modelMatrix)),
   };
 
   lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
