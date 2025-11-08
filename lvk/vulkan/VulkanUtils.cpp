@@ -834,6 +834,8 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
       return "vertexMain";
     case lvk::Stage_Frag:
       return "fragmentMain";
+    case lvk::Stage_Comp:
+      return "computeMain";
     case lvk::Stage_Task:
       return "taskMain";
     case lvk::Stage_Mesh:
