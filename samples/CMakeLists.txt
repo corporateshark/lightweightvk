@@ -26,11 +26,18 @@ if(ANDROID)
   endif()
 endif()
 
-add_library(LVKVulkanApp VulkanApp.cpp VulkanApp.h)
+add_library(LVKVulkanApp
+  VulkanApp.cpp
+  VulkanApp.h
+  "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp"
+  "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp"
+)
 lvk_set_cxxstd(LVKVulkanApp 20)
 lvk_set_folder(LVKVulkanApp "LVK")
 target_link_libraries(LVKVulkanApp PUBLIC LVKLibrary)
 target_link_libraries(LVKVulkanApp PUBLIC LVKstb)
+target_link_libraries(LVKVulkanApp PUBLIC LUtils)
+target_link_libraries(LVKVulkanApp PUBLIC ktx)
 if(ANDROID)
   target_include_directories(LVKVulkanApp PUBLIC "${NDK_PATH}/sources/android/native_app_glue")
   target_link_libraries(LVKVulkanApp PUBLIC android)
@@ -166,14 +173,4 @@ if((WIN32 OR UNIX AND NOT (APPLE)) OR LVK_WITH_SAMPLES_ANDROID)
 endif()
 
 ADD_DEMO("DEMO_001_SolarSystem")
-ADD_DEMO_LINK_LIBRARIES("DEMO_001_SolarSystem" LUtils)
-ADD_DEMO_LINK_LIBRARIES("DEMO_001_SolarSystem" ktx)
-ADD_DEMO_SOURCES("DEMO_001_SolarSystem"
-  "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp")
-
 ADD_DEMO("Tiny_MeshLarge")
-ADD_DEMO_SOURCES("Tiny_MeshLarge"
-  "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp")
-ADD_DEMO_SOURCES("Tiny_MeshLarge"
-  "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")
-ADD_DEMO_LINK_LIBRARIES("Tiny_MeshLarge" ktx)
