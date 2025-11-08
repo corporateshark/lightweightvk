@@ -58,6 +58,8 @@
 #include <GLFW/glfw3.h>
 #endif
 
+#include "DEMO_002_Bistro.cpp" // temporary
+
 constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
 #if !defined(__APPLE__)
 constexpr int kNumSamplesMSAA = 8;
@@ -1007,6 +1009,18 @@ void createPipelines() {
       .inputBindings = {{.stride = sizeof(VertexData)}},
   };
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  smMeshVert_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+  smMeshFrag_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+  smMeshWireframeVert_ = ctx_->createShaderModule({codeWireframeSlang, lvk::Stage_Vert, "Shader Module: main wireframe (vert)"});
+  smMeshWireframeFrag_ = ctx_->createShaderModule({codeWireframeSlang, lvk::Stage_Frag, "Shader Module: main wireframe (frag)"});
+  smShadowVert_ = ctx_->createShaderModule({codeShadowSlang, lvk::Stage_Vert, "Shader Module: shadow (vert)"});
+  smShadowFrag_ = ctx_->createShaderModule({codeShadowSlang, lvk::Stage_Frag, "Shader Module: shadow (frag)"});
+  smFullscreenVert_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
+  smFullscreenFrag_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
+  smSkyboxVert_ = ctx_->createShaderModule({codeSkyboxSlang, lvk::Stage_Vert, "Shader Module: skybox (vert)"});
+  smSkyboxFrag_ = ctx_->createShaderModule({codeSkyboxSlang, lvk::Stage_Frag, "Shader Module: skybox (frag)"});
+#else
   smMeshVert_ = ctx_->createShaderModule({kCodeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
   smMeshFrag_ = ctx_->createShaderModule({kCodeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
   smMeshWireframeVert_ = ctx_->createShaderModule({kCodeVS_Wireframe, lvk::Stage_Vert, "Shader Module: main wireframe (vert)"});
@@ -1017,6 +1031,7 @@ void createPipelines() {
   smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
   smSkyboxVert_ = ctx_->createShaderModule({kSkyboxVS, lvk::Stage_Vert, "Shader Module: skybox (vert)"});
   smSkyboxFrag_ = ctx_->createShaderModule({kSkyboxFS, lvk::Stage_Frag, "Shader Module: skybox (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   {
     lvk::RenderPipelineDesc desc = {
@@ -1090,7 +1105,11 @@ void createPipelines() {
     renderPipelineState_Skybox_ = ctx_->createRenderPipeline(desc, nullptr);
   }
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  smGrayscaleComp_ = ctx_->createShaderModule({codeComputeTestSlang, lvk::Stage_Comp, "Shader Module: grayscale (comp)"});
+#else
   smGrayscaleComp_ = ctx_->createShaderModule({kCodeComputeTest, lvk::Stage_Comp, "Shader Module: grayscale (comp)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   computePipelineState_Grayscale_ = ctx_->createComputePipeline({.smComp = smGrayscaleComp_}, nullptr);
 }
