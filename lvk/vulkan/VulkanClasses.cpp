@@ -5853,7 +5853,9 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(0, 0)]] Texture2D    kTextures2D[];\n"
       "[[vk::binding(0, 1)]] Texture3D    kTextures3D[];\n"
       "[[vk::binding(0, 2)]] TextureCube  kTexturesCube[];\n"
+      "[[vk::binding(0, 3)]] Texture2D    kTextures2DShadow[];\n"
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
+      "[[vk::binding(1, 3)]] SamplerComparisonState kSamplersShadow[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
   // cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
   addCode("kTLAS[", "[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];\n");
@@ -5866,6 +5868,17 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
           "float4 textureBindlessCube(uint textureid, uint samplerid, float3 dir) {\n"
           "  return kTexturesCube[NonUniformResourceIndex(textureid)].Sample(\n"
           "    kSamplers[NonUniformResourceIndex(samplerid)], dir);\n"
+          "}\n");
+  addCode("textureBindlessSize2D(",
+          "int2 textureBindlessSize2D(uint textureid) {\n"
+          "  uint width, height;\n"
+          "  kTextures2D[NonUniformResourceIndex(textureid)].GetDimensions(width, height);\n"
+          "  return int2(width, height);\n"
+          "}\n");
+  addCode("textureBindless2DShadow(",
+          "float textureBindless2DShadow(uint textureid, uint samplerid, float3 uvw) {\n"
+          "  return kTextures2DShadow[NonUniformResourceIndex(textureid)].SampleCmpLevelZero(\n"
+          "    kSamplersShadow[NonUniformResourceIndex(samplerid)], uvw.xy, uvw.z);\n"
           "}\n");
 
   sourcePatched += source;
