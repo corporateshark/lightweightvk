@@ -622,9 +622,12 @@ struct ShaderModuleDesc {
   ShaderStage stage = Stage_Frag;
   const char* data = nullptr;
   size_t dataSize = 0; // if `dataSize` is non-zero, interpret `data` as binary SPIR-V shader data
+  const char* entryPointName = nullptr;
   const char* debugName = "";
 
   ShaderModuleDesc(const char* source, lvk::ShaderStage stage, const char* debugName) : stage(stage), data(source), debugName(debugName) {}
+  ShaderModuleDesc(const char* source, const char* entryPointName, lvk::ShaderStage stage, const char* debugName) :
+    stage(stage), data(source), entryPointName(entryPointName), debugName(debugName) {}
   ShaderModuleDesc(const void* data, size_t dataLength, lvk::ShaderStage stage, const char* debugName) :
     stage(stage), data(static_cast<const char*>(data)), dataSize(dataLength), debugName(debugName) {
     LVK_ASSERT(dataSize);
