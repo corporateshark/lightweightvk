@@ -22,6 +22,224 @@ vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 bool enableShadows_ = true;
 
+const char* codeSlang = R"(
+struct Material {
+  float4 ambient;
+  float4 diffuse;
+};
+
+struct Vertex {
+  float x, y, z;
+  uint uv;
+  uint16_t normal;  // Octahedral 16-bit encoding
+  uint16_t mtlIndex;
+};
+
+// Buffer reference types (Slang structured buffers)
+struct Materials {
+  Material mtl[];
+};
+
+struct Vertices {
+  Vertex vtx[];
+};
+
+struct Indices {
+  uint idx[];
+};
+
+struct PerFrame {
+  float4x4 viewInverse;
+  float4x4 projInverse;
+};
+
+struct PushConstants {
+  float4 lightDir;
+  PerFrame* perFrame;
+  Materials* materials;
+  Indices* indices;
+  Vertices* vertices;
+  uint outTexture;
+  uint tlas;
+  bool enableShadows;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+[[vk::binding(2, 0)]] RWTexture2D<float4> kTextures2DInOut[];
+
+struct RayPayload {
+  float4 color;
+};
+
+struct ShadowPayload {
+  bool isShadowed;
+};
+
+float2 unpackSnorm2x8(uint d) {
+  return float2(uint2(d, d >> 8) & 255u) / 127.5 - 1.0;
+}
+
+float3 unpackOctahedral16(uint data) {
+  float2 v = unpackSnorm2x8(data);
+  // Octahedral normal unpacking
+  float3 n = float3(v, 1.0 - abs(v.x) - abs(v.y));
+  float t = max(-n.z, 0.0);
+  n.x += (n.x > 0.0) ? -t : t;
+  n.y += (n.y > 0.0) ? -t : t;
+  return normalize(n);
+}
+
+[shader("raygeneration")]
+void rayGenMain() {
+  uint3 launchID = DispatchRaysIndex();
+  uint3 launchSize = DispatchRaysDimensions();
+
+  float2 pixelCenter = float2(launchID.xy) + float2(0.5, 0.5);
+  float2 d = 2.0 * (pixelCenter / float2(launchSize.xy)) - 1.0;
+
+  float4 origin    = pc.perFrame->viewInverse * float4(0, 0, 0, 1);
+  float4 target    = pc.perFrame->projInverse * float4(d, 1, 1);
+  float4 direction = pc.perFrame->viewInverse * float4(normalize(target.xyz), 0);
+
+  RayDesc ray;
+  ray.Origin = origin.xyz;
+  ray.Direction = direction.xyz;
+  ray.TMin = 0.01;
+  ray.TMax = 1000.0;
+
+  RayPayload payload;
+  payload.color = float4(0.0, 0.0, 0.0, 1.0);
+
+  TraceRay(
+    kTLAS[pc.tlas],
+    RAY_FLAG_FORCE_OPAQUE,
+    0xff,       // instance mask
+    0,          // ray contribution to hit group index
+    0,          // multiplier for geometry contribution
+    0,          // miss shader index
+    ray,
+    payload
+  );
+
+  kTextures2DInOut[pc.outTexture][launchID.xy] = payload.color;
+}
+
+// miss shader (primary ray)
+[shader("miss")]
+void missMain(inout RayPayload payload) {
+  payload.color = float4(0.1, 0.1, 1.0, 1.0);
+}
+
+// miss shader (shadow ray)
+[shader("miss")]
+void missMainShadow(inout ShadowPayload payload) {
+  payload.isShadowed = false;
+}
+
+[shader("closesthit")]
+void closestHitMain(
+  inout RayPayload payload,
+  in BuiltInTriangleIntersectionAttributes attribs
+) {
+  // Compute barycentric coordinates
+  float3 baryCoords = float3(
+    1.0 - attribs.barycentrics.x - attribs.barycentrics.y,
+    attribs.barycentrics.x,
+    attribs.barycentrics.y
+  );
+
+  // Get triangle indices
+  uint index = 3 * PrimitiveIndex();
+  int3 triangleIndex = int3(
+    pc.indices->idx[index + 0],
+    pc.indices->idx[index + 1],
+    pc.indices->idx[index + 2]
+  );
+
+  // Unpack and interpolate normals
+  float3 nrm0 = unpackOctahedral16(uint(pc.vertices->vtx[triangleIndex.x].normal));
+  float3 nrm1 = unpackOctahedral16(uint(pc.vertices->vtx[triangleIndex.y].normal));
+  float3 nrm2 = unpackOctahedral16(uint(pc.vertices->vtx[triangleIndex.z].normal));
+  float3 normal = normalize(
+    nrm0 * baryCoords.x +
+    nrm1 * baryCoords.y +
+    nrm2 * baryCoords.z);
+
+  // transform normal to world space
+  float3 worldNormal = normalize((float3x3)WorldToObject() * normal);
+
+  Material mat = pc.materials.mtl[uint(pc.vertices->vtx[triangleIndex.x].mtlIndex)];
+
+  bool isShadowed = pc.enableShadows;
+  if (pc.enableShadows) {
+    float3 hitPoint = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+
+    RayDesc shadowRay;
+    shadowRay.Origin = hitPoint;
+    shadowRay.Direction = pc.lightDir.xyz;
+    shadowRay.TMin = 0.01;
+    shadowRay.TMax = 1000.0;
+
+    ShadowPayload shadowPayload;
+    shadowPayload.isShadowed = true;
+
+    TraceRay(
+      kTLAS[pc.tlas],
+      RAY_FLAG_FORCE_OPAQUE |
+      RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH |
+      RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+      0xff,       // instance mask
+      0,          // ray contribution to hit group index
+      0,          // multiplier for geometry contribution
+      2,          // miss shader index (shadow miss)
+      shadowRay,
+      shadowPayload
+    );
+
+    isShadowed = shadowPayload.isShadowed;
+  }
+
+  float occlusion = isShadowed ? 0.5 : 1.0;
+  float NdotL1 = clamp(dot(worldNormal, normalize(float3(-1, 1, 1))), 0.0, 1.0);
+  float NdotL2 = clamp(dot(worldNormal, normalize(float3(-1, 1, -1))), 0.0, 1.0);
+  float NdotL = 0.5 * (NdotL1 + NdotL2);
+
+  payload.color = float4(
+    mat.diffuse.rgb * occlusion * max(NdotL, 0.0),
+    mat.diffuse.a
+  );
+})";
+
+const char* codeFullscreenSlang = R"(
+struct PushConstants {
+  uint tex;
+};
+
+struct VSOutput {
+  float4 sv_Position : SV_Position;
+  float2 uv          : TEXCOORD0;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+[shader("vertex")]
+VSOutput vertexMain(uint vertexID : SV_VertexID) {
+  VSOutput out;
+
+  // generate a triangle covering the entire screen
+  out.uv = float2((vertexID << 1) & 2, vertexID & 2);
+  out.sv_Position = float4(out.uv * float2(2, 2) + float2(-1, -1), 0.0, 1.0);
+
+  return out;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input) : SV_Target0 {
+  return textureBindless2D(pc.tex, 0, input.uv);
+}
+)";
+
 #define UBOS_AND_PUSH_CONSTANTS \
   R"(
 struct Material {
@@ -405,10 +623,21 @@ VULKAN_APP_MAIN {
       .debugName = "Ray-Tracing Output Image",
   });
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res.smRaygen_ = ctx_->createShaderModule({codeSlang, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
+  res.smMiss_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Miss, "Shader Module: main (miss)"});
+  res.smMissShadow_ = ctx_->createShaderModule({codeSlang, "missMainShadow", lvk::Stage_Miss, "Shader Module: main (miss shadow)"});
+  res.smHit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.smFullscreenVert_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
+  res.smFullscreenFrag_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
+#else
   res.smRaygen_ = ctx_->createShaderModule({codeRayGen, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
   res.smMiss_ = ctx_->createShaderModule({codeMiss, lvk::Stage_Miss, "Shader Module: main (miss)"});
   res.smMissShadow_ = ctx_->createShaderModule({codeMissShadow, lvk::Stage_Miss, "Shader Module: main (miss shadow)"});
   res.smHit_ = ctx_->createShaderModule({codeClosestHit, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.smFullscreenVert_ = ctx_->createShaderModule({kCodeFullscreenVS, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
+  res.smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   res.rayTracingPipeline_ = ctx_->createRayTracingPipeline(lvk::RayTracingPipelineDesc{
       .smRayGen = {lvk::ShaderModuleHandle(res.smRaygen_)},
@@ -420,8 +649,6 @@ VULKAN_APP_MAIN {
           },
   });
 
-  res.smFullscreenVert_ = ctx_->createShaderModule({kCodeFullscreenVS, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
-  res.smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
   res.renderPipelineState_Fullscreen_ = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
