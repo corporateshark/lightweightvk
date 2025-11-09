@@ -764,6 +764,7 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
 
 lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
                                     const char* code,
+                                    const char* entryPointName,
                                     std::vector<uint8_t>* outSPIRV) {
   LVK_PROFILER_FUNCTION();
 
@@ -828,7 +829,7 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
   }
 
   Slang::ComPtr<slang::IEntryPoint> entryPoint;
-  const char* entryPointName = [stage]() {
+  entryPointName = entryPointName ? entryPointName : [stage]() {
     switch (stage) {
     case lvk::Stage_Vert:
       return "vertexMain";

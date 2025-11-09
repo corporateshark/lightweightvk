@@ -636,7 +636,11 @@ class VulkanContext final : public IContext {
   lvk::Result growDescriptorPool(VulkanContext::DescriptorSet& dset, uint32_t maxTextures, uint32_t maxSamplers, uint32_t maxAccelStructs);
   ShaderModuleState createShaderModuleFromSPIRV(const void* spirv, size_t numBytes, const char* debugName, Result* outResult) const;
   ShaderModuleState createShaderModuleFromGLSL(ShaderStage stage, const char* source, const char* debugName, Result* outResult) const;
-  ShaderModuleState createShaderModuleFromSlang(ShaderStage stage, const char* source, const char* debugName, Result* outResult) const;
+  ShaderModuleState createShaderModuleFromSlang(ShaderStage stage,
+                                                const char* source,
+                                                const char* entryPointName,
+                                                const char* debugName,
+                                                Result* outResult) const;
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
   VkSampler getOrCreateYcbcrSampler(lvk::Format format);
   void addNextPhysicalDeviceProperties(void* properties);

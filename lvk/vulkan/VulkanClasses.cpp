@@ -5655,7 +5655,7 @@ lvk::Holder<lvk::ShaderModuleHandle> lvk::VulkanContext::createShaderModule(cons
   };
   ShaderModuleState sm = desc.dataSize ? createShaderModuleFromSPIRV(desc.data, desc.dataSize, desc.debugName, &result) // binary
                          : isSlang(desc.data) // text
-                             ? createShaderModuleFromSlang(desc.stage, desc.data, desc.debugName, &result)
+                             ? createShaderModuleFromSlang(desc.stage, desc.data, desc.entryPointName, desc.debugName, &result)
                              : createShaderModuleFromGLSL(desc.stage, desc.data, desc.debugName, &result);
 
   if (!result.isOk()) {
@@ -5825,6 +5825,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
 
 lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderStage stage,
                                                                        const char* source,
+   const char* entryPointName,
                                                                        const char* debugName,
                                                                        Result* outResult) const {
   std::string sourcePatched;
@@ -5885,7 +5886,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   source = sourcePatched.c_str();
 
   std::vector<uint8_t> spirv;
-  lvk::Result::setResult(outResult, lvk::compileShaderSlang(stage, source, &spirv));
+  lvk::Result::setResult(outResult, lvk::compileShaderSlang(stage, source, entryPointName, &spirv));
 
   return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
 }
