@@ -795,6 +795,8 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvFragmentFullyCoveredEXT"}},
       {.name = slang::CompilerOptionName::Capability,
        .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvRayTracingPositionFetchKHR"}},
+      {.name = slang::CompilerOptionName::Capability,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "spvRayQueryKHR"}},
   };
 
   const slang::TargetDesc targetDesc = {
