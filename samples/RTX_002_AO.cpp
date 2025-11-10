@@ -104,12 +104,6 @@ void main() {
 
 const char* kCodeZPrepassVS = R"(
 layout (location=0) in vec3 pos;
-layout (location=3) in uint mtlIndex;
-
-struct Material {
-   vec4 ambient;
-   vec4 diffuse;
-};
 
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 proj;
@@ -118,39 +112,28 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
 
 layout(std430, buffer_reference) readonly buffer PerObject {
   mat4 model;
-};
-
-layout(std430, buffer_reference) readonly buffer Materials {
-  Material mtl[];
+  mat4 normal;
 };
 
 layout(push_constant) uniform constants {
   PerFrame perFrame;
   PerObject perObject;
-  Materials materials;
+  vec2 padding; // materials
 } pc;
-
-// output
-layout (location=0) out vec4 Ka;
-layout (location=1) out vec4 Kd;
 
 void main() {
   mat4 proj = pc.perFrame.proj;
   mat4 view = pc.perFrame.view;
   mat4 model = pc.perObject.model;
   gl_Position = proj * view * model * vec4(pos, 1.0);
-  Ka = pc.materials.mtl[mtlIndex].ambient;
-  Kd = pc.materials.mtl[mtlIndex].diffuse;
 }
 )";
 
 const char* kCodeZPrepassFS = R"(
 #version 460
 
-layout (location=0) in vec4 Ka;
-layout (location=1) in vec4 Kd;
-
 void main() {
+  // empty fragment shader for Z-prepass
 };
 )";
 
@@ -172,6 +155,7 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
 
 layout(std430, buffer_reference) readonly buffer PerObject {
   mat4 model;
+  mat4 normal;
 };
 
 layout(std430, buffer_reference) readonly buffer Materials {
@@ -217,10 +201,9 @@ void main() {
   mat4 view = pc.perFrame.view;
   mat4 model = pc.perObject.model;
   gl_Position = proj * view * model * vec4(pos, 1.0);
-  // Compute the normal in world-space
-  mat3 norm_matrix = transpose(inverse(mat3(model)));
+  // compute the normal in world-space
   vtx.worldPos = (model * vec4(pos, 1.0)).xyz;
-  vtx.normal = normalize(norm_matrix * unpackOctahedral16(normal));
+  vtx.normal = normalize(mat3(pc.perObject.normal) * unpackOctahedral16(normal));
   vtx.uv = uv;
   vtx.Ka = pc.materials.mtl[mtlIndex].ambient;
   vtx.Kd = pc.materials.mtl[mtlIndex].diffuse;
@@ -360,7 +343,11 @@ void main() {
     if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) occlusion *= 0.5;
   }
 
-  out_FragColor = vtx.Ka + vtx.Kd * occlusion;
+  float NdotL1 = clamp(dot(n, normalize(vec3(-1, 1, 1))),  0.0, 1.0);
+  float NdotL2 = clamp(dot(n, normalize(vec3(-1, 1, -1))), 0.0, 1.0);
+  float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
+
+  out_FragColor = vtx.Ka + vtx.Kd * NdotL * occlusion;
 };
 )";
 
@@ -408,6 +395,11 @@ uint32_t frameId = 0;
 struct UniformsPerFrame {
   mat4 proj;
   mat4 view;
+};
+
+struct UniformsPerObject {
+  mat4 model;
+  mat4 normal;
 };
 
 // this goes into our GLSL shaders
@@ -615,7 +607,7 @@ VULKAN_APP_MAIN {
   res.ubPerObject_ = ctx_->createBuffer({
       .usage = lvk::BufferUsageBits_Storage,
       .storage = lvk::StorageType_HostVisible,
-      .size = sizeof(mat4),
+      .size = sizeof(UniformsPerObject),
       .debugName = "Buffer: uniforms (per object)",
   });
 
@@ -677,7 +669,6 @@ VULKAN_APP_MAIN {
               .attributes =
                   {
                       {.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(VertexData, position)},
-                      {.location = 3, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, mtlIndex)},
                   },
               .inputBindings = {{.stride = sizeof(VertexData)}},
           },
@@ -704,6 +695,13 @@ VULKAN_APP_MAIN {
     VULKAN_APP_EXIT();
   }
 
+  const mat4 modelMatrix = glm::scale(mat4(1.0f), vec3(0.05f));
+
+  const UniformsPerObject perObject = {
+      .model = modelMatrix,
+      .normal = glm::transpose(glm::inverse(modelMatrix)),
+  };
+
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
@@ -714,7 +712,7 @@ VULKAN_APP_MAIN {
                                .proj = glm::perspective(float(45.0f * (M_PI / 180.0f)), aspectRatio, 0.5f, 500.0f),
                                .view = app.camera_.getViewMatrix(),
                            });
-    buffer.cmdUpdateBuffer(res.ubPerObject_, glm::scale(mat4(1.0f), vec3(0.05f)));
+    buffer.cmdUpdateBuffer(res.ubPerObject_, 0, sizeof(perObject), &perObject);
     buffer.cmdBindVertexBuffer(0, res.vb0_, 0);
     buffer.cmdBindIndexBuffer(res.ib0_, lvk::IndexFormat_UI32);
 
