@@ -29,6 +29,309 @@ constexpr int kNumSamplesMSAA = 4;
 constexpr int kFramebufferScalar = 1;
 #endif // ANDROID
 
+const char* codeFullscreenSlang = R"(
+struct PushConstants {
+  uint tex;
+  uint denoise;
+  float sigma;
+  float ksigma;
+  float threshold;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct VSOutput {
+  float2 uv : TEXCOORD0;
+  float4 position : SV_Position;
+};
+
+#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
+#define INV_PI 0.31830988618379067153776752674503
+
+// https://github.com/BrutPitt/glslSmartDeNoise
+/*
+//  Copyright (c) 2018-2024 Michele Morrone
+//  All rights reserved.
+//  https://michelemorrone.eu - https://brutpitt.com
+//  X: https://x.com/BrutPitt - GitHub: https://github.com/BrutPitt
+//  direct mail: brutpitt(at)gmail.com - me(at)michelemorrone.eu
+//  This software is distributed under the terms of the BSD 2-Clause license
+*/
+float4 smartDeNoise(uint tex, float2 uv, float sigma, float kSigma, float threshold) {
+  float radius = round(kSigma * sigma);
+  float radQ = radius * radius;
+  float invSigmaQx2 = 0.5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
+  float invSigmaQx2PI = INV_PI * invSigmaQx2;     // 1/(2 * PI * sigma^2)
+  float invThresholdSqx2 = 0.5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
+  float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
+
+  float4 centrPx = textureBindless2D(tex, 0, uv);
+  float zBuff = 0.0;
+  float4 aBuff = float4(0.0, 0.0, 0.0, 0.0);
+  float2 size = float2(textureBindlessSize2D(tex));
+
+  float2 d;
+  for (d.x = -radius; d.x <= radius; d.x++) {
+    float pt = sqrt(radQ - d.x * d.x);       // pt = yRadius: have circular trend
+    for (d.y = -pt; d.y <= pt; d.y++) {
+      float blurFactor = exp(-dot(d, d) * invSigmaQx2) * invSigmaQx2PI;
+      float4 walkPx = textureBindless2D(tex, 0, uv + d / size);
+      float4 dC = walkPx - centrPx;
+      float deltaFactor = exp(-dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+      zBuff += deltaFactor;
+      aBuff += deltaFactor * walkPx;
+    }
+  }
+  return aBuff / zBuff;
+}
+
+[shader("vertex")]
+VSOutput vertexMain(uint vertexID : SV_VertexID) {
+  VSOutput out;
+  // generate a triangle covering the entire screen
+  out.uv = float2((vertexID << 1) & 2, vertexID & 2);
+  out.position = float4(out.uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+  return out;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input) : SV_Target {
+  return pc.denoise > 0 ?
+      smartDeNoise(pc.tex, input.uv, pc.sigma, pc.ksigma, pc.threshold) :
+      textureBindless2D(pc.tex, 0, input.uv);
+}
+)";
+
+const char* codeZPrepassSlang = R"(
+struct PerFrame {
+  float4x4 proj;
+  float4x4 view;
+};
+
+struct PerObject {
+  float4x4 model;
+  float4x4 normal;
+};
+
+struct PushConstants {
+  PerFrame* perFrame;
+  PerObject* perObject;
+  uint64_t padding; // materials
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+[shader("vertex")]
+float4 vertexMain(float3 pos : POSITION) : SV_Position {
+  float4x4 proj = pc.perFrame->proj;
+  float4x4 view = pc.perFrame->view;
+  float4x4 model = pc.perObject->model;
+
+  return proj * view * model * float4(pos, 1.0);
+}
+
+[shader("fragment")]
+void fragmentMain() {
+  // empty fragment shader for Z-prepass
+}
+)";
+
+const char* codeSlang = R"(
+struct Material {
+  float4 ambient;
+  float4 diffuse;
+};
+
+struct PerFrame {
+  float4x4 proj;
+  float4x4 view;
+  float4x4 light;
+};
+
+struct PerObject {
+  float4x4 model;
+  float4x4 normal;
+};
+
+struct Materials {
+  Material mtl[];
+};
+
+struct PushConstants {
+  float4 lightDir;
+  PerFrame* perFrame;
+  PerObject* perObject;
+  Materials* materials;
+  uint tlas;
+  bool enableShadows;
+  bool enableAO;
+  bool aoDistanceBased;
+  int aoSamples;
+  float aoRadius;
+  float aoPower;
+  uint frameId;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct PerVertex {
+  float3 worldPos;
+  float3 normal;
+  float2 uv;
+  float4 Ka;
+  float4 Kd;
+};
+
+struct VSOutput {
+  PerVertex vtx : TEXCOORD0;
+  float4 position : SV_Position;
+};
+
+//
+// https://www.shadertoy.com/view/llfcRl
+float2 unpackSnorm2x8(uint d) {
+  return float2(uint2(d, d >> 8) & 255u) / 127.5 - 1.0;
+}
+
+float3 unpackOctahedral16(uint data) {
+  float2 v = unpackSnorm2x8(data);
+  // https://x.com/Stubbesaurus/status/937994790553227264
+  float3 n = float3(v, 1.0 - abs(v.x) - abs(v.y));
+  float t = max(-n.z, 0.0);
+  n.x += (n.x > 0.0) ? -t : t;
+  n.y += (n.y > 0.0) ? -t : t;
+  return normalize(n);
+}
+
+[shader("vertex")]
+VSOutput vertexMain(
+  float3 pos : POSITION,
+  float2 uv : TEXCOORD0,
+  uint normal : TEXCOORD1,
+  uint mtlIndex : TEXCOORD2
+) {
+  VSOutput out;
+
+  float4x4 proj = pc.perFrame->proj;
+  float4x4 view = pc.perFrame->view;
+  float4x4 model = pc.perObject->model;
+
+  out.position = proj * view * model * float4(pos, 1.0);
+
+  // compute the normal in world-space
+  out.vtx.worldPos = (model * float4(pos, 1.0)).xyz;
+  out.vtx.normal = normalize((float3x3)pc.perObject->normal * unpackOctahedral16(normal));
+  out.vtx.uv = uv;
+  out.vtx.Ka = pc.materials->mtl[mtlIndex].ambient;
+  out.vtx.Kd = pc.materials->mtl[mtlIndex].diffuse;
+
+  return out;
+}
+
+void computeTBN(in float3 n, out float3 x, out float3 y) {
+  float yz = -n.y * n.z;
+  y = normalize(((abs(n.z) > 0.9999) ? float3(-n.x * n.y, 1.0 - n.y * n.y, yz) :
+                                       float3(-n.x * n.z, yz, 1.0 - n.z * n.z)));
+  x = cross(y, n);
+}
+
+float traceAO(inout RayQuery<RAY_FLAG_NONE> rq, float3 origin, float3 dir) {
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = dir;
+  ray.TMin = 0.0f;
+  ray.TMax = pc.aoRadius;
+
+  uint flags = pc.aoDistanceBased ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE;
+  rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], flags, 0xFF, ray);
+
+  while (rq.Proceed()) {}
+
+  if (rq.CommittedStatus() != COMMITTED_NOTHING) {
+    if (pc.aoDistanceBased) return 1;
+    float length = 1.0 - (rq.CommittedRayT() / pc.aoRadius);
+    return length;
+  }
+  return 0;
+}
+
+// generate a random unsigned int in [0, 2^24) given the previous RNG state using the Numerical Recipes LCG
+uint lcg(inout uint prev) {
+  uint LCG_A = 1664525u;
+  uint LCG_C = 1013904223u;
+  prev = (LCG_A * prev + LCG_C);
+  return prev & 0x00FFFFFF;
+}
+
+// Generate a random float in [0, 1) given the previous RNG state
+float rnd(inout uint seed) {
+  return (float(lcg(seed)) / float(0x01000000));
+}
+
+// Generate a random unsigned int from two unsigned int values, using 16 pairs of rounds of the Tiny Encryption Algorithm
+uint tea(uint val0, uint val1) {
+  uint v0 = val0;
+  uint v1 = val1;
+  uint s0 = 0;
+  for(uint n = 0; n < 16; n++) {
+    s0 += 0x9e3779b9;
+    v0 += ((v1 << 4) + 0xa341316c) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4);
+    v1 += ((v0 << 4) + 0xad90777d) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761e);
+  }
+  return v0;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
+  PerVertex vtx = input.vtx;
+  float3 n = normalize(vtx.normal);
+  float occlusion = 1.0;
+
+  // ambient occlusion
+  if (pc.enableAO) {
+    float3 origin = vtx.worldPos + n * 0.001; // avoid self-occlusion
+    float3 tangent, bitangent;
+    computeTBN(n, tangent, bitangent);
+    uint seed = tea(uint(fragCoord.y * 4003.0 + fragCoord.x), pc.frameId); // prime
+    float occl = 0.0;
+    for(int i = 0; i < pc.aoSamples; i++) {
+      float r1 = rnd(seed);
+      float r2 = rnd(seed);
+      float sq = sqrt(1.0 - r2);
+      float phi = 2 * 3.141592653589 * r1;
+      float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+      direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+      RayQuery<RAY_FLAG_NONE> rayQuery;
+      occl += traceAO(rayQuery, origin, direction);
+    }
+    occlusion = 1 - (occl / pc.aoSamples);
+    occlusion = pow(clamp(occlusion, 0, 1), pc.aoPower);
+  }
+
+  // directional shadow
+  if (pc.enableShadows) {
+    RayDesc ray;
+    ray.Origin = vtx.worldPos;
+    ray.Direction = pc.lightDir.xyz;
+    ray.TMin = 0.01;
+    ray.TMax = 1000.0;
+
+    RayQuery<RAY_FLAG_NONE> rq;
+    rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xff, ray);
+
+    while (rq.Proceed()) {}
+
+    if (rq.CommittedStatus() != COMMITTED_NOTHING) occlusion *= 0.5;
+  }
+
+  float NdotL1 = clamp(dot(n, normalize(float3(-1, 1, 1))), 0.0, 1.0);
+  float NdotL2 = clamp(dot(n, normalize(float3(-1, 1, -1))), 0.0, 1.0);
+  float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
+
+  return vtx.Ka + vtx.Kd * NdotL * occlusion;
+}
+)";
+
 const char* kCodeFullscreenVS = R"(
 layout (location=0) out vec2 uv;
 void main() {
@@ -632,12 +935,21 @@ VULKAN_APP_MAIN {
                                               .storeOp = lvk::StoreOp_DontCare,
                                           }};
 
+#if defined(LVK_DEMO_WITH_SLANG)
+  res.smMeshVert_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
+  res.smMeshFrag_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
+  res.smMeshVertZPrepass_ = ctx_->createShaderModule({codeZPrepassSlang, lvk::Stage_Vert, "Shader Module: main zprepass (vert)"});
+  res.smMeshFragZPrepass_ = ctx_->createShaderModule({codeZPrepassSlang, lvk::Stage_Frag, "Shader Module: main zprepass (frag)"});
+  res.smFullscreenVert_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
+  res.smFullscreenFrag_ = ctx_->createShaderModule({codeFullscreenSlang, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
+#else
   res.smMeshVert_ = ctx_->createShaderModule({kCodeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
   res.smMeshFrag_ = ctx_->createShaderModule({kCodeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
   res.smMeshVertZPrepass_ = ctx_->createShaderModule({kCodeZPrepassVS, lvk::Stage_Vert, "Shader Module: main zprepass (vert)"});
   res.smMeshFragZPrepass_ = ctx_->createShaderModule({kCodeZPrepassFS, lvk::Stage_Frag, "Shader Module: main zprepass (frag)"});
   res.smFullscreenVert_ = ctx_->createShaderModule({kCodeFullscreenVS, lvk::Stage_Vert, "Shader Module: fullscreen (vert)"});
   res.smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
 
   lvk::Framebuffer fbOffscreen = createOffscreenFramebuffer(app.width_, app.height_);
 
