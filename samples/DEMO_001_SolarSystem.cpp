@@ -76,12 +76,12 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 view[2];
 };
 
-layout(std430, buffer_reference) readonly buffer ModelMatrices {
+layout(std430, buffer_reference) readonly buffer Matrices {
   mat4 m[];
 };
 
 struct DrawData {
-  uint idModelMatrix;
+  uint idMatrix;
   uint idMaterial;
 };
 
@@ -90,7 +90,8 @@ layout(std430, buffer_reference) readonly buffer BufDrawData {
 };
 
 layout(push_constant) uniform constants {
-  ModelMatrices bufModelMatrices;
+  Matrices      bufModelMatrices;
+  Matrices      bufNormalMatrices;
   PerFrame      bufPerFrame;
   BufDrawData   bufDrawData;
 };
@@ -98,22 +99,20 @@ layout(push_constant) uniform constants {
 layout (location=0) out vec2 v_TexCoord;
 layout (location=1) out vec3 v_WorldPos;
 layout (location=2) out vec3 v_WorldNormal;
-layout (location=3) out vec3 v_CameraPos;
-layout (location=4) flat out uint v_MaterialIndex;
+layout (location=3) flat out uint v_MaterialIndex;
 
 void main() {
-  mat4 model = bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix];
+  mat4 model  = bufModelMatrices .m[bufDrawData.dd[gl_InstanceIndex].idMatrix];
+  mat4 normal = bufNormalMatrices.m[bufDrawData.dd[gl_InstanceIndex].idMatrix];
 
   v_WorldPos = (model * in_Vertex).xyz;
-  v_WorldNormal = transpose(inverse(mat3(model))) * in_Normal;
+  v_WorldNormal = mat3(normal) * in_Normal;
 
   gl_Position = bufPerFrame.proj[gl_ViewIndex] *
                 bufPerFrame.view[gl_ViewIndex] *
                 model * in_Vertex;
 
   v_TexCoord  = in_TexCoord;
-  v_CameraPos = (inverse(bufPerFrame.view[gl_ViewIndex]) * vec4( 0.0, 0.0, 0.0, 1.0 )).xyz;
-
   v_MaterialIndex = bufDrawData.dd[gl_InstanceIndex].idMaterial;
 }
 )";
@@ -122,8 +121,7 @@ const char* codeDefaultFS = R"(
 layout (location=0) in vec2 v_TexCoord;
 layout (location=1) in vec3 v_WorldPos;
 layout (location=2) in vec3 v_WorldNormal;
-layout (location=3) in vec3 v_CameraPos;
-layout (location=4) flat in uint v_MaterialIndex;
+layout (location=3) flat in uint v_MaterialIndex;
 
 struct Material {
   vec4 emissive;
@@ -139,6 +137,7 @@ layout(std430, buffer_reference) readonly buffer Materials {
 
 layout(push_constant) uniform constants {
   vec2      bufModelMatrices;
+  vec2      bufNormalMatrices;
   vec2      bufPerFrame;
   vec2      bufDrawData;
   Materials bufMaterials;
@@ -190,12 +189,12 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 view[2];
 };
 
-layout(std430, buffer_reference) readonly buffer ModelMatrices {
+layout(std430, buffer_reference) readonly buffer Matrices {
   mat4 m[];
 };
 
 struct DrawData {
-  uint idModelMatrix;
+  uint idMatrix;
   uint idMaterial;
 };
 
@@ -204,7 +203,8 @@ layout(std430, buffer_reference) readonly buffer BufDrawData {
 };
 
 layout(push_constant) uniform constants {
-  ModelMatrices bufModelMatrices;
+  Matrices      bufModelMatrices;
+  Matrices      bufNormalMatrices;
   PerFrame      bufPerFrame;
   BufDrawData   bufDrawData;
 };
@@ -212,7 +212,7 @@ layout(push_constant) uniform constants {
 void main() {
   gl_Position = bufPerFrame.proj[gl_ViewIndex] *
                 bufPerFrame.view[gl_ViewIndex] *
-                bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix] * in_Vertex;
+                bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idMatrix] * in_Vertex;
 }
 )";
 
@@ -249,12 +249,12 @@ layout(std430, buffer_reference) readonly buffer Materials {
   Material m[];
 };
 
-layout(std430, buffer_reference) readonly buffer ModelMatrices {
+layout(std430, buffer_reference) readonly buffer Matrices {
   mat4 m[];
 };
 
 struct DrawData {
-  uint idModelMatrix;
+  uint idMatrix;
   uint idMaterial;
 };
 
@@ -263,7 +263,8 @@ layout(std430, buffer_reference) readonly buffer BufDrawData {
 };
 
 layout(push_constant) uniform constants {
-  ModelMatrices bufModelMatrices;
+  Matrices      bufModelMatrices;
+  Matrices      bufNormalMatrices;
   PerFrame      bufPerFrame;
   BufDrawData   bufDrawData;
   Materials     bufMaterials;
@@ -277,12 +278,12 @@ layout (location=3) flat out uint v_Texture1;
 void main() {
   gl_Position = bufPerFrame.proj[gl_ViewIndex] *
                 bufPerFrame.view[gl_ViewIndex] *
-                bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix] * in_Vertex;
+                bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idMatrix] * in_Vertex;
 
   v_TexCoord = in_TexCoord;
   v_Time     = bufPerFrame.u_Time;
-  v_Texture0 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix].texEmissive;
-  v_Texture1 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix].texDiffuse;
+  v_Texture0 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idMatrix].texEmissive;
+  v_Texture1 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idMatrix].texDiffuse;
 }
 )";
 
@@ -328,12 +329,12 @@ layout(std430, buffer_reference) readonly buffer Materials {
   Material m[];
 };
 
-layout(std430, buffer_reference) readonly buffer ModelMatrices {
+layout(std430, buffer_reference) readonly buffer Matrices {
   mat4 m[];
 };
 
 struct DrawData {
-  uint idModelMatrix;
+  uint idMatrix;
   uint idMaterial;
 };
 
@@ -342,7 +343,8 @@ layout(std430, buffer_reference) readonly buffer BufDrawData {
 };
 
 layout(push_constant) uniform constants {
-  ModelMatrices bufModelMatrices;
+  Matrices      bufModelMatrices;
+  Matrices      bufNormalMatrices;
   PerFrame      bufPerFrame;
   BufDrawData   bufDrawData;
   Materials     bufMaterials;
@@ -363,13 +365,13 @@ vec3 getBillboardOffset(mat4 mv, vec2 uv, vec2 sizeXY) {
 
 void main() {
   mat4 mv = bufPerFrame.view[gl_ViewIndex] *
-            bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix];
+            bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idMatrix];
   vec3 v  = getBillboardOffset(mv, in_TexCoord, vec2(0.28, 0.28));
 
   gl_Position = bufPerFrame.proj[gl_ViewIndex] * mv * vec4(v, 1.0);
 
   v_TexCoord = in_TexCoord;
-  v_Texture0 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idModelMatrix].texEmissive;
+  v_Texture0 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idMatrix].texEmissive;
 }
 )";
 
@@ -574,7 +576,7 @@ struct ShaderModules final {
 };
 
 struct DrawData final {
-  uint32_t idModelMatrix = 0;
+  uint32_t idMatrix = 0;
   uint32_t idMaterial = 0;
 };
 
@@ -583,6 +585,7 @@ struct VulkanState final {
   std::vector<lvk::Holder<lvk::ShaderModuleHandle>> shaderModules;
   lvk::Holder<lvk::BufferHandle> bufPerFrame;
   std::vector<lvk::Holder<lvk::BufferHandle>> bufModelMatrices;
+  std::vector<lvk::Holder<lvk::BufferHandle>> bufNormalMatrices;
   lvk::Holder<lvk::BufferHandle> bufMaterials;
   lvk::Holder<lvk::BufferHandle> bufVertices; // one large vertex buffer for everything
   lvk::Holder<lvk::BufferHandle> bufDrawData;
@@ -1103,6 +1106,13 @@ VULKAN_APP_MAIN {
         .size = sizeof(mat4) * scene.meshes.size(),
         .debugName = debugName,
     }));
+    snprintf(debugName, sizeof(debugName) - 1, "Buffer: bufNormalMatrices #%u", i);
+    vulkanState.bufNormalMatrices.emplace_back(ctx->createBuffer({
+        .usage = lvk::BufferUsageBits_Storage,
+        .storage = lvk::StorageType_HostVisible,
+        .size = sizeof(mat4) * scene.meshes.size(),
+        .debugName = debugName,
+    }));
   }
   // all materials are static - upload them once
   {
@@ -1132,15 +1142,13 @@ VULKAN_APP_MAIN {
   }
 
   std::vector<RenderOp> flatRenderQueue;
-  std::vector<mat4> modelMatrices;
-
   flatRenderQueue.reserve(scene.meshes.size());
-  modelMatrices.reserve(scene.meshes.size());
 
   std::vector<GeometryShapes::Vertex> allVertices;
 
   // collect all render ops - the structure of our scene is immutable
-  for (MeshComponent& mesh : scene.meshes) {
+  for (size_t i = 0; i != scene.meshes.size(); i++) {
+    MeshComponent& mesh = scene.meshes[i];
     assert(mesh.mesh);
     const int materialIdx = mesh.sceneNode->getMaterialIndexOrParent();
     assert(materialIdx >= 0);
@@ -1161,11 +1169,10 @@ VULKAN_APP_MAIN {
         .numVertices = (uint32_t)mesh.mesh->vertices.size(),
         .drawData =
             {
-                .idModelMatrix = (uint32_t)modelMatrices.size(),
+                .idMatrix = (uint32_t)i,
                 .idMaterial = (uint32_t)materialIdx,
             },
     });
-    modelMatrices.push_back(mesh.sceneNode->global);
   }
 
   vulkanState.bufVertices = ctx->createBuffer({
@@ -1288,6 +1295,11 @@ VULKAN_APP_MAIN {
     return {};
   };
 
+  std::vector<mat4> modelMatrices;
+  std::vector<mat4> normalMatrices;
+  modelMatrices.resize(scene.meshes.size());
+  normalMatrices.resize(scene.meshes.size());
+
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
@@ -1297,9 +1309,12 @@ VULKAN_APP_MAIN {
     // update model matrices
     for (size_t i = 0; i != scene.meshes.size(); i++) {
       modelMatrices[i] = scene.meshes[i].sceneNode->global;
+      normalMatrices[i] = glm::transpose(glm::inverse(modelMatrices[i]));
     }
     ctx->upload(
         vulkanState.bufModelMatrices[ctx->getSwapchainCurrentImageIndex()], modelMatrices.data(), sizeof(mat4) * modelMatrices.size());
+    ctx->upload(
+        vulkanState.bufNormalMatrices[ctx->getSwapchainCurrentImageIndex()], normalMatrices.data(), sizeof(mat4) * normalMatrices.size());
 
     const mat4 view = [&app, mouse = app.mouseState_]() -> mat4 {
       if (g_UseTrackball) {
@@ -1347,11 +1362,13 @@ VULKAN_APP_MAIN {
     {
       const struct {
         uint64_t bufModelMatrices;
+        uint64_t bufNormalMatrices;
         uint64_t bufPerFrame;
         uint64_t bufDrawData;
         uint64_t bufMaterials;
       } pc = {
           .bufModelMatrices = ctx->gpuAddress(vulkanState.bufModelMatrices[ctx->getSwapchainCurrentImageIndex()]),
+          .bufNormalMatrices = ctx->gpuAddress(vulkanState.bufNormalMatrices[ctx->getSwapchainCurrentImageIndex()]),
           .bufPerFrame = ctx->gpuAddress(vulkanState.bufPerFrame),
           .bufDrawData = ctx->gpuAddress(vulkanState.bufDrawData),
           .bufMaterials = ctx->gpuAddress(vulkanState.bufMaterials),
