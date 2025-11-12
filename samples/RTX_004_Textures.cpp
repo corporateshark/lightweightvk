@@ -75,7 +75,7 @@ void rayGenMain() {
 [shader("miss")]
 void missMain(inout RayPayload payload) {
   float2 uv = float2(DispatchRaysIndex().xy) / pc.dim;
-  payload.color = textureBindless2D(pc.texBackground, 0, uv).rgb;
+  payload.color = textureBindless2DLod(pc.texBackground, 0, uv, 0).rgb;
 }
 
 float4 triplanar(uint tex, float3 worldPos, float3 normal) {
@@ -87,9 +87,9 @@ float4 triplanar(uint tex, float3 worldPos, float3 normal) {
   weights = weights / (weights.x + weights.y + weights.z);
 
   // sample the texture for 3 different projections
-  float4 cXY = textureBindless2D(tex, 0, worldPos.xy);
-  float4 cZY = textureBindless2D(tex, 0, worldPos.zy);
-  float4 cXZ = textureBindless2D(tex, 0, worldPos.xz);
+  float4 cXY = textureBindless2DLod(tex, 0, worldPos.xy, 0);
+  float4 cZY = textureBindless2DLod(tex, 0, worldPos.zy, 0);
+  float4 cXZ = textureBindless2DLod(tex, 0, worldPos.xz, 0);
 
   // combine the projected colors
   return cXY * weights.z + cZY * weights.x + cXZ * weights.y;
