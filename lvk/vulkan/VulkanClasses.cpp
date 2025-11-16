@@ -3660,8 +3660,10 @@ lvk::VulkanContext::~VulkanContext() {
 
   immediate_.reset(nullptr);
 
-  vkDestroyDescriptorPool(vkDevice_, DSets_.vkDPool, nullptr);
-  vkDestroyDescriptorSetLayout(vkDevice_, DSets_.vkDSL, nullptr);
+  for (const DescriptorSet& dset : DSets_) {
+    vkDestroyDescriptorPool(vkDevice_, dset.vkDPool, nullptr);
+    vkDestroyDescriptorSetLayout(vkDevice_, dset.vkDSL, nullptr);
+  }
   vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
   vkDestroyPipelineCache(vkDevice_, pipelineCache_, nullptr);
 
@@ -4580,7 +4582,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     return VK_NULL_HANDLE;
   }
 
-  const DescriptorSet& dset = DSets_;
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->viewMask_ != viewMask) {
     deferredTask(std::packaged_task<void()>(
@@ -4781,7 +4783,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     return VK_NULL_HANDLE;
   }
 
-  const DescriptorSet& dset = DSets_;
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (rtps->lastVkDescriptorSetLayout_ != dset.vkDSL) {
     deferredTask(
@@ -5042,7 +5044,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
 
   checkAndUpdateDescriptorSets();
 
-  const DescriptorSet& dset = DSets_;
+  const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   if (cps->lastVkDescriptorSetLayout_ != dset.vkDSL) {
     deferredTask(
@@ -7013,6 +7015,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   LVK_ASSERT(pimpl_->tracyVkCtx_);
 #endif // LVK_WITH_TRACY_GPU
 
+  // add one empty dset
+  DSets_.push_back({});
+
   return Result();
 }
 
@@ -7301,7 +7306,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
 void lvk::VulkanContext::bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const {
   LVK_PROFILER_FUNCTION();
-  VkDescriptorSet dset = DSets_.vkDSet;
+  const VkDescriptorSet dset = DSets_[lastUpdatedDSet_].vkDSet;
   const VkDescriptorSet dsets[4] = {dset, dset, dset, dset};
   vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, (uint32_t)LVK_ARRAY_NUM_ELEMENTS(dsets), dsets, 0, nullptr);
 }
@@ -7317,7 +7322,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   // update Vulkan descriptor set here
 
-  DescriptorSet& dset = DSets_;
+  DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
   // make sure the guard values are always there
   LVK_ASSERT(texturesPool_.numObjects() >= 1);

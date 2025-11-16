@@ -723,7 +723,8 @@ class VulkanContext final : public IContext {
   VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
   std::unique_ptr<lvk::VulkanImmediateCommands> immediate_;
   std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
-  DescriptorSet DSets_ = {};
+  std::vector<DescriptorSet> DSets_ = {};
+  size_t lastUpdatedDSet_ = 0;
   // don't use staging on devices with shared host-visible memory
   bool useStaging_ = true;
 
