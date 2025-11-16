@@ -64,6 +64,196 @@ const std::vector<Planet> planets = {
 
 enum { Sun, Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune, Moon, TotalPlanets };
 
+const char* codeOrbitSlang = R"(
+struct DrawData {
+  uint idMatrix;
+  uint idMaterial;
+};
+
+struct PerFrame {
+  float4x4 proj[2];
+  float4x4 view[2];
+};
+
+struct PushConstants {
+  float4x4* modelMatrices;
+  float4x4* normalMatrices;
+  PerFrame* perFrame;
+  DrawData* drawData;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+[shader("vertex")]
+float4 vertexMain(float4 position : POSITION,
+                  uint instanceIndex : SV_InstanceID,
+                  uint viewIndex : SV_ViewID) : SV_Position
+{
+  return pc.perFrame->proj[viewIndex] *
+         pc.perFrame->view[viewIndex] *
+         pc.modelMatrices[pc.drawData[instanceIndex].idMatrix] * position;
+}
+
+[shader("fragment")]
+float4 fragmentMain() : SV_Target {
+  return float4(1.0, 1.0, 1.0, 0.2);
+}
+)";
+
+const char* codeSunCoronaSlang = R"(
+struct PerFrame {
+  float4x4 proj[2];
+  float4x4 view[2];
+};
+
+struct Material {
+  float4 emissive;
+  float4 diffuse; // w - two-sided
+  uint texEmissive;
+  uint texDiffuse;
+  uint padding[2];
+};
+
+struct Materials {
+  Material m[];
+};
+
+struct Matrices {
+  float4x4 m[];
+};
+
+struct DrawData {
+  uint idMatrix;
+  uint idMaterial;
+};
+
+struct BufDrawData {
+  DrawData dd[];
+};
+
+struct PushConstants {
+  Matrices*     bufModelMatrices;
+  Matrices*     bufNormalMatrices;
+  PerFrame*     bufPerFrame;
+  BufDrawData*  bufDrawData;
+  Materials*    bufMaterials;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct VertexInput {
+  [[vk::location(0)]] float4 in_Vertex : POSITION;
+  [[vk::location(1)]] float2 in_TexCoord : TEXCOORD0;
+  [[vk::location(2)]] float3 in_Normal : NORMAL;
+};
+
+struct V2F {
+  float4 position : SV_Position;
+  [[vk::location(0)]] float2 v_TexCoord : TEXCOORD0;
+  [[vk::location(1)]] nointerpolation uint v_Texture0 : TEXCOORD1;
+};
+
+float3 getBillboardOffset(float4x4 mv, float2 uv, float2 sizeXY) {
+  // check out http://www.geeks3d.com/20140807/billboarding-vertex-shader-glsl/
+  float3 x = float3(mv[0][0], mv[1][0], mv[2][0]);
+  float3 y = float3(mv[0][1], mv[1][1], mv[2][1]);
+  float2 coef = float2(2.0, 2.0) * (uv - float2(0.5, 0.5)) * sizeXY;
+  return coef.x * x + coef.y * y;
+}
+
+[shader("vertex")]
+V2F vertexMain(
+  VertexInput input,
+  uint gl_InstanceIndex : SV_InstanceID,
+  uint gl_ViewIndex : SV_ViewID)
+{
+  V2F output;
+
+  float4x4 mv = pc.bufPerFrame.view[gl_ViewIndex] *
+                pc.bufModelMatrices.m[pc.bufDrawData.dd[gl_InstanceIndex].idMatrix];
+  float3 v = getBillboardOffset(mv, input.in_TexCoord, float2(0.28, 0.28));
+  output.position = pc.bufPerFrame.proj[gl_ViewIndex] * mv * float4(v, 1.0);
+  output.v_TexCoord = input.in_TexCoord;
+  output.v_Texture0 = pc.bufMaterials.m[pc.bufDrawData.dd[gl_InstanceIndex].idMaterial].texEmissive;
+
+  return output;
+}
+
+[shader("fragment")]
+float4 fragmentMain(V2F input) : SV_Target0 {
+  float4 K1 = textureBindless2D(input.v_Texture0, 0, input.v_TexCoord);
+  K1.a = dot(K1.xyz, float3(0.333, 0.333, 0.333));
+
+  return K1;
+}
+)";
+
+const char* codeSkyBoxSlang = R"(
+struct PerFrame {
+  float4x4 proj[2];
+  float4x4 view[2];
+};
+
+struct PushConstants {
+  PerFrame* bufPerFrame;
+  uint texSkyBox;
+};
+
+[[vk::push_constant]] PushConstants pc;
+
+struct VSOutput {
+  float4 position : SV_Position;
+  float3 dir : TEXCOORD0;
+};
+
+static const float3 pos[8] = {
+  float3(-1.0,-1.0, 1.0),
+  float3( 1.0,-1.0, 1.0),
+  float3( 1.0, 1.0, 1.0),
+  float3(-1.0, 1.0, 1.0),
+  float3(-1.0,-1.0,-1.0),
+  float3( 1.0,-1.0,-1.0),
+  float3( 1.0, 1.0,-1.0),
+  float3(-1.0, 1.0,-1.0)
+};
+
+static const int indices[36] = {
+  0, 1, 2, 2, 3, 0,
+  1, 5, 6, 6, 2, 1,
+  7, 6, 5, 5, 4, 7,
+  4, 0, 3, 3, 7, 4,
+  4, 5, 1, 1, 0, 4,
+  3, 2, 6, 6, 7, 3
+};
+
+float4x4 fromMat3(float3x3 m) {
+  return float4x4(float4(m[0], 0.0),
+                  float4(m[1], 0.0),
+                  float4(m[2], 0.0),
+                  float4(0.0, 0.0, 0.0, 1.0));
+}
+
+[shader("vertex")]
+VSOutput vertexMain(uint vertexIndex : SV_VertexID, uint viewIndex : SV_ViewID) {
+  PerFrame* perFrame = pc.bufPerFrame;
+
+  int idx = indices[vertexIndex];
+
+  VSOutput out;
+  out.position = perFrame[0].proj[viewIndex] *
+                 fromMat3((float3x3)perFrame[0].view[viewIndex]) * float4(50.0 * pos[idx], 1.0);
+
+  out.dir = pos[idx].zxy;
+
+  return out;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input) : SV_Target {
+  return pow(textureBindlessCube(pc.texSkyBox, 0, input.dir), float4(1.5, 1.5, 1.5, 1.5));
+}
+)";
+
 const char* codeDefaultVS = R"(
 #extension GL_EXT_multiview : enable
 
@@ -729,6 +919,27 @@ lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileNa
   return handle;
 }
 
+ShaderModules loadShaderProgram(lvk::IContext* ctx,
+                                [[maybe_unused]] const char* codeVS,
+                                [[maybe_unused]] const char* codeFS,
+                                [[maybe_unused]] const char* codeSlang) {
+#if defined(LVK_DEMO_WITH_SLANG)
+  lvk::Holder<lvk::ShaderModuleHandle> vert = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: vert"});
+  lvk::Holder<lvk::ShaderModuleHandle> frag = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: frag"});
+#else
+  lvk::Holder<lvk::ShaderModuleHandle> vert = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: vert"});
+  lvk::Holder<lvk::ShaderModuleHandle> frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: frag"});
+#endif // defined(LVK_DEMO_WITH_SLANG)
+
+  const ShaderModules sm = {vert, frag};
+
+  // ownership
+  vulkanState.shaderModules.emplace_back(std::move(vert));
+  vulkanState.shaderModules.emplace_back(std::move(frag));
+
+  return sm;
+}
+
 ShaderModules loadShaderProgram(lvk::IContext* ctx, const char* codeVS, const char* codeFS) {
   lvk::Holder<lvk::ShaderModuleHandle> vert = ctx->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: vert"});
   lvk::Holder<lvk::ShaderModuleHandle> frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: frag"});
@@ -994,10 +1205,10 @@ VULKAN_APP_MAIN {
   lvk::IContext* ctx = app.ctx_.get();
 
   ShaderModules smDefault = loadShaderProgram(ctx, codeDefaultVS, codeDefaultFS);
-  ShaderModules smOrbit = loadShaderProgram(ctx, codeOrbitVS, codeOrbitFS);
+  ShaderModules smOrbit = loadShaderProgram(ctx, codeOrbitVS, codeOrbitFS, codeOrbitSlang);
   ShaderModules smSun = loadShaderProgram(ctx, codeSunVS, codeSunFS);
-  ShaderModules smSunCorona = loadShaderProgram(ctx, codeSunCoronaVS, codeSunCoronaFS);
-  ShaderModules smSkyBox = loadShaderProgram(ctx, codeSkyBoxVS, codeSkyBoxFS);
+  ShaderModules smSunCorona = loadShaderProgram(ctx, codeSunCoronaVS, codeSunCoronaFS, codeSunCoronaSlang);
+  ShaderModules smSkyBox = loadShaderProgram(ctx, codeSkyBoxVS, codeSkyBoxFS, codeSkyBoxSlang);
 
   const lvk::VertexInput vinput = {
       .attributes = {{.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(GeometryShapes::Vertex, pos)},
