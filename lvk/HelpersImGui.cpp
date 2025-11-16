@@ -246,7 +246,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
       case ImTextureStatus_WantDestroy:
         for (lvk::Holder<TextureHandle>& holder : pimpl_->textures_) {
           if (holder.handleAsVoid() == tex->BackendUserData) {
-            std::swap(holder, pimpl_->textures_.back());
+            holder = std::move(pimpl_->textures_.back());
             pimpl_->textures_.pop_back();
             break;
           }
