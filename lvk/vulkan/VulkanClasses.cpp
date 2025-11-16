@@ -6671,13 +6671,14 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
 
   if (hasYUVImages) {
     VkSampler dummySampler = samplersPool_.objects_[0].obj_;
-    immutableSamplers.reserve(texturesPool_.objects_.size());
-    for (const auto& obj : texturesPool_.objects_) {
+    immutableSamplers.resize(maxTextures, dummySampler);
+    for (size_t i = 0; i != texturesPool_.objects_.size(); i++) {
+      const auto& obj = texturesPool_.objects_[i];
       const VulkanImage* img = &obj.obj_;
       // multisampled images cannot be directly accessed from shaders
       const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
       const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
-      immutableSamplers.push_back(isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : dummySampler);
+      immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : dummySampler;
     }
     immutableSamplersData = immutableSamplers.data();
   }
@@ -6692,8 +6693,11 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
       lvk::getDSLBinding(kBinding_Textures, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxTextures, stageFlags),
       lvk::getDSLBinding(kBinding_Samplers, VK_DESCRIPTOR_TYPE_SAMPLER, maxSamplers, stageFlags),
       lvk::getDSLBinding(kBinding_StorageImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures, stageFlags),
-      lvk::getDSLBinding(
-          kBinding_YUVImages, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)immutableSamplers.size(), stageFlags, immutableSamplersData),
+      lvk::getDSLBinding(kBinding_YUVImages,
+                         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                         (uint32_t)immutableSamplers.size() ? maxTextures : 0,
+                         stageFlags,
+                         immutableSamplersData),
       lvk::getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
   };
   const uint32_t flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
@@ -6917,8 +6921,9 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
     infoYUVImages.reserve(texturesPool_.numObjects());
   }
 
-  // use the dummy texture to avoid sparse array
+  // use dummies to avoid sparse arrays
   VkImageView dummyImageView = texturesPool_.objects_[0].obj_.imageView_;
+  VkSampler dummySampler = samplersPool_.objects_[0].obj_;
 
   for (const auto& obj : texturesPool_.objects_) {
     const VulkanImage& img = obj.obj_;
@@ -6943,6 +6948,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
     if (hasYcbcrSamplers) {
       // we don't need to update this if there're no YUV samplers
       infoYUVImages.push_back(VkDescriptorImageInfo{
+          .sampler = dummySampler, // this will be replaced by immutable samplers from VkPipeline
           .imageView = isYUVImage ? view : dummyImageView,
           .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       });
