@@ -1131,14 +1131,18 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return VK_PRESENT_MODE_FIFO_KHR;
   };
 
-  auto chooseUsageFlags = [](VkPhysicalDevice pd, VkSurfaceKHR surface, VkFormat format) -> VkImageUsageFlags {
+  VkSurfaceCapabilitiesKHR caps = {};
+  VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps));
+
+  VkFormatProperties props = {};
+  vkGetPhysicalDeviceFormatProperties(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
+
+  // trim the image extent
+  width_ = width = std::min(width, caps.maxImageExtent.width);
+  height_ = height = std::min(height, caps.maxImageExtent.width);
+
+  auto chooseUsageFlags = [](const VkSurfaceCapabilitiesKHR& caps, const VkFormatProperties& props) -> VkImageUsageFlags {
     VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-
-    VkSurfaceCapabilitiesKHR caps = {};
-    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pd, surface, &caps));
-
-    VkFormatProperties props = {};
-    vkGetPhysicalDeviceFormatProperties(pd, format, &props);
 
     const bool isStorageSupported = (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) > 0;
     const bool isTilingOptimalSupported = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) > 0;
@@ -1150,7 +1154,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return usageFlags;
   };
 
-  const VkImageUsageFlags usageFlags = chooseUsageFlags(ctx.getVkPhysicalDevice(), ctx.vkSurface_, surfaceFormat_.format);
+  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props);
   const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
   const VkSwapchainCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -5843,7 +5847,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
 
 lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderStage stage,
                                                                        const char* source,
-   const char* entryPointName,
+                                                                       const char* entryPointName,
                                                                        const char* debugName,
                                                                        Result* outResult) const {
   std::string sourcePatched;
