@@ -16,7 +16,7 @@ jobs:
     name: "Android (Ubuntu)"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -127,7 +127,7 @@ jobs:
       runs-on: ${{ matrix.config.os }}
 
       steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v6
           with:
             submodules: recursive
 
@@ -178,7 +178,7 @@ jobs:
       runs-on: ${{ matrix.config.os }}
 
       steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v6
           with:
             submodules: recursive
 
@@ -219,7 +219,7 @@ jobs:
       runs-on: ${{ matrix.config.os }}
 
       steps:
-        - uses: actions/checkout@v4
+        - uses: actions/checkout@v6
           with:
             submodules: recursive
 
