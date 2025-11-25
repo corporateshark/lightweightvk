@@ -93,6 +93,7 @@ endif()
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src")
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/volk")
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/vma/include")
+target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/vulkan-headers/include")
 
 if(WIN32)
   add_definitions("-DVK_USE_PLATFORM_WIN32_KHR=1")
