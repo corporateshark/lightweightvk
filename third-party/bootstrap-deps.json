@@ -140,7 +140,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/ocornut/imgui.git",
-        "revision": "v1.92.4"
+        "revision": "v1.92.5"
     }
 },
 {
@@ -148,7 +148,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/epezent/implot",
-        "revision": "3da8bd34299965d3b0ab124df743fe3e076fa222"
+        "revision": "285df95318a4af7c2fe2da265572bdf1020ade49"
     }
 },
 {
