@@ -156,7 +156,15 @@
     "source": {
         "type": "git",
         "url": "https://github.com/zeux/volk",
-        "revision": "1.4.304"
+        "revision": "04a46e2e522e91da0e9d4c146097501afb5d7c83"
+    }
+},
+{
+    "name": "vulkan-headers",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+        "revision": "65586d13fb197279942581ba9c2eb2c6b664487c"
     }
 },
 {
