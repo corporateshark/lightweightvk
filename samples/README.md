@@ -24,6 +24,10 @@
 
 ![lvk_android](../.github/samples/009_TriplanarMapping.jpg)
 
+## 010_OmniShadows
+
+![lvk_android](../.github/samples/010_OmniShadows.jpg)
+
 ## DEMO_001_SolarSystem
 
 ![lvk_android](../.github/screenshot02.jpg)
@@ -38,7 +42,11 @@
 
 ## RTX_003_Pipeline
 
-![lvk_android](../.github/samples/008_RayTracingMesh.jpg)
+![lvk_android](../.github/samples/RTX_003_Pipeline.jpg)
+
+## RTX_004_Textures
+
+![lvk_android](../.github/samples/RTX_004_Textures.jpg)
 
 ## Tiny_MeshLarge
 
