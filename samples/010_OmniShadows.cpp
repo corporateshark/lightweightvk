@@ -72,7 +72,7 @@ VertexStageOutput vertexMain(uint vertexID   : SV_VertexID,
 }
 
 [shader("fragment")]
-float4 fragmentMain(VertexStageOutput input) : SV_Target
+float fragmentMain(VertexStageOutput input) : SV_Depth
 {
   // get distance between fragment and light source
   float lightDistance = length(input.worldPos.xyz - pc.perLight.lightPos.xyz);
@@ -80,7 +80,7 @@ float4 fragmentMain(VertexStageOutput input) : SV_Target
   // remap to [0...1]
   lightDistance = lightDistance / pc.perLight->shadowFar;
 
-  return float4(lightDistance);
+  return lightDistance;
 }
 )";
 
@@ -234,7 +234,6 @@ void main() {
 
 const char* codeShadowFS = R"(
 layout (location=0) in vec4 v_WorldPos;
-layout (location=0) out vec4 out_FragColor;
 
 layout(std430, buffer_reference) readonly buffer PerLight {
   vec4 lightPos;
@@ -257,7 +256,7 @@ void main() {
   // remap to [0...1]
   lightDistance = lightDistance / pc.perLight.shadowFar;
     
-  out_FragColor = vec4(lightDistance);
+  gl_FragDepth = lightDistance;
 }
 )";
 
@@ -496,13 +495,6 @@ VULKAN_APP_MAIN {
 
   const uint32_t shadowMapSize = 1024;
 
-  lvk::Holder<lvk::TextureHandle> shadowMapColor = ctx->createTexture({
-      .type = lvk::TextureType_Cube,
-      .format = lvk::Format_R_F16,
-      .dimensions = {shadowMapSize, shadowMapSize},
-      .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_Attachment,
-      .debugName = "Texture: shadow map (color)",
-  });
   lvk::Holder<lvk::TextureHandle> shadowMap = ctx->createTexture({
       .type = lvk::TextureType_Cube,
       .format = app.getDepthFormat(),
@@ -527,7 +519,6 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Shadow_ = ctx->createRenderPipeline({
       .smVert = vertShadow_,
       .smFrag = fragShadow_,
-      .color = {{ctx->getFormat(shadowMapColor)}},
       .depthFormat = ctx->getFormat(shadowMap),
       .cullMode = lvk::CullMode_None,
       .debugName = "Pipeline: shadow",
@@ -543,7 +534,7 @@ VULKAN_APP_MAIN {
         .lightPos = vec4(lightPos, 1.0f),
         .shadowNear = 0.1f,
         .shadowFar = 100.0f,
-        .shadowMap = shadowMapColor.index(),
+        .shadowMap = shadowMap.index(),
     };
     const PerFrame perFrame = {
         .proj = glm::perspective(fov, aspectRatio, 0.1f, 100.0f),
@@ -592,13 +583,11 @@ VULKAN_APP_MAIN {
     // 1. Render shadow map
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1000.0f, 1000.0f, 1000.0f, 1000.0f}}},
-            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0},
+            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1000.0},
             .layerCount = 6,
             .viewMask = 0b111111,
         },
         {
-            .color = {{shadowMapColor}},
             .depthStencil = shadowMap,
         });
     {
@@ -623,7 +612,7 @@ VULKAN_APP_MAIN {
         },
         framebuffer,
         {
-            .textures = {lvk::TextureHandle(shadowMapColor)},
+            .textures = {lvk::TextureHandle(shadowMap)},
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
