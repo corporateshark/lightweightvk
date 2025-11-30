@@ -20,6 +20,10 @@
 
 ![lvk_android](../.github/samples/005_MeshShaders.jpg)
 
+## 008_MeshShaderFireworks
+
+![lvk_android](../.github/samples/008_MeshShaderFireworks.jpg)
+
 ## 009_TriplanarMapping
 
 ![lvk_android](../.github/samples/009_TriplanarMapping.jpg)
