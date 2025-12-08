@@ -253,9 +253,9 @@ enum SamplerMip : uint8_t { SamplerMip_Disabled = 0, SamplerMip_Nearest, Sampler
 enum SamplerWrap : uint8_t { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
 
 enum HWDeviceType {
-  HWDeviceType_Discrete = 1,
-  HWDeviceType_External = 2,
-  HWDeviceType_Integrated = 3,
+  HWDeviceType_Integrated = 1,
+  HWDeviceType_Discrete = 2,
+  HWDeviceType_External = 3,
   HWDeviceType_Software = 4,
 };
 
