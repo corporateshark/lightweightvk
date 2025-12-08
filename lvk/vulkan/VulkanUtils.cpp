@@ -148,6 +148,29 @@ lvk::Result lvk::getResultFromVkResult(VkResult result) {
   return res;
 }
 
+VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate vertexInputRate) {
+  switch (vertexInputRate) {
+    case lvk::VertexInputRate::InputRate_Vertex:
+      return VK_VERTEX_INPUT_RATE_VERTEX;
+    case lvk::VertexInputRate::InputRate_Instance:
+      return VK_VERTEX_INPUT_RATE_INSTANCE;
+  }
+
+  LVK_ASSERT_MSG(false, "VertexInputRate value not handled: %d", (int)vertexInputRate);
+  return VK_VERTEX_INPUT_RATE_VERTEX;
+}
+
+lvk::VertexInputRate vkVertexInputRateToVertexInputRate(VkVertexInputRate vertexInputRate) {
+  switch(vertexInputRate) {
+    case VK_VERTEX_INPUT_RATE_VERTEX:
+      return lvk::VertexInputRate::InputRate_Vertex;
+    case VK_VERTEX_INPUT_RATE_INSTANCE:
+      return lvk::VertexInputRate::InputRate_Instance;
+  }
+  LVK_ASSERT_MSG(false, "VertexInputRate value not handled: %d", (int)vertexInputRate);
+  return lvk::VertexInputRate::InputRate_Vertex;
+}
+
 VkFormat lvk::formatToVkFormat(lvk::Format format) {
   using TextureFormat = ::lvk::Format;
   switch (format) {

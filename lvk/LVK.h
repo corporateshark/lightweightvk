@@ -483,6 +483,11 @@ enum class VertexFormat {
   Int_2_10_10_10_REV,
 };
 
+enum VertexInputRate : uint8_t{
+  InputRate_Vertex,
+  InputRate_Instance,
+}
+
 enum Format : uint8_t {
   Format_Invalid = 0,
 
@@ -584,6 +589,7 @@ struct VertexInput final {
   } attributes[LVK_VERTEX_ATTRIBUTES_MAX];
   struct VertexInputBinding final {
     uint32_t stride = 0;
+    lvk::VertexInputRate inputRate = lvk::VertexInputRate::InputRate_Vertex;
   } inputBindings[LVK_VERTEX_BUFFER_MAX];
 
   uint32_t getNumAttributes() const {

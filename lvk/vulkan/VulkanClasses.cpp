@@ -5249,8 +5249,9 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
 
     if (!bufferAlreadyBound[attr.binding]) {
       bufferAlreadyBound[attr.binding] = true;
-      rps.vkBindings_[rps.numBindings_++] = {
-          .binding = attr.binding, .stride = vstate.inputBindings[attr.binding].stride, .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+      rps.vkBindings_[rps.numBindings_++] = {.binding = attr.binding,
+                                             .stride = vstate.inputBindings[attr.binding].stride,
+                                             .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate)};
     }
   }
 
