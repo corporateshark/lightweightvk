@@ -730,6 +730,8 @@ struct VulkanContextImpl final {
   };
   YcbcrConversionData ycbcrConversionData_[256]; // indexed by lvk::Format
   uint32_t numYcbcrSamplers_ = 0;
+  // max of all used values of VkSamplerYcbcrConversionImageFormatProperties::combinedImageSamplerDescriptorCount
+  uint32_t maxCombinedImageSamplerDescriptorCount_ = 1;
 
 #if defined(LVK_WITH_TRACY_GPU)
   TracyVkCtx tracyVkCtx_ = nullptr;
@@ -4481,6 +4483,10 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
 
   LVK_ASSERT(samplerYcbcrConversionImageFormatProps.combinedImageSamplerDescriptorCount <= 3);
 
+  // update maximum
+  pimpl_->maxCombinedImageSamplerDescriptorCount_ =
+      std::max(pimpl_->maxCombinedImageSamplerDescriptorCount_, samplerYcbcrConversionImageFormatProps.combinedImageSamplerDescriptorCount);
+
   const VkSamplerCreateInfo cinfo = samplerStateDescToVkSamplerCreateInfo({}, getVkPhysicalDeviceProperties().limits);
 
   pimpl_->ycbcrConversionData_[format].info = info;
@@ -6724,18 +6730,27 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
 
   {
     // create default descriptor pool and allocate 1 descriptor set
-    const VkDescriptorPoolSize poolSizes[kBinding_NumBindings]{
+    VkDescriptorPoolSize poolSizes[kBinding_NumBindings] = {
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, maxTextures},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, maxSamplers},
         VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxTextures},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs},
     };
+    uint32_t numPoolSizes = 3;
+    if (!immutableSamplers.empty()) {
+      poolSizes[numPoolSizes++] = VkDescriptorPoolSize{
+          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          pimpl_->maxCombinedImageSamplerDescriptorCount_ * maxTextures,
+      };
+    }
+    if (hasAccelerationStructure_) {
+      poolSizes[numPoolSizes++] = VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs};
+    }
+    LVK_ASSERT(numPoolSizes <= kBinding_NumBindings);
     const VkDescriptorPoolCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         .maxSets = 1,
-        .poolSizeCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+        .poolSizeCount = numPoolSizes,
         .pPoolSizes = poolSizes,
     };
     VK_ASSERT_RETURN(vkCreateDescriptorPool(vkDevice_, &ci, nullptr, &vkDPool_));
