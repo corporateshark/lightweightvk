@@ -159,7 +159,6 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     if (!exists(dir / subdir)) {
       LLOGW("Cannot find the content directory. Run `deploy_content.py` before running this app.");
       LVK_ASSERT(false);
-      return;
     }
     folderThirdParty_ = (dir / path("third-party/deps/src/")).string();
     folderContentRoot_ = (dir / subdir).string();
