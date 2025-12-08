@@ -84,7 +84,7 @@ struct VulkanImage final {
   [[nodiscard]] VkImageAspectFlags getImageAspectFlags() const;
 
   // framebuffers can render only into one level/layer
-  [[nodiscard]] VkImageView getOrCreateVkImageViewForFramebuffer(VulkanContext& ctx, uint8_t level, uint16_t layer);
+  [[nodiscard]] VkImageView getOrCreateVkImageViewForFramebuffer(VulkanContext& ctx, uint8_t level, uint16_t layer, uint32_t viewMask);
 
   [[nodiscard]] static bool isDepthFormat(VkFormat format);
   [[nodiscard]] static bool isStencilFormat(VkFormat format);
@@ -114,6 +114,7 @@ struct VulkanImage final {
   VkImageView imageView_ = VK_NULL_HANDLE; // default view with all mip-levels
   VkImageView imageViewStorage_ = VK_NULL_HANDLE; // default view with identity swizzle (all mip-levels)
   VkImageView imageViewForFramebuffer_[LVK_MAX_MIP_LEVELS][6] = {}; // max 6 faces for cubemap rendering
+  VkImageView imageViewForFramebufferMultiview_[LVK_MAX_MIP_LEVELS] = {};
 };
 
 class VulkanSwapchain final {

@@ -1069,35 +1069,58 @@ bool lvk::VulkanImage::isStencilFormat(VkFormat format) {
          (format == VK_FORMAT_D32_SFLOAT_S8_UINT);
 }
 
-VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext& ctx, uint8_t level, uint16_t layer) {
+VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext& ctx, uint8_t level, uint16_t layer, uint32_t viewMask) {
   LVK_ASSERT(level < LVK_MAX_MIP_LEVELS);
   LVK_ASSERT(layer < LVK_ARRAY_NUM_ELEMENTS(imageViewForFramebuffer_[0]));
+  LVK_ASSERT(!viewMask || layer == 0);
 
   if (level >= LVK_MAX_MIP_LEVELS || layer >= LVK_ARRAY_NUM_ELEMENTS(imageViewForFramebuffer_[0])) {
     return VK_NULL_HANDLE;
   }
 
-  if (imageViewForFramebuffer_[level][layer] != VK_NULL_HANDLE) {
+  if (!viewMask && imageViewForFramebuffer_[level][layer] != VK_NULL_HANDLE) {
     return imageViewForFramebuffer_[level][layer];
+  }
+  if (viewMask && imageViewForFramebufferMultiview_[level] != VK_NULL_HANDLE) {
+    return imageViewForFramebufferMultiview_[level];
   }
 
   char debugNameImageView[320] = {0};
-  snprintf(
-      debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: '%s' imageViewForFramebuffer_[%u][%u]", debugName_, level, layer);
+  snprintf(debugNameImageView,
+           sizeof(debugNameImageView) - 1,
+           "Image View: '%s' imageViewForFramebuffer[%u][%u][%u]",
+           debugName_,
+           level,
+           layer,
+           viewMask);
 
-  imageViewForFramebuffer_[level][layer] = createImageView(ctx.getVkDevice(),
-                                                           VK_IMAGE_VIEW_TYPE_2D,
-                                                           vkImageFormat_,
-                                                           getImageAspectFlags(),
-                                                           level,
-                                                           1u,
-                                                           layer,
-                                                           1u,
-                                                           {},
-                                                           nullptr,
-                                                           debugNameImageView);
+  const uint32_t numViews = viewMask ?
+#if defined(_MSC_VER)
+                                     _mm_popcnt_u32(viewMask)
+#else
+                                     __builtin_popcount(viewMask)
+#endif
+                                     : 1;
 
-  return imageViewForFramebuffer_[level][layer];
+  VkImageView view = createImageView(ctx.getVkDevice(),
+                                     viewMask ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D,
+                                     vkImageFormat_,
+                                     getImageAspectFlags(),
+                                     level,
+                                     1u,
+                                     layer,
+                                     numViews,
+                                     {},
+                                     nullptr,
+                                     debugNameImageView);
+
+  if (viewMask) {
+    imageViewForFramebufferMultiview_[level] = view;
+  } else {
+    imageViewForFramebuffer_[level][layer] = view;
+  }
+
+  return view;
 }
 
 lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32_t height) :
@@ -2297,7 +2320,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     colorAttachments[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer),
+        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = (samples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                      : VK_RESOLVE_MODE_NONE,
@@ -2313,7 +2336,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
       lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       colorAttachments[i].resolveImageView =
-          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer);
+          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_);
       colorAttachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
   }
@@ -2327,7 +2350,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     depthAttachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer),
+        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_),
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
@@ -2342,7 +2365,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
-      depthAttachment.resolveImageView = depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer);
+      depthAttachment.resolveImageView =
+          depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
           resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
@@ -4273,6 +4297,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   // drop all existing image views - they belong to the base image
   memset(&image.imageViewStorage_, 0, sizeof(image.imageViewStorage_));
   memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
+  memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
   VkImageAspectFlags aspect = 0;
   if (image.isDepthFormat_ || image.isStencilFormat_) {
@@ -5375,6 +5400,11 @@ void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
         deferredTask(
             std::packaged_task<void()>([device = getVkDevice(), imageView = v]() { vkDestroyImageView(device, imageView, nullptr); }));
       }
+    }
+    VkImageView v = tex->imageViewForFramebufferMultiview_[i];
+    if (v != VK_NULL_HANDLE) {
+      deferredTask(
+          std::packaged_task<void()>([device = getVkDevice(), imageView = v]() { vkDestroyImageView(device, imageView, nullptr); }));
     }
   }
 
