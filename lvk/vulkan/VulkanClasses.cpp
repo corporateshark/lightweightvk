@@ -6331,7 +6331,7 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
 #endif
 }
 
-uint32_t lvk::VulkanContext::queryDevices(HWDeviceType deviceType, HWDeviceDesc* outDevices, uint32_t maxOutDevices) {
+uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices) {
   // Physical devices
   uint32_t deviceCount = 0;
   VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, nullptr));
@@ -6353,8 +6353,6 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceType deviceType, HWDeviceDesc*
     }
   };
 
-  const HWDeviceType desiredDeviceType = deviceType;
-
   uint32_t numCompatibleDevices = 0;
 
   for (uint32_t i = 0; i < deviceCount; ++i) {
@@ -6363,11 +6361,6 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceType deviceType, HWDeviceDesc*
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
     const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
-
-    // filter non-suitable hardware devices
-    if (desiredDeviceType != deviceType) {
-      continue;
-    }
 
     if (outDevices && numCompatibleDevices < maxOutDevices) {
       outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};

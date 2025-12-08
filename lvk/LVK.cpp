@@ -365,7 +365,8 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
                                                                      uint32_t width,
                                                                      uint32_t height,
                                                                      const lvk::ContextConfig& cfg,
-                                                                     lvk::HWDeviceType preferredDeviceType) {
+                                                                     lvk::HWDeviceType preferredDeviceType,
+                                                                     int selectedDevice) {
   using namespace lvk;
 
   std::unique_ptr<VulkanContext> ctx;
@@ -375,44 +376,58 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #elif defined(ANDROID)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
 #elif defined(__linux__)
-  #if defined(LVK_WITH_WAYLAND)
-    wl_surface* waylandWindow = glfwGetWaylandWindow(window);
-    if (!waylandWindow) {
-      LVK_ASSERT_MSG(false, "Wayland window not found");
-      return nullptr;
-    }
-    ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
-  #else
-    ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
-  #endif
+#if defined(LVK_WITH_WAYLAND)
+  wl_surface* waylandWindow = glfwGetWaylandWindow(window);
+  if (!waylandWindow) {
+    LVK_ASSERT_MSG(false, "Wayland window not found");
+    return nullptr;
+  }
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
+#else
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
+#endif
 #elif defined(__APPLE__)
   ctx = std::make_unique<VulkanContext>(cfg, createCocoaWindowView(window));
 #else
 #error Unsupported OS
 #endif
 
-  HWDeviceDesc devices[8];
-  uint32_t numDevices = ctx->queryDevices(preferredDeviceType, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
-
-  if (!numDevices) {
-    if (preferredDeviceType == HWDeviceType_Discrete) {
-      numDevices = ctx->queryDevices(HWDeviceType_Integrated, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
-    } else if (preferredDeviceType == HWDeviceType_Integrated) {
-      numDevices = ctx->queryDevices(HWDeviceType_Discrete, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
-    }
-  }
-
-  if (!numDevices) {
-    // LavaPipe etc
-    numDevices = ctx->queryDevices(HWDeviceType_Software, devices, LVK_ARRAY_NUM_ELEMENTS(devices));
-  }
+  HWDeviceDesc devices[16];
+  const uint32_t numDevices = ctx->queryDevices(devices, LVK_ARRAY_NUM_ELEMENTS(devices));
 
   if (!numDevices) {
     LVK_ASSERT_MSG(false, "GPU is not found");
     return nullptr;
   }
 
-  Result res = ctx->initContext(devices[0]);
+  if (selectedDevice < 0) {
+    selectedDevice = [preferredDeviceType, &devices, numDevices]() -> int {
+      // define device type priority order
+      HWDeviceType priority[4] = {preferredDeviceType};
+      {
+        int index = 1;
+        for (int type = HWDeviceType_Integrated; type <= HWDeviceType_Software; type++) {
+          if (type != preferredDeviceType)
+            priority[index++] = (HWDeviceType)type;
+        }
+      }
+      // search devices in priority order
+      for (HWDeviceType type : priority) {
+        for (uint32_t i = 0; i < numDevices; i++) {
+          if (devices[i].type == type)
+            return (int)i;
+        }
+      }
+      return 0;
+    }();
+  }
+
+  if (selectedDevice >= numDevices) {
+    LVK_ASSERT_MSG(false, "Invalid device index");
+    return nullptr;
+  }
+
+  Result res = ctx->initContext(devices[selectedDevice]);
 
   if (!res.isOk()) {
     LVK_ASSERT_MSG(false, "createVulkanContextWithSwapchain() failed");

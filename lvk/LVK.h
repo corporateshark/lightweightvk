@@ -1231,7 +1231,8 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
                                                                 uint32_t width,
                                                                 uint32_t height,
                                                                 const lvk::ContextConfig& cfg,
-                                                                lvk::HWDeviceType preferredDeviceType = lvk::HWDeviceType_Discrete);
+                                                                lvk::HWDeviceType preferredDeviceType = lvk::HWDeviceType_Discrete,
+                                                                int selectedDevice = -1);
 #endif // LVK_WITH_GLFW || defined(ANDROID)
 
 } // namespace lvk
