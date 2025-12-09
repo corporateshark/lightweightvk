@@ -2,7 +2,7 @@
 # based on https://github.com/PacktPublishing/3D-Graphics-Rendering-Cookbook/blob/master/CMake/CommonMacros.txt
 #
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 
 macro(lvk_setup_groups src_files)
   foreach(FILE ${src_files})
