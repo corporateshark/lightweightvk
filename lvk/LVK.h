@@ -423,6 +423,7 @@ struct DepthState {
 enum PolygonMode : uint8_t {
   PolygonMode_Fill = 0,
   PolygonMode_Line = 1,
+  PolygonMode_Point = 2,
 };
 
 enum class VertexFormat {
