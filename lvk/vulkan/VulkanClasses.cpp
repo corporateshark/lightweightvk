@@ -438,6 +438,17 @@ VkStencilOp stencilOpToVkStencilOp(lvk::StencilOp op) {
   return VK_STENCIL_OP_KEEP;
 }
 
+VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate rate) {
+  switch (rate) {
+  case lvk::VertexInputRate_Vertex:
+    return VK_VERTEX_INPUT_RATE_VERTEX;
+  case lvk::VertexInputRate_Instance:
+    return VK_VERTEX_INPUT_RATE_INSTANCE;
+  }
+  LVK_ASSERT(false);
+  return VK_VERTEX_INPUT_RATE_VERTEX;
+}
+
 VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
   using lvk::VertexFormat;
   switch (fmt) {
@@ -5249,9 +5260,11 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
 
     if (!bufferAlreadyBound[attr.binding]) {
       bufferAlreadyBound[attr.binding] = true;
-      rps.vkBindings_[rps.numBindings_++] = {.binding = attr.binding,
-                                             .stride = vstate.inputBindings[attr.binding].stride,
-                                             .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate)};
+      rps.vkBindings_[rps.numBindings_++] = {
+          .binding = attr.binding,
+          .stride = vstate.inputBindings[attr.binding].stride,
+          .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate),
+      };
     }
   }
 

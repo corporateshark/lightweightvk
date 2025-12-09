@@ -102,7 +102,7 @@ class Handle final {
   }
 
  private:
-  Handle(uint32_t index, uint32_t gen) : index_(index), gen_(gen){};
+  Handle(uint32_t index, uint32_t gen) : index_(index), gen_(gen) {};
 
   template<typename ObjectType_, typename ImplObjectType>
   friend class Pool;
@@ -269,7 +269,7 @@ struct HWDeviceDesc {
 enum StorageType {
   StorageType_Device,
   StorageType_HostVisible,
-  StorageType_Memoryless
+  StorageType_Memoryless,
 };
 
 enum CullMode : uint8_t { CullMode_None, CullMode_Front, CullMode_Back };
@@ -366,7 +366,7 @@ enum BlendOp : uint8_t {
   BlendOp_Subtract,
   BlendOp_ReverseSubtract,
   BlendOp_Min,
-  BlendOp_Max
+  BlendOp_Max,
 };
 
 enum BlendFactor : uint8_t {
@@ -486,7 +486,7 @@ enum class VertexFormat {
 enum VertexInputRate : uint8_t {
   VertexInputRate_Vertex,
   VertexInputRate_Instance,
-}
+};
 
 enum Format : uint8_t {
   Format_Invalid = 0,
@@ -1100,7 +1100,7 @@ class IContext {
                                                                             Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<RenderPipelineHandle> createRenderPipeline(const RenderPipelineDesc& desc, Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<RayTracingPipelineHandle> createRayTracingPipeline(const RayTracingPipelineDesc& desc,
-                                                                            Result* outResult = nullptr) = 0;
+                                                                                  Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc, Result* outResult = nullptr) = 0;
 
   [[nodiscard]] virtual Holder<QueryPoolHandle> createQueryPool(uint32_t numQueries,
@@ -1150,7 +1150,7 @@ class IContext {
   virtual uint32_t getSwapchainCurrentImageIndex() const = 0;
   virtual uint32_t getNumSwapchainImages() const = 0;
   virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
-  
+
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 
