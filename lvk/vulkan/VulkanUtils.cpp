@@ -150,9 +150,9 @@ lvk::Result lvk::getResultFromVkResult(VkResult result) {
 
 VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate vertexInputRate) {
   switch (vertexInputRate) {
-    case lvk::VertexInputRate::InputRate_Vertex:
+    case lvk::VertexInputRate::VertexInputRate_Vertex:
       return VK_VERTEX_INPUT_RATE_VERTEX;
-    case lvk::VertexInputRate::InputRate_Instance:
+    case lvk::VertexInputRate::VertexInputRate_Instance:
       return VK_VERTEX_INPUT_RATE_INSTANCE;
   }
 
@@ -163,12 +163,12 @@ VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate vertex
 lvk::VertexInputRate vkVertexInputRateToVertexInputRate(VkVertexInputRate vertexInputRate) {
   switch(vertexInputRate) {
     case VK_VERTEX_INPUT_RATE_VERTEX:
-      return lvk::VertexInputRate::InputRate_Vertex;
+      return lvk::VertexInputRate::VertexInputRate_Vertex;
     case VK_VERTEX_INPUT_RATE_INSTANCE:
-      return lvk::VertexInputRate::InputRate_Instance;
+      return lvk::VertexInputRate::VertexInputRate_Instance;
   }
   LVK_ASSERT_MSG(false, "VertexInputRate value not handled: %d", (int)vertexInputRate);
-  return lvk::VertexInputRate::InputRate_Vertex;
+  return lvk::VertexInputRate::VertexInputRate_Vertex;
 }
 
 VkFormat lvk::formatToVkFormat(lvk::Format format) {
