@@ -301,6 +301,8 @@ VkPolygonMode polygonModeToVkPolygonMode(lvk::PolygonMode mode) {
     return VK_POLYGON_MODE_FILL;
   case lvk::PolygonMode_Line:
     return VK_POLYGON_MODE_LINE;
+  case lvk::PolygonMode_Point:
+    return VK_POLYGON_MODE_POINT;
   }
   LVK_ASSERT_MSG(false, "Implement a missing polygon fill mode");
   return VK_POLYGON_MODE_FILL;
