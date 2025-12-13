@@ -23,7 +23,6 @@
 #if defined(ANDROID)
 #  include <android_native_app_glue.h>
 #  include <jni.h>
-#  include <time.h>
 double glfwGetTime();
 #else
 #  include <GLFW/glfw3.h>
@@ -100,7 +99,6 @@ class VulkanApp {
   std::string folderContentRoot_;
   int width_ = 0;
   int height_ = 0;
-  bool canRender_ = true;
 #if defined(ANDROID)
   android_app* androidApp_ = nullptr;
 #else

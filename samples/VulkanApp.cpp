@@ -18,6 +18,7 @@
 #if defined(ANDROID)
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
+#include <time.h>
 
 double glfwGetTime() {
   timespec t = {0, 0};
@@ -65,17 +66,10 @@ static void handle_cmd(android_app* androidApp, int32_t cmd) {
       app->height_ = ANativeWindow_getHeight(androidApp->window) / app->cfg_.framebufferScalar;
       if (!app->ctx_)
         app->ctx_ = lvk::createVulkanContextWithSwapchain(androidApp->window, app->width_, app->height_, app->cfg_.contextConfig);
-      app->canRender_ = true;
     }
     return;
-  case APP_CMD_GAINED_FOCUS:
-    app->canRender_ = app->ctx_ != nullptr;
-    return;
-  case APP_CMD_LOST_FOCUS:
   case APP_CMD_TERM_WINDOW:
-    app->canRender_ = false;
-    return;
-  case APP_CMD_DESTROY:
+    app->ctx_ = nullptr;
     return;
   }
 }
@@ -176,7 +170,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 
   while (!androidApp_->destroyRequested && !ctx_) {
     // poll until a Window is created
-    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(1, nullptr, &events, (void**)&source) >= 0) {
       if (source)
         source->process(androidApp_, source);
     }
@@ -308,30 +302,34 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
   float deltaSeconds = 0.0f;
 
 #if defined(ANDROID)
-  while (!androidApp_->destroyRequested) {
-#else
-  while (cfg_.contextConfig.enableHeadlessSurface || !glfwWindowShouldClose(window_)) {
-#endif // !ANDROID
+  int events = 0;
+  android_poll_source* source = nullptr;
+  do {
+    const double newTimeStamp = glfwGetTime();
+    deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
     if (fpsCounter_.tick(deltaSeconds)) {
       LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
     }
+    timeStamp = newTimeStamp;
+    if (ctx_) {
+      const float ratio = width_ / (float)height_;
+      drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
+    }
+    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
+      if (source) {
+        source->process(androidApp_, source);
+      }
+    }
+  } while (!androidApp_->destroyRequested);
+#else
+  while (cfg_.contextConfig.enableHeadlessSurface || !glfwWindowShouldClose(window_)) {
     const double newTimeStamp = glfwGetTime();
     deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
+    if (fpsCounter_.tick(deltaSeconds)) {
+      LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
+    }
     timeStamp = newTimeStamp;
 
-#if defined(ANDROID)
-    android_poll_source* source = nullptr;
-    const int result = ALooper_pollOnce(canRender_ ? 0 : -1, nullptr, nullptr, (void**)&source);
-
-    if (result == ALOOPER_POLL_ERROR) {
-      LLOGW("ALooper_pollOnce() returned an error");
-      break;
-    }
-
-    if (source) {
-      source->process(androidApp_, source);
-    }
-#else
     if (window_) {
 #if defined(__APPLE__)
       // a hacky workaround for retina displays
@@ -342,9 +340,8 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
       glfwPollEvents();
     }
-#endif // ANDROID
 
-    if (!width_ || !height_)
+    if (!ctx_ || !width_ || !height_)
       continue;
     const float ratio = width_ / (float)height_;
 
@@ -352,9 +349,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
     lvk::TextureHandle tex = ctx_->getCurrentSwapchainTexture();
 
-    if (ctx_ && canRender_) {
-      drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
-    }
+    drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
 
     if (cfg_.screenshotFrameNumber == ++frameCount_) {
       ctx_->wait({});
@@ -385,6 +380,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       break;
     }
   }
+#endif // ANDROID
 
   LLOGD("Terminating app...");
 }
