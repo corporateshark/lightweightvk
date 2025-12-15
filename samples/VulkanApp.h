@@ -1,9 +1,9 @@
 ﻿/*
-* LightweightVK
-*
-* This source code is licensed under the MIT license found in the
-* LICENSE file in the root directory of this source tree.
-*/
+ * LightweightVK
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 // Based on https://github.com/PacktPublishing/3D-Graphics-Rendering-Cookbook-Second-Edition/blob/main/shared/VulkanApp.h
 
@@ -23,9 +23,8 @@
 #if defined(ANDROID)
 #  include <android_native_app_glue.h>
 #  include <jni.h>
-double glfwGetTime();
 #else
-#  include <GLFW/glfw3.h>
+#  include <SDL3/SDL.h>
 #endif
 // clang-format on
 
@@ -47,6 +46,8 @@ double glfwGetTime();
 #endif
 // clang-format on
 
+double glfwGetTime(); // backporting
+
 using glm::mat3;
 using glm::mat4;
 using glm::vec2;
@@ -54,6 +55,8 @@ using glm::vec3;
 using glm::vec4;
 
 using DrawFrameFunc = std::function<void(uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds)>;
+using KeyCallback = std::function<void(SDL_Window*, SDL_KeyboardEvent*)>;
+using MouseButtonCallback = std::function<void(SDL_Window*, SDL_MouseButtonEvent*)>;
 
 struct VulkanAppConfig {
   int width = -95; // 95% horizontally
@@ -86,14 +89,14 @@ class VulkanApp {
 
   lvk::Format getDepthFormat() const;
   lvk::TextureHandle getDepthTexture() const;
-#if !defined(ANDROID)
-    void addMouseButtonCallback(GLFWmousebuttonfun cb) {
-      callbacksMouseButton.push_back(cb);
-    }
-    void addKeyCallback(GLFWkeyfun cb) {
-      callbacksKey.push_back(cb);
-    }
-#endif // ANDROID
+
+  void addMouseButtonCallback(MouseButtonCallback cb) {
+    callbacksMouseButton.push_back(cb);
+  }
+  void addKeyCallback(KeyCallback cb) {
+    callbacksKey.push_back(cb);
+  }
+
  public:
   std::string folderThirdParty_;
   std::string folderContentRoot_;
@@ -102,7 +105,7 @@ class VulkanApp {
 #if defined(ANDROID)
   android_app* androidApp_ = nullptr;
 #else
-  GLFWwindow* window_ = nullptr;
+  SDL_Window* window_ = nullptr;
 #endif // ANDROID
   std::unique_ptr<lvk::IContext> ctx_;
   mutable lvk::Holder<lvk::TextureHandle> depthTexture_;
@@ -120,10 +123,8 @@ class VulkanApp {
   } mouseState_;
 
  protected:
-#if !defined(ANDROID)
-  std::vector<GLFWmousebuttonfun> callbacksMouseButton;
-  std::vector<GLFWkeyfun> callbacksKey;
-#endif // ANDROID
+  std::vector<MouseButtonCallback> callbacksMouseButton;
+  std::vector<KeyCallback> callbacksKey;
 
   uint64_t frameCount_ = 0;
 };
