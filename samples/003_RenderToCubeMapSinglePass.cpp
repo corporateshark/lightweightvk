@@ -218,8 +218,8 @@ VULKAN_APP_MAIN {
         .smVert = vert_,
         .smFrag = frag_,
         .color = {{.format = ctx->getSwapchainFormat()}},
-        .cullMode = lvk::CullMode_Back,
-        .frontFace = lvk::WindingMode_CW,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .debugName = "Pipeline: mesh",
     });
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_ = ctx->createRenderPipeline({
@@ -247,15 +247,16 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       buffer.cmdPushDebugGroupLabel("Render to Cube Map", 0xff0000ff);
+      // clang-format off
       buffer.cmdBeginRendering(
           {.color =
                {
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
                }},
           {.color = {
                {.texture = texture_},
@@ -265,6 +266,7 @@ VULKAN_APP_MAIN {
                {.texture = texture_},
                {.texture = texture_},
            }});
+      // clang-format on
       buffer.cmdBindRenderPipeline(renderPipelineState_Triangle_);
       buffer.cmdPushConstants(float(10.0 * app.getSimulatedTime()));
       buffer.cmdDraw(3);
@@ -272,8 +274,8 @@ VULKAN_APP_MAIN {
       buffer.cmdPopDebugGroupLabel();
 
       buffer.cmdBeginRendering({.color = {{
-                                    .loadOp = lvk::LoadOp_Clear,
-                                    .storeOp = lvk::StoreOp_Store,
+                                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}},
@@ -284,7 +286,7 @@ VULKAN_APP_MAIN {
         buffer.cmdBindScissorRect(views[0].scissorRect);
         buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
         buffer.cmdBindDepthState({});
-        buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
+        buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT16);
         struct {
           mat4 mvp;
           uint32_t texture;

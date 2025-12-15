@@ -92,7 +92,7 @@ struct VulkanImage final {
   void transitionLayout(VkCommandBuffer commandBuffer,
                         VkImageLayout newImageLayout,
                         const VkImageSubresourceRange& subresourceRange,
-                        StageAccess extraDstStage = {},
+                        StageAccess extraDstAccess = {},
                         bool computeOnlyQueue = false) const;
 
   [[nodiscard]] VkImageAspectFlags getImageAspectFlags() const;
@@ -149,7 +149,7 @@ class VulkanSwapchain final {
   const VkSurfaceFormatKHR& getSurfaceFormat() const;
   uint32_t getSwapchainCurrentImageIndex() const;
   uint32_t getNumSwapchainImages() const;
-  SurfaceTransform getSurfaceTransform() const;
+  VkSurfaceTransformFlagBitsKHR getSurfaceTransform() const;
   // runtime present mode switching without swapchain recreation (VK_KHR_swapchain_maintenance1), returns `false` if the mode cannot be set
   [[nodiscard]] bool setCurrentPresentMode(VkPresentModeKHR mode);
 
@@ -465,8 +465,8 @@ class CommandBuffer final : public ICommandBuffer {
   CommandBuffer& operator=(CommandBuffer&& other) = default;
 
   void cmdBarrier(const Barrier& barrier) override;
-  void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
-  void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
+  void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
+  void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
@@ -491,7 +491,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdBindStencilState(const StencilState& state) override;
 
   void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) override;
-  void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) override;
+  void cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexType, uint64_t bufferOffset, uint64_t bufferSize) override;
   void cmdPushConstants(const void* data, size_t size, size_t offset) override;
 
   void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) override;
@@ -528,13 +528,13 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) override;
   void cmdSetPrimitiveRestartEnable(bool enable) override;
   void cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
-                                 ShadingRateCombinerOp primitiveOp,
-                                 ShadingRateCombinerOp attachmentOp) override;
+                                 VkFragmentShadingRateCombinerOpKHR primitiveOp,
+                                 VkFragmentShadingRateCombinerOpKHR attachmentOp) override;
 
   void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) override;
   void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) override;
 
-  void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) override;
+  void cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) override;
   void cmdCopyImage(TextureHandle src,
                     TextureHandle dst,
                     const Dimensions& extent,
@@ -551,11 +551,7 @@ class CommandBuffer final : public ICommandBuffer {
                             const ldr::Span<const TensorHandle>& outputs,
                             const Dependencies& deps) override;
 
-  operator VkCommandBuffer() const
-#if defined(LVK_WITH_RAW_VULKAN)
-      override
-#endif // defined(LVK_WITH_RAW_VULKAN)
-  {
+  operator VkCommandBuffer() const override {
     return getVkCommandBuffer();
   }
 
@@ -736,12 +732,12 @@ class VulkanContext final : public IContext {
 
   TextureHandle getCurrentSwapchainTexture() override;
   Format getSwapchainFormat() const override;
-  ColorSpace getSwapchainColorSpace() const override;
+  VkColorSpaceKHR getSwapchainColorSpace() const override;
   uint32_t getSwapchainCurrentImageIndex() const override;
-  SurfaceTransform getSwapchainSurfaceTransform() const override;
+  VkSurfaceTransformFlagBitsKHR getSwapchainSurfaceTransform() const override;
   uint32_t getNumSwapchainImages() const override;
-  bool setCurrentPresentMode(PresentMode mode) override;
-  PresentMode getCurrentPresentMode() const override;
+  bool setCurrentPresentMode(VkPresentModeKHR mode) override;
+  VkPresentModeKHR getCurrentPresentMode() const override;
 
   uint32_t getFramebufferMSAABitMask() const override;
   [[nodiscard]] Dimensions getShadingRateAttachmentMinTexelSize() const override;
@@ -761,6 +757,9 @@ class VulkanContext final : public IContext {
   }
   bool supportsDataGraphARM() const override {
     return has_ARM_data_graph_;
+  }
+  bool supportsTensorNonPacked() const override {
+    return has_ARM_tensors_ && vkTensorFeatures_.tensorNonPacked == VK_TRUE;
   }
   bool supportsShaderInterlock() const override {
     return has_EXT_fragment_shader_interlock_;
@@ -789,14 +788,16 @@ class VulkanContext final : public IContext {
                : 1u;
   }
   [[nodiscard]] size_t getPipelineCacheData(void* outData, size_t dataSize) const override;
-  [[nodiscard]] TensorProperties getTensorProperties() const override;
-  [[nodiscard]] TensorUsageFlags getTensorFormatSupport(Format format, TensorTiling tiling) const override;
+  [[nodiscard]] const VkPhysicalDeviceTensorPropertiesARM& getTensorProperties() const override {
+    return vkTensorProperties_;
+  }
+  [[nodiscard]] VkFormatFeatureFlags2 getTensorFormatSupport(Format format, VkTensorTilingARM tiling) const override;
 
   double getTimestampPeriodToMs() const override;
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
       const override;
 
-  [[nodiscard]] AccelStructSizes getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) const override;
+  [[nodiscard]] VkAccelerationStructureBuildSizesInfoKHR getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) const override;
 
   ///////////////
 
@@ -807,8 +808,8 @@ class VulkanContext final : public IContext {
   // the queue a SubmitHandle was produced on (a SubmitHandle is self-describing via its queue family index)
   lvk::VulkanImmediateCommands* getImmediateCommands(SubmitHandle handle) const;
 
-  uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
-  lvk::Result initContext(const HWDeviceDesc& desc);
+  uint32_t queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices = 1);
+  lvk::Result initContext(VkPhysicalDevice physicalDevice);
   lvk::Result initSwapchain(uint32_t width, uint32_t height) override;
   // destroys the swapchain and the surface, then creates both for the new window: all swapchain texture handles become stale
   lvk::Result recreateSurface(void* window, void* display, uint32_t width, uint32_t height);
@@ -924,7 +925,6 @@ class VulkanContext final : public IContext {
   void getBuildInfoOpacityMicromap(const AccelStructDesc& desc,
                                    VkAccelerationStructureGeometryKHR& outGeometry,
                                    VkAccelerationStructureGeometryMicromapDataKHR& outMicromapData,
-                                   std::vector<VkMicromapUsageKHR>& outUsageCounts,
                                    VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const;
   void createDummyTLAS();
   TensorHandle createTensor(const VkTensorDescriptionARM& description,

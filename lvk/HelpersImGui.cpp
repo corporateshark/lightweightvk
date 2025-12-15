@@ -113,20 +113,20 @@ void main() {
   out_color = kNonLinearColorSpace ? vec4(pow(c.rgb, vec3(2.2)), c.a) : c;
 })";
 
-void rotateRect(lvk::SurfaceTransform transform, uint32_t imageWidth, uint32_t imageHeight, float& x, float& y, float& w, float& h) {
+void rotateRect(VkSurfaceTransformFlagBitsKHR transform, uint32_t imageWidth, uint32_t imageHeight, float& x, float& y, float& w, float& h) {
   const float x0 = x;
   const float y0 = y;
   switch (transform) {
-  case lvk::SurfaceTransform_Rotate90:
+  case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
     x = (float)imageWidth - y0 - h;
     y = x0;
     std::swap(w, h);
     break;
-  case lvk::SurfaceTransform_Rotate180:
+  case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
     x = (float)imageWidth - x0 - w;
     y = (float)imageHeight - y0 - h;
     break;
-  case lvk::SurfaceTransform_Rotate270:
+  case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
     x = y0;
     y = (float)imageHeight - x0 - w;
     std::swap(w, h);
@@ -145,7 +145,7 @@ struct ImGuiRendererImpl {
 };
 
 lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(const lvk::Framebuffer& desc) {
-  const uint32_t nonLinearColorSpace = ctx_.getSwapchainColorSpace() == ColorSpace_SRGB_NONLINEAR ? 1u : 0u;
+  const uint32_t nonLinearColorSpace = ctx_.getSwapchainColorSpace() == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ? 1u : 0u;
   static_assert(LVK_MAX_COLOR_ATTACHMENTS == 8, "Update all color attachments below");
   return ctx_.createRenderPipeline(
       {
@@ -156,9 +156,9 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
                        .dataSize = sizeof(nonLinearColorSpace)},
           .color = {{.format = ctx_.getFormat(desc.color[0].texture),
                      .blendEnabled = true,
-                     .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-                     .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
-                     .dstAlphaBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha},
+                     .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                     .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                     .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA},
                     {.format = desc.color[1].texture ? ctx_.getFormat(desc.color[1].texture) : lvk::Format_Invalid},
                     {.format = desc.color[2].texture ? ctx_.getFormat(desc.color[2].texture) : lvk::Format_Invalid},
                     {.format = desc.color[3].texture ? ctx_.getFormat(desc.color[3].texture) : lvk::Format_Invalid},
@@ -167,7 +167,7 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
                     {.format = desc.color[6].texture ? ctx_.getFormat(desc.color[6].texture) : lvk::Format_Invalid},
                     {.format = desc.color[7].texture ? ctx_.getFormat(desc.color[7].texture) : lvk::Format_Invalid}},
           .depthFormat = desc.depthStencil.texture ? ctx_.getFormat(desc.depthStencil.texture) : lvk::Format_Invalid,
-          .cullMode = lvk::CullMode_None,
+          .cullMode = VK_CULL_MODE_NONE,
           .debugName = "ImGuiRenderer: createNewPipelineState()",
       },
       nullptr);
@@ -214,9 +214,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
   vert_ = ctx_.createShaderModule({codeVS, Stage_Vert, "Shader Module: imgui (vert)"});
   frag_ = ctx_.createShaderModule({codeFS, Stage_Frag, "Shader Module: imgui (frag)"});
   samplerClamp_ = ctx_.createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
-      .wrapW = lvk::SamplerWrap_Clamp,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
   });
 }
 
@@ -363,7 +363,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     return;
   }
 
-  const lvk::SurfaceTransform surfaceTransform = ctx_.getSwapchainSurfaceTransform();
+  const VkSurfaceTransformFlagBitsKHR surfaceTransform = ctx_.getSwapchainSurfaceTransform();
   float rotationCos = 1.0f;
   float rotationSin = 0.0f;
   lvk::getSurfaceTransformRotation(surfaceTransform, rotationCos, rotationSin);
@@ -427,7 +427,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   uint32_t idxOffset = 0;
   uint32_t vtxOffset = 0;
 
-  cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, lvk::IndexFormat_UI16);
+  cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, VK_INDEX_TYPE_UINT16);
   cmdBuffer.cmdBindRenderPipeline(pipeline_);
 
   for (const ImDrawList* cmdList : dd->CmdLists) {
@@ -437,7 +437,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
       if (cmd.UserCallback) {
         if (cmd.UserCallback == ImDrawCallback_ResetRenderState) {
           cmdBuffer.cmdBindViewport({.x = 0.0f, .y = 0.0f, .width = fb_width, .height = fb_height});
-          cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, lvk::IndexFormat_UI16);
+          cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, VK_INDEX_TYPE_UINT16);
           cmdBuffer.cmdBindRenderPipeline(pipeline_);
         } else {
           cmd.UserCallback(cmdList, &cmd);

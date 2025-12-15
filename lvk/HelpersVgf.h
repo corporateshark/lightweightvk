@@ -20,7 +20,8 @@ class VgfModel final {
     uint32_t rank = 0;
     int64_t dimensions[LVK_MAX_TENSOR_RANK] = {};
     bool matches(ldr::Span<const int64_t> dims) const;
-    TensorDesc toTensorDesc(TensorUsageFlags usage = TensorUsageBits_DataGraph, TensorTiling tiling = TensorTiling_Optimal) const;
+    TensorDesc toTensorDesc(VkTensorUsageFlagsARM usage = VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM,
+                            VkTensorTilingARM tiling = VK_TENSOR_TILING_OPTIMAL_ARM) const;
   };
 
   VgfModel() = default;
