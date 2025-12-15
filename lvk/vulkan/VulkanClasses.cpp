@@ -2594,6 +2594,14 @@ void lvk::CommandBuffer::cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferO
   LVK_ASSERT(srcBuffer.valid());
   LVK_ASSERT(dstBuffer.valid());
   LVK_ASSERT(size);
+  // Check buffer regions do not overlap
+  if (srcBuffer == dstBuffer) {
+    if (srcBufferOffset < dstBufferOffset) {
+      LVK_ASSERT(dstBufferOffset - srcBufferOffset >= size);
+    } else {
+      LVK_ASSERT(srcBufferOffset - dstBufferOffset >= size);
+    }
+  }
 
   lvk::VulkanBuffer* srcBuf = ctx_->buffersPool_.get(srcBuffer);
   lvk::VulkanBuffer* dstBuf = ctx_->buffersPool_.get(dstBuffer);
