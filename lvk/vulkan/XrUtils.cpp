@@ -110,8 +110,8 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
 
   std::unique_ptr<lvk::VulkanContext> ctx = std::make_unique<lvk::VulkanContext>(ctxCfg, nullptr);
 
-  lvk::HWDeviceDesc devices[16];
-  const uint32_t numDevices = ctx->queryDevices(devices, 16);
+  VkPhysicalDevice devices[16];
+  const uint32_t numDevices = ctx->queryDevices(devices, nullptr, 16);
   LVK_ASSERT_MSG(numDevices > 0, "No GPU found");
 
   // get the physical device OpenXR wants
@@ -121,7 +121,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
   // find the matching device index
   const uint32_t selectedDevice = [&devices, numDevices, vkPhysicalDevice]() -> uint32_t {
     for (uint32_t i = 0; i != numDevices; i++) {
-      if (devices[i].guid == (uintptr_t)vkPhysicalDevice) {
+      if (devices[i] == vkPhysicalDevice) {
         return i;
       }
     }

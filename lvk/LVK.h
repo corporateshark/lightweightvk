@@ -43,6 +43,23 @@
 #include <android/native_window.h>
 #endif
 
+#define VMA_VULKAN_VERSION 1003000
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+
+// set to 1 to see very verbose debug console logs with Vulkan commands
+#define LVK_VULKAN_PRINT_COMMANDS 0
+
+#if !defined(VK_NO_PROTOTYPES)
+#define VK_NO_PROTOTYPES 1
+#endif // !defined(VK_NO_PROTOTYPES)
+
+// enable to use VulkanMemoryAllocator (VMA)
+#define LVK_VULKAN_USE_VMA 1
+
+#include <volk.h>
+#include <vk_mem_alloc.h>
+
 // clang-format off
 #if defined(LVK_WITH_TRACY)
   #include "tracy/Tracy.hpp"
@@ -242,39 +259,6 @@ namespace lvk {
 
 enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
 enum { LVK_MAX_MIP_LEVELS = 16 };
-enum : size_t { LVK_WHOLE_SIZE = ~0ULL };
-
-enum IndexFormat : uint8_t {
-  IndexFormat_UI8,
-  IndexFormat_UI16,
-  IndexFormat_UI32,
-};
-
-enum Topology : uint8_t {
-  Topology_Point,
-  Topology_Line,
-  Topology_LineStrip,
-  Topology_Triangle,
-  Topology_TriangleStrip,
-  Topology_Patch,
-};
-
-enum ColorSpace : uint8_t {
-  ColorSpace_SRGB_NONLINEAR,
-  ColorSpace_SRGB_EXTENDED_LINEAR,
-  ColorSpace_HDR10,
-  ColorSpace_BT709_LINEAR,
-};
-
-enum PresentMode : uint8_t {
-  PresentMode_FIFO = 0, // default mode
-  PresentMode_FIFO_Relaxed,
-  PresentMode_Immediate,
-  PresentMode_Mailbox,
-  PresentMode_Shared_Demand_Refresh, // VK_KHR_shared_presentable_image
-  PresentMode_Shared_Continuous_Refresh, // VK_KHR_shared_presentable_image
-  PresentMode_FIFO_Latest_Ready, // VK_KHR_present_mode_fifo_latest_ready
-};
 
 enum TextureType : uint8_t {
   TextureType_2D,
@@ -282,38 +266,11 @@ enum TextureType : uint8_t {
   TextureType_Cube,
 };
 
-enum SamplerFilter : uint8_t { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
-enum SamplerMip : uint8_t { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_Linear };
-enum SamplerWrap : uint8_t {
-  SamplerWrap_Repeat = 0,
-  SamplerWrap_Clamp, // to edge
-  SamplerWrap_ClampToBorder,
-  SamplerWrap_MirrorRepeat,
-  SamplerWrap_MirrorClampToEdge,
-};
-
-enum HWDeviceType {
-  HWDeviceType_Integrated = 1,
-  HWDeviceType_Discrete = 2,
-  HWDeviceType_External = 3,
-  HWDeviceType_Software = 4,
-};
-
-struct HWDeviceDesc {
-  enum { LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE = 256 };
-  uintptr_t guid = 0;
-  HWDeviceType type = HWDeviceType_Software;
-  char name[LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {0};
-};
-
 enum StorageType {
   StorageType_Device,
   StorageType_HostVisible,
   StorageType_Memoryless,
 };
-
-enum CullMode : uint8_t { CullMode_None, CullMode_Front, CullMode_Back };
-enum WindingMode : uint8_t { WindingMode_CCW, WindingMode_CW };
 
 struct Result {
   enum class Code {
@@ -379,91 +336,33 @@ struct Viewport {
   float maxDepth = 1.0f;
 };
 
-enum CompareOp : uint8_t {
-  CompareOp_Never = 0,
-  CompareOp_Less,
-  CompareOp_Equal,
-  CompareOp_LessEqual,
-  CompareOp_Greater,
-  CompareOp_NotEqual,
-  CompareOp_GreaterEqual,
-  CompareOp_AlwaysPass
-};
-
-enum StencilOp : uint8_t {
-  StencilOp_Keep = 0,
-  StencilOp_Zero,
-  StencilOp_Replace,
-  StencilOp_IncrementClamp,
-  StencilOp_DecrementClamp,
-  StencilOp_Invert,
-  StencilOp_IncrementWrap,
-  StencilOp_DecrementWrap
-};
-
-enum BlendOp : uint8_t {
-  BlendOp_Add = 0,
-  BlendOp_Subtract,
-  BlendOp_ReverseSubtract,
-  BlendOp_Min,
-  BlendOp_Max,
-};
-
-enum BlendFactor : uint8_t {
-  BlendFactor_Zero = 0,
-  BlendFactor_One,
-  BlendFactor_SrcColor,
-  BlendFactor_OneMinusSrcColor,
-  BlendFactor_SrcAlpha,
-  BlendFactor_OneMinusSrcAlpha,
-  BlendFactor_DstColor,
-  BlendFactor_OneMinusDstColor,
-  BlendFactor_DstAlpha,
-  BlendFactor_OneMinusDstAlpha,
-  BlendFactor_SrcAlphaSaturated,
-  BlendFactor_BlendColor,
-  BlendFactor_OneMinusBlendColor,
-  BlendFactor_BlendAlpha,
-  BlendFactor_OneMinusBlendAlpha,
-  BlendFactor_Src1Color,
-  BlendFactor_OneMinusSrc1Color,
-  BlendFactor_Src1Alpha,
-  BlendFactor_OneMinusSrc1Alpha
-};
-
 struct SamplerStateDesc {
-  SamplerFilter minFilter = SamplerFilter_Linear;
-  SamplerFilter magFilter = SamplerFilter_Linear;
-  SamplerMip mipMap = SamplerMip_Disabled;
-  SamplerWrap wrapU = SamplerWrap_Repeat;
-  SamplerWrap wrapV = SamplerWrap_Repeat;
-  SamplerWrap wrapW = SamplerWrap_Repeat;
-  CompareOp depthCompareOp = CompareOp_LessEqual;
+  VkFilter minFilter = VK_FILTER_LINEAR;
+  VkFilter magFilter = VK_FILTER_LINEAR;
+  VkSamplerMipmapMode mipMap = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  VkSamplerAddressMode wrapU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  VkSamplerAddressMode wrapV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  VkSamplerAddressMode wrapW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
   uint8_t mipLodMin = 0;
-  uint8_t mipLodMax = 15;
+  uint8_t mipLodMax = LVK_MAX_MIP_LEVELS - 1;
   uint8_t maxAnisotropic = 1;
   bool depthCompareEnabled = false;
   const char* debugName = "";
 };
 
 struct StencilState {
-  StencilOp stencilFailureOp = StencilOp_Keep;
-  StencilOp depthFailureOp = StencilOp_Keep;
-  StencilOp depthStencilPassOp = StencilOp_Keep;
-  CompareOp stencilCompareOp = CompareOp_AlwaysPass;
+  VkStencilOp stencilFailureOp = VK_STENCIL_OP_KEEP;
+  VkStencilOp depthFailureOp = VK_STENCIL_OP_KEEP;
+  VkStencilOp depthStencilPassOp = VK_STENCIL_OP_KEEP;
+  VkCompareOp stencilCompareOp = VK_COMPARE_OP_ALWAYS;
   uint32_t readMask = (uint32_t)~0;
   uint32_t writeMask = (uint32_t)~0;
 };
 
 struct DepthState {
-  CompareOp compareOp = CompareOp_AlwaysPass;
+  VkCompareOp compareOp = VK_COMPARE_OP_ALWAYS;
   bool isDepthWriteEnabled = false;
-};
-
-enum PolygonMode : uint8_t {
-  PolygonMode_Fill = 0,
-  PolygonMode_Line = 1,
-  PolygonMode_Point = 2,
 };
 
 enum VertexFormat : uint8_t {
@@ -524,11 +423,6 @@ enum VertexFormat : uint8_t {
   VertexFormat_Int_2_10_10_10_REV,
 };
 
-enum VertexInputRate : uint8_t {
-  VertexInputRate_Vertex,
-  VertexInputRate_Instance,
-};
-
 enum Format : uint8_t {
   Format_Invalid = 0,
 
@@ -587,14 +481,6 @@ enum StoreOp : uint8_t {
   StoreOp_None,
 };
 
-enum ResolveMode : uint8_t {
-  ResolveMode_None = 0,
-  ResolveMode_SampleZero, // always supported
-  ResolveMode_Average,
-  ResolveMode_Min,
-  ResolveMode_Max,
-};
-
 enum ShaderStage : uint8_t {
   Stage_Vert,
   Stage_Tesc,
@@ -611,12 +497,6 @@ enum ShaderStage : uint8_t {
   Stage_Miss,
   Stage_Intersection,
   Stage_Callable,
-};
-
-union ClearColorValue {
-  float float32[4];
-  int32_t int32[4];
-  uint32_t uint32[4];
 };
 
 template <typename T>
@@ -683,7 +563,7 @@ struct VertexInput final {
   } attributes[LVK_VERTEX_ATTRIBUTES_MAX];
   struct VertexInputBinding final {
     uint32_t stride = 0;
-    VertexInputRate inputRate = VertexInputRate::VertexInputRate_Vertex;
+    VkVertexInputRate inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
   } inputBindings[LVK_VERTEX_BUFFER_MAX];
 
   // clang-format off
@@ -705,12 +585,12 @@ struct VertexInput final {
 struct ColorAttachment {
   Format format = Format_Invalid;
   bool blendEnabled = false;
-  BlendOp rgbBlendOp = BlendOp::BlendOp_Add;
-  BlendOp alphaBlendOp = BlendOp::BlendOp_Add;
-  BlendFactor srcRGBBlendFactor = BlendFactor_One;
-  BlendFactor srcAlphaBlendFactor = BlendFactor_One;
-  BlendFactor dstRGBBlendFactor = BlendFactor_Zero;
-  BlendFactor dstAlphaBlendFactor = BlendFactor_Zero;
+  VkBlendOp rgbBlendOp = VK_BLEND_OP_ADD;
+  VkBlendOp alphaBlendOp = VK_BLEND_OP_ADD;
+  VkBlendFactor srcRGBBlendFactor = VK_BLEND_FACTOR_ONE;
+  VkBlendFactor srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+  VkBlendFactor dstRGBBlendFactor = VK_BLEND_FACTOR_ZERO;
+  VkBlendFactor dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 };
 
 struct ShaderModuleDesc {
@@ -756,7 +636,7 @@ struct SpecializationConstantDesc {
 };
 
 struct RenderPipelineDesc final {
-  Topology topology = Topology_Triangle;
+  VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
   lvk::VertexInput vertexInput;
 
@@ -782,9 +662,9 @@ struct RenderPipelineDesc final {
   Format depthFormat = Format_Invalid;
   Format stencilFormat = Format_Invalid;
 
-  CullMode cullMode = lvk::CullMode_None;
-  WindingMode frontFace = lvk::WindingMode_CCW;
-  PolygonMode polygonMode = lvk::PolygonMode_Fill;
+  VkCullModeFlags cullMode = VK_CULL_MODE_NONE;
+  VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+  VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
 
   StencilState backFaceStencil = {};
   StencilState frontFaceStencil = {};
@@ -831,10 +711,10 @@ struct RenderPass final {
   struct AttachmentDesc final {
     LoadOp loadOp = LoadOp_Invalid;
     StoreOp storeOp = StoreOp_Store;
-    ResolveMode resolveMode = ResolveMode_Average;
+    VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
     uint8_t layer = 0;
     uint8_t level = 0;
-    ClearColorValue clearColor = {.float32 = {0.0f, 0.0f, 0.0f, 0.0f}};
+    VkClearColorValue clearColor = {.float32 = {0.0f, 0.0f, 0.0f, 0.0f}};
     float clearDepth = 1.0f;
     uint32_t clearStencil = 0;
   };
@@ -923,26 +803,6 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_InputAttachment = 1 << 3,
 };
 
-enum Swizzle : uint8_t {
-  Swizzle_Default = 0,
-  Swizzle_0,
-  Swizzle_1,
-  Swizzle_R,
-  Swizzle_G,
-  Swizzle_B,
-  Swizzle_A,
-};
-
-struct ComponentMapping {
-  Swizzle r = Swizzle_Default;
-  Swizzle g = Swizzle_Default;
-  Swizzle b = Swizzle_Default;
-  Swizzle a = Swizzle_Default;
-  bool identity() const {
-    return r == Swizzle_Default && g == Swizzle_Default && b == Swizzle_Default && a == Swizzle_Default;
-  }
-};
-
 struct TextureDesc {
   TextureType type = TextureType_2D;
   Format format = Format_Invalid;
@@ -953,7 +813,7 @@ struct TextureDesc {
   uint8_t usage = TextureUsageBits_Sampled;
   uint32_t numMipLevels = 1;
   StorageType storage = StorageType_Device;
-  ComponentMapping components = {};
+  VkComponentMapping components = {};
   const void* data = nullptr;
   uint32_t dataNumMipLevels = 1; // how many mip-levels we want to upload
   bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
@@ -966,7 +826,7 @@ struct TextureViewDesc {
   uint32_t numLayers = 1;
   uint32_t mipLevel = 0;
   uint32_t numMipLevels = 1;
-  ComponentMapping components = {};
+  VkComponentMapping components = {};
 };
 
 enum AccelStructType : uint8_t {
@@ -1036,7 +896,7 @@ struct AccelStructDesc {
   BufferHandle vertexBuffer;
   uint32_t vertexStride = 0; // zero means the size of `vertexFormat`
   uint32_t numVertices = 0;
-  IndexFormat indexFormat = IndexFormat_UI32;
+  VkIndexType indexFormat = VK_INDEX_TYPE_UINT32;
   BufferHandle indexBuffer;
   BufferHandle transformBuffer;
   BufferHandle instancesBuffer;
@@ -1078,7 +938,7 @@ class ICommandBuffer {
   virtual void cmdBindDepthState(const DepthState& state) = 0;
 
   virtual void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset = 0) = 0;
-  virtual void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t indexBufferOffset = 0) = 0;
+  virtual void cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexFormat, uint64_t indexBufferOffset = 0) = 0;
   virtual void cmdPushConstants(const void* data, size_t size, size_t offset = 0) = 0;
   template<typename Struct>
   void cmdPushConstants(const Struct& data, size_t offset = 0) {
@@ -1131,7 +991,7 @@ class ICommandBuffer {
   virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
   virtual void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) = 0;
 
-  virtual void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers = {}) = 0;
+  virtual void cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers = {}) = 0;
   virtual void cmdCopyImage(TextureHandle src,
                             TextureHandle dst,
                             const Dimensions& extent,
@@ -1233,12 +1093,12 @@ class IContext {
 
   virtual TextureHandle getCurrentSwapchainTexture() = 0;
   virtual Format getSwapchainFormat() const = 0;
-  virtual ColorSpace getSwapchainColorSpace() const = 0;
+  virtual VkColorSpaceKHR getSwapchainColorSpace() const = 0;
   virtual uint32_t getSwapchainCurrentImageIndex() const = 0;
   virtual uint32_t getNumSwapchainImages() const = 0;
   virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
-  [[nodiscard]] virtual bool setCurrentPresentMode(PresentMode mode) = 0; // VK_KHR_swapchain_maintenance1
-  [[nodiscard]] virtual PresentMode getCurrentPresentMode() const = 0;
+  [[nodiscard]] virtual bool setCurrentPresentMode(VkPresentModeKHR mode) = 0; // VK_KHR_swapchain_maintenance1
+  [[nodiscard]] virtual VkPresentModeKHR getCurrentPresentMode() const = 0;
 
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
@@ -1282,19 +1142,19 @@ struct ContextConfig {
   VulkanVersion vulkanVersion = VulkanVersion_1_3;
   bool terminateOnValidationError = false; // invoke std::terminate() on any validation error
   bool enableValidation = true;
-  lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
+  VkColorSpaceKHR swapchainRequestedColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;
   // Define preferred present modes, the first available present mode will  be used. PresentMode_FIFO is always available
-  lvk::PresentMode presentModes[kMaxPresentModes] = {
+  VkPresentModeKHR presentModes[kMaxPresentModes] = {
 #if defined(__linux__) || defined(_M_ARM64)
-      PresentMode_Immediate,
+      VK_PRESENT_MODE_IMMEDIATE_KHR,
 #endif // __linux__
-      PresentMode_Mailbox,
-      PresentMode_Immediate,
-      PresentMode_FIFO_Relaxed,
-      PresentMode_FIFO,
+      VK_PRESENT_MODE_MAILBOX_KHR,
+      VK_PRESENT_MODE_IMMEDIATE_KHR,
+      VK_PRESENT_MODE_FIFO_RELAXED_KHR,
+      VK_PRESENT_MODE_FIFO_KHR,
   };
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
@@ -1334,7 +1194,7 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
                                                                 uint32_t width,
                                                                 uint32_t height,
                                                                 const lvk::ContextConfig& cfg,
-                                                                lvk::HWDeviceType preferredDeviceType = lvk::HWDeviceType_Discrete,
+                                                                VkPhysicalDeviceType preferredDeviceType = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU,
                                                                 int selectedDevice = -1);
 #endif // LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)
 
