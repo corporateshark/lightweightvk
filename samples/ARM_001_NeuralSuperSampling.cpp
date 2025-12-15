@@ -533,18 +533,18 @@ float aoRadius_ = 8.0f;
 float aoPower_ = 1.0f;
 
 const lvk::RenderPass renderPassOffscreen_ = {
-    .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
-              {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
-    .depth = {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearDepth = 1.0f},
+    .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+              {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
+    .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearDepth = 1.0f},
 };
 const lvk::RenderPass renderPassMain_ = {
-    .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+    .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
 };
 const lvk::RenderPass renderPassShadow_ = {
-    .depth = {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearDepth = 1.0f},
+    .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearDepth = 1.0f},
 };
-const lvk::DepthState depthState_ = {.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true};
-const lvk::DepthState depthStateLEqual_ = {.compareOp = lvk::CompareOp_LessEqual, .isDepthWriteEnabled = true};
+const lvk::DepthState depthState_ = {.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true};
+const lvk::DepthState depthStateLEqual_ = {.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL, .isDepthWriteEnabled = true};
 
 bool isShadowMapDirty_ = true;
 
@@ -667,8 +667,8 @@ void createPipelines() {
           .smFrag = res_.smMeshFrag,
           .color = {{.format = ctx_->getFormat(res_.texColorLR)}, {.format = ctx_->getFormat(res_.texMotionLR)}},
           .depthFormat = ctx_->getFormat(res_.texDepthLR),
-          .cullMode = lvk::CullMode_Back,
-          .frontFace = lvk::WindingMode_CCW,
+          .cullMode = VK_CULL_MODE_BACK_BIT,
+          .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
           .debugName = "Pipeline: mesh",
       },
       nullptr);
@@ -679,7 +679,7 @@ void createPipelines() {
           .smVert = res_.smShadowVert,
           .smFrag = res_.smShadowFrag,
           .depthFormat = ctx_->getFormat(res_.texShadowMap),
-          .cullMode = lvk::CullMode_None,
+          .cullMode = VK_CULL_MODE_NONE,
           .debugName = "Pipeline: shadow",
       },
       nullptr);
@@ -689,7 +689,7 @@ void createPipelines() {
           .smVert = res_.smFullscreenVert,
           .smFrag = res_.smFullscreenFrag,
           .color = {{.format = ctx_->getSwapchainFormat()}},
-          .cullMode = lvk::CullMode_None,
+          .cullMode = VK_CULL_MODE_NONE,
           .debugName = "Pipeline: fullscreen",
       },
       nullptr);
@@ -700,8 +700,8 @@ void createPipelines() {
           .smFrag = res_.smSkyboxFrag,
           .color = {{.format = ctx_->getFormat(res_.texColorLR)}, {.format = ctx_->getFormat(res_.texMotionLR)}},
           .depthFormat = ctx_->getFormat(res_.texDepthLR),
-          .cullMode = lvk::CullMode_Front,
-          .frontFace = lvk::WindingMode_CCW,
+          .cullMode = VK_CULL_MODE_FRONT_BIT,
+          .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
           .debugName = "Pipeline: skybox",
       },
       nullptr);
@@ -726,21 +726,21 @@ bool initScene(VulkanApp& app) {
   res_.ubPerObject = createUniformBuffer(sizeof(UniformsPerObject), "Buffer: uniforms (per object)");
 
   res_.sampler = ctx_->createSampler({
-      .mipMap = lvk::SamplerMip_Linear,
-      .wrapU = lvk::SamplerWrap_Repeat,
-      .wrapV = lvk::SamplerWrap_Repeat,
+      .mipMap = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
       .debugName = "Sampler: linear",
   });
   res_.samplerShadow = ctx_->createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
-      .depthCompareOp = lvk::CompareOp_LessEqual,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
       .depthCompareEnabled = true,
       .debugName = "Sampler: shadow",
   });
   res_.samplerLinearClamp = ctx_->createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       .debugName = "Sampler: linear clamp",
   });
 
@@ -1797,7 +1797,7 @@ struct NeuralSuperSampling {
           .format = lvk::Format_R_I8,
           .rank = 4,
           .dimensions = {dims[0], dims[1], dims[2], dims[3]},
-          .usage = lvk::TensorUsageBits_DataGraph,
+          .usage = VK_TENSOR_USAGE_DATA_GRAPH_BIT_ARM,
       };
     };
     bool tensorsReady = hasTensors;
@@ -1813,8 +1813,8 @@ struct NeuralSuperSampling {
       LLOGW("NSS: cannot create the tensors: %s\n", result.message);
     }
     // the cooperative matrices always write the feedback into its buffer and copy it into the texture
-    feedbackAliasing = tensorsReady &&
-                       (ctx->getTensorFormatSupport(lvk::Format_R_I8, lvk::TensorTiling_Optimal) & lvk::TensorUsageBits_ImageAliasing);
+    feedbackAliasing = tensorsReady && (ctx->getTensorFormatSupport(lvk::Format_R_I8, VK_TENSOR_TILING_OPTIMAL_ARM) &
+                                        VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM);
     if (feedbackAliasing) {
       texFeedback = ctx->createTexture({
           .type = lvk::TextureType_2D,
@@ -1883,10 +1883,10 @@ struct NeuralSuperSampling {
         .debugName = "NSS: reconstructed previous depth",
     });
     samplerPoint = ctx->createSampler({
-        .minFilter = lvk::SamplerFilter_Nearest,
-        .magFilter = lvk::SamplerFilter_Nearest,
-        .wrapU = lvk::SamplerWrap_Clamp,
-        .wrapV = lvk::SamplerWrap_Clamp,
+        .minFilter = VK_FILTER_NEAREST,
+        .magFilter = VK_FILTER_NEAREST,
+        .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .debugName = "NSS: point clamp",
     });
     bufConstants = ctx->createBuffer({
@@ -2441,7 +2441,7 @@ VULKAN_APP_MAIN {
             .perObject = ctx_->gpuAddress(res_.ubPerObject),
         };
         buffer.cmdPushConstants(bindings);
-        buffer.cmdBindIndexBuffer(res_.ib0, lvk::IndexFormat_UI32);
+        buffer.cmdBindIndexBuffer(res_.ib0, VK_INDEX_TYPE_UINT32);
         buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
         buffer.cmdPopDebugGroupLabel();
       }
@@ -2484,7 +2484,7 @@ VULKAN_APP_MAIN {
             .aoPower = aoPower_,
         };
         buffer.cmdPushConstants(bindings);
-        buffer.cmdBindIndexBuffer(res_.ib0, lvk::IndexFormat_UI32);
+        buffer.cmdBindIndexBuffer(res_.ib0, VK_INDEX_TYPE_UINT32);
         buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
         buffer.cmdPopDebugGroupLabel();
 

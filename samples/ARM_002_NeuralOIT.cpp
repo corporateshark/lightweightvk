@@ -1218,14 +1218,14 @@ VULKAN_APP_MAIN {
   }
 
   lvk::Holder<lvk::SamplerHandle> sampler = ctx->createSampler({
-      .mipMap = lvk::SamplerMip_Linear,
-      .wrapU = lvk::SamplerWrap_Repeat,
-      .wrapV = lvk::SamplerWrap_Repeat,
+      .mipMap = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
       .debugName = "Sampler: linear",
   });
   lvk::Holder<lvk::SamplerHandle> samplerClamp = ctx->createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       .debugName = "Sampler: clamp",
   });
 
@@ -1242,37 +1242,37 @@ VULKAN_APP_MAIN {
   const lvk::ColorAttachment blendPremultiplied = {
       .format = formatColor,
       .blendEnabled = true,
-      .srcRGBBlendFactor = lvk::BlendFactor_One,
-      .srcAlphaBlendFactor = lvk::BlendFactor_One,
-      .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
-      .dstAlphaBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
+      .srcRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+      .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+      .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+      .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
   };
   auto additive = [](lvk::Format format) -> lvk::ColorAttachment {
     return {
         .format = format,
         .blendEnabled = true,
-        .srcRGBBlendFactor = lvk::BlendFactor_One,
-        .srcAlphaBlendFactor = lvk::BlendFactor_One,
-        .dstRGBBlendFactor = lvk::BlendFactor_One,
-        .dstAlphaBlendFactor = lvk::BlendFactor_One,
+        .srcRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
     };
   };
   const lvk::ColorAttachment blendAdditive = additive(formatColor);
   const lvk::ColorAttachment blendAdditiveTransmittance = {
       .format = formatColor,
       .blendEnabled = true,
-      .srcRGBBlendFactor = lvk::BlendFactor_One,
-      .srcAlphaBlendFactor = lvk::BlendFactor_Zero,
-      .dstRGBBlendFactor = lvk::BlendFactor_One,
-      .dstAlphaBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
+      .srcRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+      .srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+      .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+      .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
   };
   const lvk::ColorAttachment blendRevealage = {
       .format = formatColor,
       .blendEnabled = true,
-      .srcRGBBlendFactor = lvk::BlendFactor_Zero,
-      .srcAlphaBlendFactor = lvk::BlendFactor_Zero,
-      .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcColor,
-      .dstAlphaBlendFactor = lvk::BlendFactor_OneMinusSrcColor,
+      .srcRGBBlendFactor = VK_BLEND_FACTOR_ZERO,
+      .srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+      .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+      .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
   };
   const lvk::ColorAttachment blendCount = additive(formatCount);
 
@@ -1281,7 +1281,7 @@ VULKAN_APP_MAIN {
       .smVert = smMeshVert,
       .smFrag = smABufferFrag,
       .color = {blendPremultiplied},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: A-buffer",
   });
   lvk::Holder<lvk::RenderPipelineHandle> pipelineWeighted = ctx->createRenderPipeline({
@@ -1289,7 +1289,7 @@ VULKAN_APP_MAIN {
       .smVert = smMeshVert,
       .smFrag = smWeightedFrag,
       .color = {blendAdditive, blendRevealage, blendCount},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: weighted blended",
   });
   lvk::Holder<lvk::RenderPipelineHandle> pipelineFeatures = ctx->createRenderPipeline({
@@ -1297,21 +1297,21 @@ VULKAN_APP_MAIN {
       .smVert = smMeshVert,
       .smFrag = smFeaturesFrag,
       .color = {blendAdditive, blendAdditiveTransmittance, blendCount},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: DFAOIT features",
   });
   lvk::Holder<lvk::RenderPipelineHandle> pipelineComposite = ctx->createRenderPipeline({
       .smVert = smFullscreenVert,
       .smFrag = smCompositeFrag,
       .color = {blendPremultiplied},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: A-buffer composite",
   });
   lvk::Holder<lvk::RenderPipelineHandle> pipelinePresent = ctx->createRenderPipeline({
       .smVert = smPresentVert,
       .smFrag = smPresentFrag,
       .color = {{.format = ctx->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: present",
   });
   lvk::Holder<lvk::ComputePipelineHandle> pipelineError = ctx->createComputePipeline({.smComp = smErrorComp});
@@ -1349,7 +1349,7 @@ VULKAN_APP_MAIN {
     LVK_PROFILER_FUNCTION();
 
     const lvk::Dimensions dimSwapchain = ctx->getDimensions(views[0].colorTexture);
-    const lvk::SurfaceTransform surfaceTransform = ctx->getSwapchainSurfaceTransform();
+    const VkSurfaceTransformFlagBitsKHR surfaceTransform = ctx->getSwapchainSurfaceTransform();
     const lvk::Dimensions dim = lvk::isQuarterTurn(surfaceTransform) ? lvk::Dimensions{dimSwapchain.height, dimSwapchain.width, 1}
                                                                      : dimSwapchain;
     const uint32_t viewSize = dim.width * dim.height;
@@ -1438,7 +1438,7 @@ VULKAN_APP_MAIN {
     auto drawScene = [&](lvk::RenderPipelineHandle pipeline) {
       buf.cmdBindRenderPipeline(pipeline);
       buf.cmdBindVertexBuffer(0, vb0);
-      buf.cmdBindIndexBuffer(ib0, lvk::IndexFormat_UI32);
+      buf.cmdBindIndexBuffer(ib0, VK_INDEX_TYPE_UINT32);
       buf.cmdPushConstants(pcMesh);
       buf.cmdDrawIndexed(numIndices);
     };
@@ -1446,17 +1446,20 @@ VULKAN_APP_MAIN {
     if (needExact) {
       buf.cmdPushDebugGroupLabel("A-buffer", 0xff0000ff);
       buf.cmdFillBuffer(aBuffer, 0, getKeysSize(viewSize, layers), 0xFFFFFFFF);
-      buf.cmdBeginRendering(
-          lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}}},
-          lvk::Framebuffer{.color = {{.texture = tailTexture}}},
+      buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                                       .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}}},
+                            lvk::Framebuffer{.color = {{.texture = tailTexture}}},
           {.buffers = {aBuffer}});
       drawScene(pipelineABuffer);
       buf.cmdEndRendering();
-      buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear,
-                                                       .storeOp = lvk::StoreOp_Store,
+      buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                                        .clearColor = {background.r, background.g, background.b, background.a}}}},
                             lvk::Framebuffer{.color = {{.texture = texExact}}},
-                            {.sampledImages = {tailTexture}, .buffers = {aBuffer}, .buffersSrcStages = lvk::PipelineStageBits_Fragment});
+                            {.sampledImages = {tailTexture},
+                             .buffers = {aBuffer},
+                             .buffersSrcStages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT});
       buf.cmdBindRenderPipeline(pipelineComposite);
       buf.cmdPushConstants(CompositePushConstants{
           .aBuffer = ctx->gpuAddress(aBuffer),
@@ -1474,9 +1477,11 @@ VULKAN_APP_MAIN {
     if (technique == Technique_WeightedBlended) {
       buf.cmdPushDebugGroupLabel("Weighted blended: accumulate", 0xffff00ff);
       buf.cmdBeginRendering(
-          lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0, 0, 0, 0}},
-                                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1, 1, 1, 1}},
-                                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0, 0, 0, 0}}}},
+          lvk::RenderPass{
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0, 0, 0, 0}},
+                        {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {1, 1, 1, 1}},
+                        {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0, 0, 0, 0}}},
+          },
           lvk::Framebuffer{.color = {{.texture = texSum}, {.texture = texAccumulated}, {.texture = texCount}}});
       drawScene(pipelineWeighted);
       buf.cmdEndRendering();
@@ -1520,9 +1525,11 @@ VULKAN_APP_MAIN {
       buf.cmdPushDebugGroupLabel("DFAOIT: features", 0xff00ff00);
       buf.cmdFillBuffer(nearestBuffer, 0, getKeysSize(viewSize, numNearest), 0xFFFFFFFF);
       buf.cmdBeginRendering(
-          lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0, 0, 0, 0}},
-                                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0, 0, 0, 1}},
-                                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0, 0, 0, 0}}}},
+          lvk::RenderPass{
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0, 0, 0, 0}},
+                        {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0, 0, 0, 1}},
+                        {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0, 0, 0, 0}}},
+          },
           lvk::Framebuffer{.color = {{.texture = texSum}, {.texture = texAccumulated}, {.texture = texCount}}},
           {.buffers = {nearestBuffer}});
       drawScene(pipelineFeatures);
@@ -1540,7 +1547,7 @@ VULKAN_APP_MAIN {
                         {
                             .sampledImages = {texSum, texAccumulated, texCount},
                             .buffers = {nearestBuffer, slotsBuffer, counterBuffer},
-                            .buffersSrcStages = lvk::PipelineStageBits_Fragment | lvk::PipelineStageBits_Transfer,
+                            .buffersSrcStages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
                             .tensors = {tensorInput},
                         });
         const lvk::TensorHandle graphInputs[] = {tensorInput};
@@ -1571,7 +1578,7 @@ VULKAN_APP_MAIN {
                             .sampledImages = {texSum, texAccumulated, texCount},
                             .storageImages = {texApproximate},
                             .buffers = {nearestBuffer},
-                            .buffersSrcStages = lvk::PipelineStageBits_Fragment | lvk::PipelineStageBits_Transfer,
+                            .buffersSrcStages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
                         });
         buf.cmdPopDebugGroupLabel();
 
@@ -1604,7 +1611,7 @@ VULKAN_APP_MAIN {
     const lvk::TextureHandle texResult = needApproximate ? texApproximate : texExact;
     const lvk::Framebuffer framebuffer = {.color = {{.texture = views[0].colorTexture}}};
 
-    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_DontCare, .storeOp = lvk::StoreOp_Store}}},
+    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}}},
                           framebuffer,
                           {.sampledImages = {texResult, measureError ? lvk::TextureHandle(texExact) : texResult}});
     buf.cmdBindRenderPipeline(pipelinePresent);

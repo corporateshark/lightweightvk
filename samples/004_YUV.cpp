@@ -120,7 +120,7 @@ void createDemo(VulkanApp& app, const char* name, lvk::Format format, const char
       .format = format,
       .texture = std::move(texture),
       .renderPipelineState = ctx->createRenderPipeline({
-          .topology = lvk::Topology_TriangleStrip,
+          .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
           .smVert = res_.vert,
           .smFrag = res_.frag,
           .specInfo = {.entries = {{.constantId = 0, .size = sizeof(uint32_t)}}, .data = &textureId, .dataSize = sizeof(textureId)},
@@ -204,7 +204,7 @@ VULKAN_APP_MAIN {
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
-    buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_DontCare}}}, framebuffer);
+    buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE}}}, framebuffer);
 
     if (!res_.demos.empty()) {
       const YUVFormatDemo& demo = res_.demos[currentDemo_];

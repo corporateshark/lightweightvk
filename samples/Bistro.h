@@ -677,8 +677,9 @@ lvk::TextureHandle createTextureFromLoadedImage(const LoadedImage& img) {
       .dimensions = {img.w, img.h},
       .usage = lvk::TextureUsageBits_Sampled,
       .numMipLevels = lvk::calcNumMipLevels(img.w, img.h),
-      .components = (img.channels == 1) ? lvk::ComponentMapping{lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R}
-                                        : lvk::ComponentMapping{},
+      .components = (img.channels == 1)
+                        ? VkComponentMapping{VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R}
+                        : VkComponentMapping{},
       .data = initialData,
       .dataNumMipLevels = initialDataNumMipLevels,
       .generateMipmaps = generateMipmaps,
@@ -1299,20 +1300,20 @@ SceneAccelStructs createSceneAccelStructs(lvk::IContext* ctx,
       continue;
     }
     lvk::AccelStructDesc blasDesc{
-        .type = lvk::AccelStructType_BLAS,
-        .geometryType = lvk::AccelStructGeomType_Triangles,
-        .geometryFlags = r == 0 ? uint8_t(lvk::AccelStructGeometryFlagBits_Opaque) : uint8_t(0),
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+        .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+        .geometryFlags = r == 0 ? VkGeometryFlagsKHR(VK_GEOMETRY_OPAQUE_BIT_KHR) : VkGeometryFlagsKHR(0),
         .vertexFormat = lvk::VertexFormat_Float3,
         .vertexBuffer = vertexBuffer,
         .vertexStride = sizeof(VertexData),
         .numVertices = numVertices,
-        .indexFormat = lvk::IndexFormat_UI32,
+        .indexType = VK_INDEX_TYPE_UINT32,
         .indexBuffer = indexBuffer,
         .buildRange = {.primitiveCount = end - begin},
-        .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+        .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
         .debugName = r == 0 ? "BLAS: opaque" : "BLAS",
     };
-    const lvk::AccelStructSizes sizes = ctx->getAccelStructSizes(blasDesc);
+    const VkAccelerationStructureBuildSizesInfoKHR sizes = ctx->getAccelStructSizes(blasDesc);
     const uint32_t numBLAS = 1 + std::max(uint32_t(sizes.buildScratchSize / maxStorageBufferSize),
                                           uint32_t(sizes.accelerationStructureSize / maxStorageBufferSize));
     const uint32_t primitiveCount = (end - begin + numBLAS - 1) / numBLAS;
@@ -1321,11 +1322,11 @@ SceneAccelStructs createSceneAccelStructs(lvk::IContext* ctx,
       blasDesc.buildRange.primitiveCount = std::min(primitiveCount, end - first);
       out.BLAS.emplace_back(ctx->createAccelerationStructure(blasDesc));
       instances.push_back(lvk::AccelStructInstance{
-          .transform = (const lvk::mat3x4&)transform,
+          .transform = (const VkTransformMatrixKHR&)transform,
           .instanceCustomIndex = first,
           .mask = 0xff,
           .instanceShaderBindingTableRecordOffset = 0,
-          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
           .accelerationStructureReference = ctx->gpuAddress(out.BLAS.back()),
       });
     }
@@ -1338,11 +1339,11 @@ SceneAccelStructs createSceneAccelStructs(lvk::IContext* ctx,
       .debugName = "Buffer: TLAS instances",
   });
   out.TLAS = ctx->createAccelerationStructure({
-      .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = instancesBuffer,
       .buildRange = {.primitiveCount = uint32_t(instances.size())},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = "TLAS",
   });
   return out;

@@ -106,7 +106,7 @@ bool VgfModel::TensorInfo::matches(ldr::Span<const int64_t> dims) const {
   return true;
 }
 
-TensorDesc VgfModel::TensorInfo::toTensorDesc(TensorUsageFlags usage, TensorTiling tiling) const {
+TensorDesc VgfModel::TensorInfo::toTensorDesc(VkTensorUsageFlagsARM usage, VkTensorTilingARM tiling) const {
   TensorDesc desc = {
       .format = format,
       .rank = rank,

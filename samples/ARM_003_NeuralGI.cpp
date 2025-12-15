@@ -2918,20 +2918,20 @@ VULKAN_APP_MAIN {
                 {.format = formatNormal},
                 {.format = formatAlbedo}},
       .depthFormat = formatDepth,
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: G-buffer",
   });
   lvk::Holder<lvk::RenderPipelineHandle> pipelinePresent = ctx->createRenderPipeline({
       .smVert = smPresentVert,
       .smFrag = smPresentFrag,
       .color = {{.format = ctx->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: present",
   });
   const vec4 exposureInit = vec4(0.0f);
   lvk::Holder<lvk::BufferHandle> exposureBuffer = createStorageBuffer(sizeof(vec4), &exposureInit, "Buffer: exposure");
   lvk::Holder<lvk::SamplerHandle> samplerMaterials = ctx->createSampler({
-      .mipMap = lvk::SamplerMip_Linear,
+      .mipMap = VK_SAMPLER_MIPMAP_MODE_LINEAR,
       .debugName = "Sampler: materials",
   });
 
@@ -3149,12 +3149,14 @@ VULKAN_APP_MAIN {
   auto renderGBuffer = [&](lvk::ICommandBuffer& buf) {
     buf.cmdBeginRendering(
         lvk::RenderPass{
-            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
-                      {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
-                      {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
-                      {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 1.0f, 1.0f}},
-                      {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
-            .depth = {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_DontCare, .clearDepth = 1.0f},
+            .color = {
+                {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
+                {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
+                {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
+                {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 1.0f, 1.0f}},
+                {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}},
+            },
+            .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE, .clearDepth = 1.0f},
         },
         lvk::Framebuffer{
             .color = {{.texture = texPosition},
@@ -3165,9 +3167,9 @@ VULKAN_APP_MAIN {
             .depthStencil = {.texture = texDepth},
         });
     buf.cmdBindRenderPipeline(pipelineGBuffer);
-    buf.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+    buf.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
     buf.cmdBindVertexBuffer(0, vb0);
-    buf.cmdBindIndexBuffer(ib0, lvk::IndexFormat_UI32);
+    buf.cmdBindIndexBuffer(ib0, VK_INDEX_TYPE_UINT32);
     buf.cmdPushConstants(GBufferPushConstants{
         .perFrame = ctx->gpuAddress(bufPerFrame),
         .materials = ctx->gpuAddress(sbMaterials),
@@ -3702,7 +3704,7 @@ VULKAN_APP_MAIN {
       buf.cmdDispatch({1, 1, 1}, {.sampledImages = presentInputs, .buffers = {exposureBuffer}});
     }
 
-    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_DontCare, .storeOp = lvk::StoreOp_Store}}},
+    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}}},
                           framebuffer,
                           {.sampledImages = presentInputs, .buffers = {exposureBuffer}});
     buf.cmdBindRenderPipeline(pipelinePresent);
