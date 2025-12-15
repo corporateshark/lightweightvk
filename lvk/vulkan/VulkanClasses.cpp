@@ -2589,6 +2589,57 @@ void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset,
   bufferBarrier(buffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, dstStage);
 }
 
+void lvk::CommandBuffer::cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferOffset, BufferHandle dstBuffer, size_t dstBufferOffset, size_t size) {
+  LVK_PROFILER_FUNCTION();
+  LVK_ASSERT(srcBuffer.valid());
+  LVK_ASSERT(dstBuffer.valid());
+  LVK_ASSERT(size);
+
+  lvk::VulkanBuffer* srcBuf = ctx_->buffersPool_.get(srcBuffer);
+  lvk::VulkanBuffer* dstBuf = ctx_->buffersPool_.get(dstBuffer);
+
+  bufferBarrier(srcBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+  bufferBarrier(dstBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+
+  const VkBufferCopy2 copyRegion = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2,
+      .srcOffset = srcBufferOffset,
+      .dstOffset = dstBufferOffset,
+      .size = size,
+  };
+
+  const VkCopyBufferInfo2 copyInfo = {
+      .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2,
+      .srcBuffer = srcBuf->vkBuffer_,
+      .dstBuffer = dstBuf->vkBuffer_,
+      .regionCount = 1,
+      .pRegions = &copyRegion,
+  };
+
+  vkCmdCopyBuffer2(wrapper_->cmdBuf_, &copyInfo);
+
+  VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+
+  if (srcBuf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
+    srcStage |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+  }
+  if (srcBuf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
+    srcStage |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+  }
+
+  VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+
+  if (dstBuf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
+    dstStage |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+  }
+  if (dstBuf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
+    dstStage |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+  }
+
+  bufferBarrier(srcBuffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, srcStage);
+  bufferBarrier(dstBuffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, dstStage);
+}
+
 void lvk::CommandBuffer::cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) {
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT(buffer.valid());
