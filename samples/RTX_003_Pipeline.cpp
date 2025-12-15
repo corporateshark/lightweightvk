@@ -529,7 +529,7 @@ bool initModel(VulkanApp& app) {
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.ib0_,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = totalPrimitiveCount},
@@ -655,7 +655,7 @@ VULKAN_APP_MAIN {
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
       .color = {{.format = app.ctx_->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: fullscreen",
   });
 
