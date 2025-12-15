@@ -216,8 +216,8 @@ VULKAN_APP_MAIN {
         .smVert = vert_,
         .smFrag = frag_,
         .color = {{.format = ctx->getSwapchainFormat()}},
-        .cullMode = lvk::CullMode_Back,
-        .frontFace = lvk::WindingMode_CW,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .debugName = "Pipeline: mesh",
     });
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_ = ctx->createRenderPipeline({
@@ -282,7 +282,7 @@ VULKAN_APP_MAIN {
         buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
         buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
         buffer.cmdBindDepthState({});
-        buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
+        buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT16);
         struct {
           mat4 mvp;
           uint32_t texture;

@@ -51,7 +51,6 @@ static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
 static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
-static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
 
 namespace {
 
@@ -145,59 +144,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-VkPresentModeKHR presentModeToVkPresentMode(lvk::PresentMode mode) {
-  switch (mode) {
-  case lvk::PresentMode_Immediate:
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
-  case lvk::PresentMode_Mailbox:
-    return VK_PRESENT_MODE_MAILBOX_KHR;
-  case lvk::PresentMode_FIFO:
-    return VK_PRESENT_MODE_FIFO_KHR;
-  case lvk::PresentMode_FIFO_Relaxed:
-    return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
-  case lvk::PresentMode_Shared_Demand_Refresh:
-    return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
-  case lvk::PresentMode_Shared_Continuous_Refresh:
-    return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
-  case lvk::PresentMode_FIFO_Latest_Ready:
-    return VK_PRESENT_MODE_FIFO_LATEST_READY_KHR;
-  }
-  LVK_ASSERT(false);
-  return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-VkIndexType indexFormatToVkIndexType(lvk::IndexFormat fmt) {
-  switch (fmt) {
-  case lvk::IndexFormat_UI8:
-    return VK_INDEX_TYPE_UINT8_EXT;
-  case lvk::IndexFormat_UI16:
-    return VK_INDEX_TYPE_UINT16;
-  case lvk::IndexFormat_UI32:
-    return VK_INDEX_TYPE_UINT32;
-  };
-  LVK_ASSERT(false);
-  return VK_INDEX_TYPE_NONE_KHR;
-}
-
-VkPrimitiveTopology topologyToVkPrimitiveTopology(lvk::Topology t) {
-  switch (t) {
-  case lvk::Topology_Point:
-    return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-  case lvk::Topology_Line:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-  case lvk::Topology_LineStrip:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-  case lvk::Topology_Triangle:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-  case lvk::Topology_TriangleStrip:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-  case lvk::Topology_Patch:
-    return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
-  }
-  LVK_ASSERT_MSG(false, "Implement Topology = %u", (uint32_t)t);
-  return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
-}
-
 VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
   switch (a) {
   case lvk::LoadOp_Invalid:
@@ -232,21 +178,8 @@ VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
   return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
-VkResolveModeFlagBits resolveModeToVkResolveModeFlagBits(lvk::ResolveMode mode, VkResolveModeFlags supported) {
-  switch (mode) {
-  case lvk::ResolveMode_None:
-    return VK_RESOLVE_MODE_NONE;
-  case lvk::ResolveMode_SampleZero:
-    return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Average:
-    return supported & VK_RESOLVE_MODE_AVERAGE_BIT ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Min:
-    return supported & VK_RESOLVE_MODE_MIN_BIT ? VK_RESOLVE_MODE_MIN_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Max:
-    return supported & VK_RESOLVE_MODE_MAX_BIT ? VK_RESOLVE_MODE_MAX_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  }
-  LVK_ASSERT(false);
-  return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+VkResolveModeFlagBits getSupportedVkResolveModeFlagBits(VkResolveModeFlagBits mode, VkResolveModeFlags supported) {
+  return supported & mode ? mode : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 }
 
 VkShaderStageFlagBits shaderStageToVkShaderStage(lvk::ShaderStage stage) {
@@ -321,141 +254,6 @@ VkBuildAccelerationStructureFlagsKHR buildFlagsToVkBuildAccelerationStructureFla
   }
 
   return flags;
-}
-
-VkPolygonMode polygonModeToVkPolygonMode(lvk::PolygonMode mode) {
-  switch (mode) {
-  case lvk::PolygonMode_Fill:
-    return VK_POLYGON_MODE_FILL;
-  case lvk::PolygonMode_Line:
-    return VK_POLYGON_MODE_LINE;
-  case lvk::PolygonMode_Point:
-    return VK_POLYGON_MODE_POINT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing polygon fill mode");
-  return VK_POLYGON_MODE_FILL;
-}
-
-VkBlendFactor blendFactorToVkBlendFactor(lvk::BlendFactor value) {
-  switch (value) {
-  case lvk::BlendFactor_Zero:
-    return VK_BLEND_FACTOR_ZERO;
-  case lvk::BlendFactor_One:
-    return VK_BLEND_FACTOR_ONE;
-  case lvk::BlendFactor_SrcColor:
-    return VK_BLEND_FACTOR_SRC_COLOR;
-  case lvk::BlendFactor_OneMinusSrcColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-  case lvk::BlendFactor_DstColor:
-    return VK_BLEND_FACTOR_DST_COLOR;
-  case lvk::BlendFactor_OneMinusDstColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-  case lvk::BlendFactor_SrcAlpha:
-    return VK_BLEND_FACTOR_SRC_ALPHA;
-  case lvk::BlendFactor_OneMinusSrcAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-  case lvk::BlendFactor_DstAlpha:
-    return VK_BLEND_FACTOR_DST_ALPHA;
-  case lvk::BlendFactor_OneMinusDstAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-  case lvk::BlendFactor_BlendColor:
-    return VK_BLEND_FACTOR_CONSTANT_COLOR;
-  case lvk::BlendFactor_OneMinusBlendColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-  case lvk::BlendFactor_BlendAlpha:
-    return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-  case lvk::BlendFactor_OneMinusBlendAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
-  case lvk::BlendFactor_SrcAlphaSaturated:
-    return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-  case lvk::BlendFactor_Src1Color:
-    return VK_BLEND_FACTOR_SRC1_COLOR;
-  case lvk::BlendFactor_OneMinusSrc1Color:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
-  case lvk::BlendFactor_Src1Alpha:
-    return VK_BLEND_FACTOR_SRC1_ALPHA;
-  case lvk::BlendFactor_OneMinusSrc1Alpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
-  default:
-    LVK_ASSERT(false);
-    return VK_BLEND_FACTOR_ONE; // default for unsupported values
-  }
-}
-
-VkBlendOp blendOpToVkBlendOp(lvk::BlendOp value) {
-  switch (value) {
-  case lvk::BlendOp_Add:
-    return VK_BLEND_OP_ADD;
-  case lvk::BlendOp_Subtract:
-    return VK_BLEND_OP_SUBTRACT;
-  case lvk::BlendOp_ReverseSubtract:
-    return VK_BLEND_OP_REVERSE_SUBTRACT;
-  case lvk::BlendOp_Min:
-    return VK_BLEND_OP_MIN;
-  case lvk::BlendOp_Max:
-    return VK_BLEND_OP_MAX;
-  }
-
-  LVK_ASSERT(false);
-  return VK_BLEND_OP_ADD;
-}
-
-VkCullModeFlags cullModeToVkCullMode(lvk::CullMode mode) {
-  switch (mode) {
-  case lvk::CullMode_None:
-    return VK_CULL_MODE_NONE;
-  case lvk::CullMode_Front:
-    return VK_CULL_MODE_FRONT_BIT;
-  case lvk::CullMode_Back:
-    return VK_CULL_MODE_BACK_BIT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing cull mode");
-  return VK_CULL_MODE_NONE;
-}
-
-VkFrontFace windingModeToVkFrontFace(lvk::WindingMode mode) {
-  switch (mode) {
-  case lvk::WindingMode_CCW:
-    return VK_FRONT_FACE_COUNTER_CLOCKWISE;
-  case lvk::WindingMode_CW:
-    return VK_FRONT_FACE_CLOCKWISE;
-  }
-  LVK_ASSERT_MSG(false, "Wrong winding order (cannot be more than 2)");
-  return VK_FRONT_FACE_CLOCKWISE;
-}
-
-VkStencilOp stencilOpToVkStencilOp(lvk::StencilOp op) {
-  switch (op) {
-  case lvk::StencilOp_Keep:
-    return VK_STENCIL_OP_KEEP;
-  case lvk::StencilOp_Zero:
-    return VK_STENCIL_OP_ZERO;
-  case lvk::StencilOp_Replace:
-    return VK_STENCIL_OP_REPLACE;
-  case lvk::StencilOp_IncrementClamp:
-    return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
-  case lvk::StencilOp_DecrementClamp:
-    return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
-  case lvk::StencilOp_Invert:
-    return VK_STENCIL_OP_INVERT;
-  case lvk::StencilOp_IncrementWrap:
-    return VK_STENCIL_OP_INCREMENT_AND_WRAP;
-  case lvk::StencilOp_DecrementWrap:
-    return VK_STENCIL_OP_DECREMENT_AND_WRAP;
-  }
-  LVK_ASSERT(false);
-  return VK_STENCIL_OP_KEEP;
-}
-
-VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate rate) {
-  switch (rate) {
-  case lvk::VertexInputRate_Vertex:
-    return VK_VERTEX_INPUT_RATE_VERTEX;
-  case lvk::VertexInputRate_Instance:
-    return VK_VERTEX_INPUT_RATE_INSTANCE;
-  }
-  LVK_ASSERT(false);
-  return VK_VERTEX_INPUT_RATE_VERTEX;
 }
 
 VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
@@ -684,7 +482,7 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
 }
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats,
-                                           lvk::ColorSpace requestedColorSpace,
+                                           VkColorSpaceKHR requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
   LVK_ASSERT(!formats.empty());
 
@@ -705,15 +503,15 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
     return false;
   };
 
-  auto colorSpaceToVkSurfaceFormat = [](lvk::ColorSpace colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
+  auto colorSpaceToVkSurfaceFormat = [](VkColorSpaceKHR colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
     switch (colorSpace) {
-    case lvk::ColorSpace_SRGB_NONLINEAR:
+    case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
       return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-    case lvk::ColorSpace_SRGB_EXTENDED_LINEAR:
+    case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
       if (hasSwapchainColorspaceExt)
         return VkSurfaceFormatKHR{VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT};
       [[fallthrough]];
-    case lvk::ColorSpace_HDR10:
+    case VK_COLOR_SPACE_HDR10_ST2084_EXT:
       if (hasSwapchainColorspaceExt) {
         return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_A2B10G10R10_UNORM_PACK32 : VK_FORMAT_A2R10G10B10_UNORM_PACK32,
                                   VK_COLOR_SPACE_HDR10_ST2084_EXT};
@@ -1158,10 +956,9 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   };
 
   auto chooseSwapPresentMode = [config = &ctx.config_](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
-    for (lvk::PresentMode mode : config->presentModes) {
-      const VkPresentModeKHR vkMode = presentModeToVkPresentMode(mode);
-      if (std::find(modes.cbegin(), modes.cend(), vkMode) != modes.cend()) {
-        return vkMode;
+    for (VkPresentModeKHR mode : config->presentModes) {
+      if (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend()) {
+        return mode;
       }
     }
     return VK_PRESENT_MODE_FIFO_KHR;
@@ -2409,7 +2206,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = (samples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
+        .resolveMode = (samples > 1) ? getSupportedVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                      : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -2456,7 +2253,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
           depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
-          resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
+          getSupportedVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
     }
     const VkExtent3D dim = depthTexture.vkExtent_;
     if (fbWidth) {
@@ -2599,9 +2396,8 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
 void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   LVK_PROFILER_FUNCTION();
 
-  const VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
   vkCmdSetDepthWriteEnable(wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
-  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
+  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (desc.compareOp != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
 
 #if defined(ANDROID)
   // This is a workaround for the issue.
@@ -2611,7 +2407,7 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
     return;
   }
 #endif
-  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
+  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, desc.compareOp);
 }
 
 void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset) {
@@ -2628,13 +2424,12 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
   vkCmdBindVertexBuffers2(wrapper_->cmdBuf_, index, 1, &buf->vkBuffer_, &bufferOffset, nullptr, nullptr);
 }
 
-void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t indexBufferOffset) {
+void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexFormat, uint64_t indexBufferOffset) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-  const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, indexBufferOffset, type);
+  vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, indexBufferOffset, indexFormat);
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
@@ -2960,10 +2755,8 @@ void lvk::CommandBuffer::cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query)
   vkCmdWriteTimestamp(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, vkPool, query);
 }
 
-void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) {
+void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) {
   LVK_PROFILER_GPU_ZONE("cmdClearColorImage()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_COPY);
-
-  static_assert(sizeof(ClearColorValue) == sizeof(VkClearColorValue));
 
   lvk::VulkanImage* img = ctx_->texturesPool_.get(tex);
 
@@ -4869,29 +4662,16 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     const lvk::ColorAttachment& attachment = desc.color[i];
     LVK_ASSERT(attachment.format != Format_Invalid);
     colorAttachmentFormats[i] = formatToVkFormat(attachment.format);
-    if (!attachment.blendEnabled) {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_FALSE,
-          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .colorBlendOp = VK_BLEND_OP_ADD,
-          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .alphaBlendOp = VK_BLEND_OP_ADD,
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-      };
-    } else {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_TRUE,
-          .srcColorBlendFactor = blendFactorToVkBlendFactor(attachment.srcRGBBlendFactor),
-          .dstColorBlendFactor = blendFactorToVkBlendFactor(attachment.dstRGBBlendFactor),
-          .colorBlendOp = blendOpToVkBlendOp(attachment.rgbBlendOp),
-          .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
-          .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
-          .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-      };
-    }
+    colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
+        .blendEnable = attachment.blendEnabled ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = attachment.srcRGBBlendFactor,
+        .dstColorBlendFactor = attachment.dstRGBBlendFactor,
+        .colorBlendOp = attachment.rgbBlendOp,
+        .srcAlphaBlendFactor = attachment.srcAlphaBlendFactor,
+        .dstAlphaBlendFactor = attachment.dstAlphaBlendFactor,
+        .alphaBlendOp = attachment.alphaBlendOp,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    };
   }
 
   const lvk::ShaderModuleState* vertModule = shaderModulesPool_.get(desc.smVert);
@@ -4989,19 +4769,19 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
-      .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
+      .primitiveTopology(desc.topology)
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
-      .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
+      .polygonMode(desc.polygonMode)
       .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.frontFaceStencil.stencilCompareOp))
+                       desc.frontFaceStencil.stencilFailureOp,
+                       desc.frontFaceStencil.depthStencilPassOp,
+                       desc.frontFaceStencil.depthFailureOp,
+                       desc.frontFaceStencil.stencilCompareOp)
       .stencilStateOps(VK_STENCIL_FACE_BACK_BIT,
-                       stencilOpToVkStencilOp(desc.backFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
+                       desc.backFaceStencil.stencilFailureOp,
+                       desc.backFaceStencil.depthStencilPassOp,
+                       desc.backFaceStencil.depthFailureOp,
+                       desc.backFaceStencil.stencilCompareOp)
       .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
       .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
       .shaderStage(taskModule
@@ -5020,8 +4800,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .shaderStage(geomModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
-      .cullMode(cullModeToVkCullMode(desc.cullMode))
-      .frontFace(windingModeToVkFrontFace(desc.frontFace))
+      .cullMode(desc.cullMode)
+      .frontFace(desc.frontFace)
       .vertexInputState(ciVertexInputState)
       .viewMask(viewMask)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
@@ -5461,7 +5241,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       rps.vkBindings_[rps.numBindings_++] = {
           .binding = attr.binding,
           .stride = vstate.inputBindings[attr.binding].stride,
-          .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate),
+          .inputRate = vstate.inputBindings[attr.binding].inputRate,
       };
     }
   }
@@ -6163,12 +5943,12 @@ lvk::Format lvk::VulkanContext::getSwapchainFormat() const {
   return vkFormatToFormat(swapchain_->getSurfaceFormat().format);
 }
 
-lvk::ColorSpace lvk::VulkanContext::getSwapchainColorSpace() const {
+VkColorSpaceKHR lvk::VulkanContext::getSwapchainColorSpace() const {
   if (!hasSwapchain()) {
-    return ColorSpace_SRGB_NONLINEAR;
+    return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   }
 
-  return vkColorSpaceToColorSpace(swapchain_->getSurfaceFormat().colorSpace);
+  return swapchain_->getSurfaceFormat().colorSpace;
 }
 
 uint32_t lvk::VulkanContext::getNumSwapchainImages() const {
@@ -6572,45 +6352,25 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
 #endif
 }
 
-uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices) {
+uint32_t lvk::VulkanContext::queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices) {
+  LVK_ASSERT(outDevices);
+  LVK_ASSERT(outProperties);
+
   // Physical devices
   uint32_t deviceCount = 0;
   VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, nullptr));
-  std::vector<VkPhysicalDevice> vkDevices(deviceCount);
-  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, vkDevices.data()));
 
-  auto convertVulkanDeviceTypeToLVK = [](VkPhysicalDeviceType vkDeviceType) -> HWDeviceType {
-    switch (vkDeviceType) {
-    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-      return HWDeviceType_Integrated;
-    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-      return HWDeviceType_Discrete;
-    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-      return HWDeviceType_External;
-    case VK_PHYSICAL_DEVICE_TYPE_CPU:
-      return HWDeviceType_Software;
-    default:
-      return HWDeviceType_Software;
-    }
-  };
+  if (maxOutDevices < deviceCount)
+    deviceCount = maxOutDevices;  
 
-  uint32_t numCompatibleDevices = 0;
+  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, outDevices));
+
 
   for (uint32_t i = 0; i < deviceCount; ++i) {
-    VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-
-    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
-
-    if (outDevices && numCompatibleDevices < maxOutDevices) {
-      outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, strlen(deviceProperties.deviceName));
-      numCompatibleDevices++;
-    }
+    vkGetPhysicalDeviceProperties(outDevices[i], &outProperties[i]);
   }
 
-  return numCompatibleDevices;
+  return deviceCount;
 }
 
 void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
@@ -6741,13 +6501,12 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
   outSizesInfo.buildScratchSize += alignment;
 }
 
-lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
-  if (desc.guid == 0UL) {
-    LLOGW("Invalid hardwareGuid(%lu)", desc.guid);
-    return Result(Result::Code::RuntimeError, "Vulkan is not supported");
+lvk::Result lvk::VulkanContext::initContext(VkPhysicalDevice physicalDevice) {
+  if (!physicalDevice) {
+    return Result(Result::Code::RuntimeError, "Vulkan is not supported (no VkPhysicalDevice specified)");
   }
 
-  vkPhysicalDevice_ = (VkPhysicalDevice)desc.guid;
+  vkPhysicalDevice_ = physicalDevice;
 
   useStaging_ = !isHostVisibleSingleHeapMemory(vkPhysicalDevice_);
 

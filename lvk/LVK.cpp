@@ -368,7 +368,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
                                                                      uint32_t width,
                                                                      uint32_t height,
                                                                      const lvk::ContextConfig& cfg,
-                                                                     lvk::HWDeviceType preferredDeviceType,
+                                                                     VkPhysicalDeviceType preferredDeviceType,
                                                                      int selectedDevice) {
   using namespace lvk;
 
@@ -397,8 +397,9 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #error Unsupported OS
 #endif
 
-  HWDeviceDesc devices[16];
-  const uint32_t numDevices = ctx->queryDevices(devices, LVK_ARRAY_NUM_ELEMENTS(devices));
+  VkPhysicalDevice devices[16];
+  VkPhysicalDeviceProperties devicePeroperties[16];
+  const uint32_t numDevices = ctx->queryDevices(devices, devicePeroperties, LVK_ARRAY_NUM_ELEMENTS(devices));
 
   if (!numDevices) {
     LVK_ASSERT_MSG(false, "GPU is not found");
@@ -406,20 +407,20 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   }
 
   if (selectedDevice < 0) {
-    selectedDevice = [preferredDeviceType, &devices, numDevices]() -> int {
+    selectedDevice = [preferredDeviceType, &devices, &devicePeroperties, numDevices]() -> int {
       // define device type priority order
-      HWDeviceType priority[4] = {preferredDeviceType};
+      VkPhysicalDeviceType priority[4] = {preferredDeviceType};
       {
         int index = 1;
-        for (int type = HWDeviceType_Integrated; type <= HWDeviceType_Software; type++) {
+        for (int type = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU; type <= VK_PHYSICAL_DEVICE_TYPE_CPU; type++) {
           if (type != preferredDeviceType)
-            priority[index++] = (HWDeviceType)type;
+            priority[index++] = (VkPhysicalDeviceType)type;
         }
       }
       // search devices in priority order
-      for (HWDeviceType type : priority) {
+      for (VkPhysicalDeviceType type : priority) {
         for (uint32_t i = 0; i < numDevices; i++) {
-          if (devices[i].type == type)
+          if (devicePeroperties[i].deviceType == type)
             return (int)i;
         }
       }

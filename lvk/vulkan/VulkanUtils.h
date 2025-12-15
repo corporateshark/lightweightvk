@@ -7,26 +7,10 @@
 
 #pragma once
 
-#define VMA_VULKAN_VERSION 1003000
-#define VMA_STATIC_VULKAN_FUNCTIONS 0
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
-
-// set to 1 to see very verbose debug console logs with Vulkan commands
-#define LVK_VULKAN_PRINT_COMMANDS 0
-
-#if !defined(VK_NO_PROTOTYPES)
-#define VK_NO_PROTOTYPES 1
-#endif // !defined(VK_NO_PROTOTYPES)
-
-// enable to use VulkanMemoryAllocator (VMA)
-#define LVK_VULKAN_USE_VMA 1
-
 #include <cassert>
 #include <cstdio>
 #include <vector>
 
-#include <volk.h>
-#include <vk_mem_alloc.h>
 #include <lvk/LVK.h>
 
 #define VK_ASSERT(func)                                            \
@@ -116,9 +100,7 @@ const char* getVkDeviceFaultAddressTypeString(VkDeviceFaultAddressTypeEXT type);
 uint32_t getBytesPerPixel(VkFormat format);
 uint32_t getNumImagePlanes(VkFormat format);
 lvk::Format vkFormatToFormat(VkFormat format);
-lvk::ColorSpace vkColorSpaceToColorSpace(VkColorSpaceKHR colorSpace);
 VkFormat formatToVkFormat(lvk::Format format);
-VkCompareOp compareOpToVkCompareOp(lvk::CompareOp func);
 VkExtent2D getImagePlaneExtent(VkExtent2D plane0, lvk::Format format, uint32_t plane);
 
 // raw Vulkan helpers: use this if you want to interop LightweightVK API with your own raw Vulkan API calls

@@ -127,7 +127,7 @@ void createDemo(lvk::IContext* ctx, const char* contentFolder, const char* name,
       .format = format,
       .texture = std::move(texture),
       .renderPipelineState = ctx->createRenderPipeline({
-          .topology = lvk::Topology_TriangleStrip,
+          .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
           .smVert = res_.vert,
           .smFrag = res_.frag,
           .specInfo = {.entries = {{.constantId = 0, .size = sizeof(uint32_t)}}, .data = &textureId, .dataSize = sizeof(textureId)},

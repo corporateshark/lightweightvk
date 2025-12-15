@@ -26,6 +26,9 @@
 #include <stdio.h>
 #include <thread>
 
+#include <lvk/HelpersImGui.h>
+#include <lvk/LVK.h>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
@@ -47,8 +50,6 @@
 #include <taskflow/taskflow.hpp>
 
 #include <implot/implot.h>
-#include <lvk/HelpersImGui.h>
-#include <lvk/LVK.h>
 
 #if defined(ANDROID)
 #include <android_native_app_glue.h>
@@ -699,19 +700,19 @@ bool init(lvk::LVKwindow* window) {
       .debugName = "Buffer: uniforms (per object)",
   });
 
-  depthState_ = {.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true};
-  depthStateLEqual_ = {.compareOp = lvk::CompareOp_LessEqual, .isDepthWriteEnabled = true};
+  depthState_ = {.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true};
+  depthStateLEqual_ = {.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL, .isDepthWriteEnabled = true};
 
   sampler_ = ctx_->createSampler({
-      .mipMap = lvk::SamplerMip_Linear,
-      .wrapU = lvk::SamplerWrap_Repeat,
-      .wrapV = lvk::SamplerWrap_Repeat,
+      .mipMap = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
       .debugName = "Sampler: linear",
   });
   samplerShadow_ = ctx_->createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
-      .depthCompareOp = lvk::CompareOp_LessEqual,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
       .depthCompareEnabled = true,
       .debugName = "Sampler: shadow",
   });
@@ -1040,8 +1041,8 @@ void createPipelines() {
         .smFrag = smMeshFrag_,
         .color = {{.format = ctx_->getFormat(fbOffscreen_.color[0].texture)}},
         .depthFormat = ctx_->getFormat(fbOffscreen_.depthStencil.texture),
-        .cullMode = lvk::CullMode_Back,
-        .frontFace = lvk::WindingMode_CCW,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .samplesCount = kNumSamplesMSAA,
         .debugName = "Pipeline: mesh",
     };
@@ -1054,7 +1055,7 @@ void createPipelines() {
 
     renderPipelineState_MeshNormals_ = ctx_->createRenderPipeline(desc, nullptr);
 
-    desc.polygonMode = lvk::PolygonMode_Line;
+    desc.polygonMode = VK_POLYGON_MODE_LINE;
     desc.vertexInput = vdescs; // positions-only
     desc.smVert = smMeshWireframeVert_;
     desc.smFrag = smMeshWireframeFrag_;
@@ -1069,7 +1070,7 @@ void createPipelines() {
           .smVert = smShadowVert_,
           .smFrag = smShadowFrag_,
           .depthFormat = ctx_->getFormat(fbShadowMap_.depthStencil.texture),
-          .cullMode = lvk::CullMode_None,
+          .cullMode = VK_CULL_MODE_NONE,
           .debugName = "Pipeline: shadow",
       },
       nullptr);
@@ -1081,7 +1082,7 @@ void createPipelines() {
         .smFrag = smFullscreenFrag_,
         .color = {{.format = ctx_->getFormat(fbMain_.color[0].texture)}},
         .depthFormat = ctx_->getFormat(fbMain_.depthStencil.texture),
-        .cullMode = lvk::CullMode_None,
+        .cullMode = VK_CULL_MODE_NONE,
         .debugName = "Pipeline: fullscreen",
     };
     renderPipelineState_Fullscreen_ = ctx_->createRenderPipeline(desc, nullptr);
@@ -1096,8 +1097,8 @@ void createPipelines() {
             .format = ctx_->getFormat(fbOffscreen_.color[0].texture),
         }},
         .depthFormat = ctx_->getFormat(fbOffscreen_.depthStencil.texture),
-        .cullMode = lvk::CullMode_Front,
-        .frontFace = lvk::WindingMode_CCW,
+        .cullMode = VK_CULL_MODE_FRONT_BIT,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .samplesCount = kNumSamplesMSAA,
         .debugName = "Pipeline: skybox",
     };
@@ -1318,7 +1319,7 @@ void render(double delta) {
           .perObject = ctx_->gpuAddress(ubPerObject_),
       };
       buffer.cmdPushConstants(bindings);
-      buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI32);
+      buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT32);
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       buffer.cmdPopDebugGroupLabel();
     }
@@ -1355,7 +1356,7 @@ void render(double delta) {
           .materials = ctx_->gpuAddress(sbMaterials_),
       };
       buffer.cmdPushConstants(bindings);
-      buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI32);
+      buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT32);
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       if (enableWireframe_) {
         buffer.cmdBindRenderPipeline(renderPipelineState_MeshWireframe_);
@@ -2098,7 +2099,8 @@ int main(int argc, char* argv[]) {
                                                {
                                                    .enableValidation = kEnableValidationLayers,
                                                },
-                                               kPreferIntegratedGPU ? lvk::HWDeviceType_Integrated : lvk::HWDeviceType_Discrete);
+                                               kPreferIntegratedGPU ? VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+                                                                    : VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
   if (!ctx_) {
     return EXIT_FAILURE;
   }
@@ -2258,7 +2260,8 @@ void handle_cmd(android_app* app, int32_t cmd) {
                                                    {
                                                        .enableValidation = kEnableValidationLayers,
                                                    },
-                                                   kPreferIntegratedGPU ? lvk::HWDeviceType_Integrated : lvk::HWDeviceType_Discrete);
+                                                   kPreferIntegratedGPU ? VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+                                                                        : VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
       if (!init(nullptr)) {
         LLOGW("Failed to initialize the app\n");
         std::terminate();

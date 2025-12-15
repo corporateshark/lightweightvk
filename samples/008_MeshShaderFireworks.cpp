@@ -389,14 +389,14 @@ VULKAN_APP_MAIN {
       .color = {{
           .format = ctx->getSwapchainFormat(),
           .blendEnabled = true,
-          .rgbBlendOp = lvk::BlendOp_Add,
-          .alphaBlendOp = lvk::BlendOp_Add,
-          .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .srcAlphaBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .dstRGBBlendFactor = lvk::BlendFactor_One,
-          .dstAlphaBlendFactor = lvk::BlendFactor_One,
+          .rgbBlendOp = VK_BLEND_OP_ADD,
+          .alphaBlendOp = VK_BLEND_OP_ADD,
+          .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
       }},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: mesh",
   });
 
@@ -479,7 +479,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_AlwaysPass, .isDepthWriteEnabled = false});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_ALWAYS, .isDepthWriteEnabled = false});
       const struct {
         uint64_t perFrame;
         uint64_t vb;
