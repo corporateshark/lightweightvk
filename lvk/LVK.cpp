@@ -389,7 +389,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandSurface, (void*)waylandDisplay);
 #else
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
-  void* x11Window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+  Sint64 x11Window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
   void* x11Display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
   if (!x11Window || !x11Display) {
     LVK_ASSERT_MSG(false, "Failed to get X11 window/display");
@@ -399,7 +399,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #endif
 #elif defined(__APPLE__)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
-  NSWindow* nsWindow = (__bridge NSWindow*)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+  NSWindow* nsWindow = (NSWindow*)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
   if (!nsWindow) {
     LVK_ASSERT_MSG(false, "Failed to get Cocoa window");
     return nullptr;
