@@ -524,16 +524,16 @@ bool initModel(VulkanApp& app) {
   const auto totalPrimitiveCount = (uint32_t)indexData_.size() / 3;
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.ib0_,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = totalPrimitiveCount},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = "BLAS",
   };
   const lvk::AccelStructSizes blasSizes = ctx_->getAccelStructSizes(blasDesc);
@@ -585,10 +585,10 @@ bool initModel(VulkanApp& app) {
 
   res.TLAS_ = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = res.sbInstances_,
       .buildRange = {.primitiveCount = (uint32_t)instances.size()},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
   });
 
   return true;
@@ -655,7 +655,7 @@ VULKAN_APP_MAIN {
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
       .color = {{.format = app.ctx_->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: fullscreen",
   });
 

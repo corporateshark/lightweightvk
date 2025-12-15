@@ -43,33 +43,14 @@
 
 uint32_t lvk::VulkanPipelineBuilder::numPipelinesCreated_ = 0;
 
-static_assert(lvk::HWDeviceDesc::LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE == VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
-static_assert(lvk::Swizzle_Default == (uint32_t)VK_COMPONENT_SWIZZLE_IDENTITY);
-static_assert(lvk::Swizzle_0 == (uint32_t)VK_COMPONENT_SWIZZLE_ZERO);
-static_assert(lvk::Swizzle_1 == (uint32_t)VK_COMPONENT_SWIZZLE_ONE);
-static_assert(lvk::Swizzle_R == (uint32_t)VK_COMPONENT_SWIZZLE_R);
-static_assert(lvk::Swizzle_G == (uint32_t)VK_COMPONENT_SWIZZLE_G);
-static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
-static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
-static_assert(lvk::ShadingRateCombinerOp_Keep == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Replace == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Min == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Max == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Mul == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
-static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
-static_assert(lvk::LVK_WHOLE_SIZE == VK_WHOLE_SIZE);
-// ray-tracing stages must remain contiguous; `Stage_RayGen..Stage_Callable` is used as a range test
-static_assert(lvk::Stage_AnyHit == lvk::Stage_RayGen + 1);
-static_assert(lvk::Stage_ClosestHit == lvk::Stage_RayGen + 2);
-static_assert(lvk::Stage_Miss == lvk::Stage_RayGen + 3);
-static_assert(lvk::Stage_Intersection == lvk::Stage_RayGen + 4);
-static_assert(lvk::Stage_Callable == lvk::Stage_RayGen + 5);
 
 namespace {
 
-const char* kDefaultValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
+const char* kDefaultValidationLayers[] = {
+    "VK_LAYER_KHRONOS_validation",
+};
 
 // These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
 enum Bindings {
@@ -117,6 +98,11 @@ void stripArrayIndex(std::string& s, const char* varName) {
       }
     }
   }
+}
+
+bool isIdentityMapping(const VkComponentMapping& m) {
+  return m.r == VK_COMPONENT_SWIZZLE_IDENTITY && m.g == VK_COMPONENT_SWIZZLE_IDENTITY && m.b == VK_COMPONENT_SWIZZLE_IDENTITY &&
+         m.a == VK_COMPONENT_SWIZZLE_IDENTITY;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
@@ -188,38 +174,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-VkIndexType indexFormatToVkIndexType(lvk::IndexFormat fmt) {
-  switch (fmt) {
-  case lvk::IndexFormat_UI8:
-    return VK_INDEX_TYPE_UINT8_EXT;
-  case lvk::IndexFormat_UI16:
-    return VK_INDEX_TYPE_UINT16;
-  case lvk::IndexFormat_UI32:
-    return VK_INDEX_TYPE_UINT32;
-  };
-  LVK_ASSERT(false);
-  return VK_INDEX_TYPE_NONE_KHR;
-}
-
-VkPrimitiveTopology topologyToVkPrimitiveTopology(lvk::Topology t) {
-  switch (t) {
-  case lvk::Topology_Point:
-    return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-  case lvk::Topology_Line:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-  case lvk::Topology_LineStrip:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-  case lvk::Topology_Triangle:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-  case lvk::Topology_TriangleStrip:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-  case lvk::Topology_Patch:
-    return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
-  }
-  LVK_ASSERT_MSG(false, "Implement Topology = %u", (uint32_t)t);
-  return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
-}
-
 VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
   switch (a) {
   case lvk::LoadOp_Load:
@@ -251,21 +205,8 @@ VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
   return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
-VkResolveModeFlagBits resolveModeToVkResolveModeFlagBits(lvk::ResolveMode mode, VkResolveModeFlags supported) {
-  switch (mode) {
-  case lvk::ResolveMode_None:
-    return VK_RESOLVE_MODE_NONE;
-  case lvk::ResolveMode_SampleZero:
-    return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Average:
-    return supported & VK_RESOLVE_MODE_AVERAGE_BIT ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Min:
-    return supported & VK_RESOLVE_MODE_MIN_BIT ? VK_RESOLVE_MODE_MIN_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Max:
-    return supported & VK_RESOLVE_MODE_MAX_BIT ? VK_RESOLVE_MODE_MAX_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  }
-  LVK_ASSERT(false);
-  return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+VkResolveModeFlagBits getSupportedVkResolveModeFlagBits(VkResolveModeFlagBits mode, VkResolveModeFlags supported) {
+  return supported & mode ? mode : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 }
 
 VkShaderStageFlagBits shaderStageToVkShaderStage(lvk::ShaderStage stage) {
@@ -318,163 +259,6 @@ VkMemoryPropertyFlags storageTypeToVkMemoryPropertyFlags(lvk::StorageType storag
     break;
   }
   return memFlags;
-}
-
-VkBuildAccelerationStructureFlagsKHR buildFlagsToVkBuildAccelerationStructureFlags(uint8_t buildFlags) {
-  VkBuildAccelerationStructureFlagsKHR flags = 0;
-
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowCompaction) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_PreferFastTrace) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_PreferFastBuild) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_LowMemory) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
-  }
-
-  return flags;
-}
-
-VkPolygonMode polygonModeToVkPolygonMode(lvk::PolygonMode mode) {
-  switch (mode) {
-  case lvk::PolygonMode_Fill:
-    return VK_POLYGON_MODE_FILL;
-  case lvk::PolygonMode_Line:
-    return VK_POLYGON_MODE_LINE;
-  case lvk::PolygonMode_Point:
-    return VK_POLYGON_MODE_POINT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing polygon fill mode");
-  return VK_POLYGON_MODE_FILL;
-}
-
-VkBlendFactor blendFactorToVkBlendFactor(lvk::BlendFactor value) {
-  switch (value) {
-  case lvk::BlendFactor_Zero:
-    return VK_BLEND_FACTOR_ZERO;
-  case lvk::BlendFactor_One:
-    return VK_BLEND_FACTOR_ONE;
-  case lvk::BlendFactor_SrcColor:
-    return VK_BLEND_FACTOR_SRC_COLOR;
-  case lvk::BlendFactor_OneMinusSrcColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-  case lvk::BlendFactor_DstColor:
-    return VK_BLEND_FACTOR_DST_COLOR;
-  case lvk::BlendFactor_OneMinusDstColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-  case lvk::BlendFactor_SrcAlpha:
-    return VK_BLEND_FACTOR_SRC_ALPHA;
-  case lvk::BlendFactor_OneMinusSrcAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-  case lvk::BlendFactor_DstAlpha:
-    return VK_BLEND_FACTOR_DST_ALPHA;
-  case lvk::BlendFactor_OneMinusDstAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-  case lvk::BlendFactor_BlendColor:
-    return VK_BLEND_FACTOR_CONSTANT_COLOR;
-  case lvk::BlendFactor_OneMinusBlendColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-  case lvk::BlendFactor_BlendAlpha:
-    return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-  case lvk::BlendFactor_OneMinusBlendAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
-  case lvk::BlendFactor_SrcAlphaSaturated:
-    return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-  case lvk::BlendFactor_Src1Color:
-    return VK_BLEND_FACTOR_SRC1_COLOR;
-  case lvk::BlendFactor_OneMinusSrc1Color:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
-  case lvk::BlendFactor_Src1Alpha:
-    return VK_BLEND_FACTOR_SRC1_ALPHA;
-  case lvk::BlendFactor_OneMinusSrc1Alpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
-  default:
-    LVK_ASSERT(false);
-    return VK_BLEND_FACTOR_ONE; // default for unsupported values
-  }
-}
-
-VkBlendOp blendOpToVkBlendOp(lvk::BlendOp value) {
-  switch (value) {
-  case lvk::BlendOp_Add:
-    return VK_BLEND_OP_ADD;
-  case lvk::BlendOp_Subtract:
-    return VK_BLEND_OP_SUBTRACT;
-  case lvk::BlendOp_ReverseSubtract:
-    return VK_BLEND_OP_REVERSE_SUBTRACT;
-  case lvk::BlendOp_Min:
-    return VK_BLEND_OP_MIN;
-  case lvk::BlendOp_Max:
-    return VK_BLEND_OP_MAX;
-  }
-
-  LVK_ASSERT(false);
-  return VK_BLEND_OP_ADD;
-}
-
-VkCullModeFlags cullModeToVkCullMode(lvk::CullMode mode) {
-  switch (mode) {
-  case lvk::CullMode_None:
-    return VK_CULL_MODE_NONE;
-  case lvk::CullMode_Front:
-    return VK_CULL_MODE_FRONT_BIT;
-  case lvk::CullMode_Back:
-    return VK_CULL_MODE_BACK_BIT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing cull mode");
-  return VK_CULL_MODE_NONE;
-}
-
-VkFrontFace windingModeToVkFrontFace(lvk::WindingMode mode) {
-  switch (mode) {
-  case lvk::WindingMode_CCW:
-    return VK_FRONT_FACE_COUNTER_CLOCKWISE;
-  case lvk::WindingMode_CW:
-    return VK_FRONT_FACE_CLOCKWISE;
-  }
-  LVK_ASSERT_MSG(false, "Wrong winding order (cannot be more than 2)");
-  return VK_FRONT_FACE_CLOCKWISE;
-}
-
-VkStencilOp stencilOpToVkStencilOp(lvk::StencilOp op) {
-  switch (op) {
-  case lvk::StencilOp_Keep:
-    return VK_STENCIL_OP_KEEP;
-  case lvk::StencilOp_Zero:
-    return VK_STENCIL_OP_ZERO;
-  case lvk::StencilOp_Replace:
-    return VK_STENCIL_OP_REPLACE;
-  case lvk::StencilOp_IncrementClamp:
-    return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
-  case lvk::StencilOp_DecrementClamp:
-    return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
-  case lvk::StencilOp_Invert:
-    return VK_STENCIL_OP_INVERT;
-  case lvk::StencilOp_IncrementWrap:
-    return VK_STENCIL_OP_INCREMENT_AND_WRAP;
-  case lvk::StencilOp_DecrementWrap:
-    return VK_STENCIL_OP_DECREMENT_AND_WRAP;
-  }
-  LVK_ASSERT(false);
-  return VK_STENCIL_OP_KEEP;
-}
-
-VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate rate) {
-  switch (rate) {
-  case lvk::VertexInputRate_Vertex:
-    return VK_VERTEX_INPUT_RATE_VERTEX;
-  case lvk::VertexInputRate_Instance:
-    return VK_VERTEX_INPUT_RATE_INSTANCE;
-  }
-  LVK_ASSERT(false);
-  return VK_VERTEX_INPUT_RATE_VERTEX;
 }
 
 VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
@@ -708,8 +492,8 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
                           const lvk::VulkanImage& img,
                           VkImageLayout oldLayout,
                           VkImageLayout newLayout,
-                          StageAccess src,
-                          StageAccess dst,
+                          lvk::StageAccess src,
+                          lvk::StageAccess dst,
                           uint32_t srcQueueFamily,
                           uint32_t dstQueueFamily) {
   const VkImageMemoryBarrier2 barrier = {
@@ -734,7 +518,7 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
 }
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR>& formats,
-                                           lvk::ColorSpace requestedColorSpace,
+                                           VkColorSpaceKHR requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
   LVK_ASSERT(!formats.empty());
 
@@ -753,15 +537,15 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR
     return false;
   };
 
-  auto colorSpaceToVkSurfaceFormat = [](lvk::ColorSpace colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
+  auto colorSpaceToVkSurfaceFormat = [](VkColorSpaceKHR colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
     switch (colorSpace) {
-    case lvk::ColorSpace_SRGB_NONLINEAR:
+    case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
       return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-    case lvk::ColorSpace_SRGB_EXTENDED_LINEAR:
+    case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
       if (hasSwapchainColorspaceExt)
         return VkSurfaceFormatKHR{VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT};
       [[fallthrough]];
-    case lvk::ColorSpace_HDR10:
+    case VK_COLOR_SPACE_HDR10_ST2084_EXT:
       if (hasSwapchainColorspaceExt) {
         return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_A2B10G10R10_UNORM_PACK32 : VK_FORMAT_A2R10G10B10_UNORM_PACK32,
                                   VK_COLOR_SPACE_HDR10_ST2084_EXT};
@@ -1229,10 +1013,9 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   };
 
   auto chooseSwapPresentMode = [config = &ctx.config_](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
-    for (lvk::PresentMode mode : config->presentModes) {
-      const VkPresentModeKHR vkMode = presentModeToVkPresentMode(mode);
-      if (std::find(modes.cbegin(), modes.cend(), vkMode) != modes.cend()) {
-        return vkMode;
+    for (VkPresentModeKHR mode : config->presentModes) {
+      if (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend()) {
+        return mode;
       }
     }
     return VK_PRESENT_MODE_FIFO_KHR;
@@ -1303,8 +1086,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   if (std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), currentPresentMode_)) {
     registeredPresentModes_[numRegisteredPresentModes_++] = currentPresentMode_;
   }
-  for (const lvk::PresentMode m : ctx.config_.presentModes) {
-    const VkPresentModeKHR mode = presentModeToVkPresentMode(m);
+  for (VkPresentModeKHR mode : ctx.config_.presentModes) {
     if (!std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), mode)) {
       continue; // not compatible with the chosen presentMode
     }
@@ -2340,17 +2122,8 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
   return true;
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  StageAccess extraDstAccess = {};
-
-  if (extraDstStage == lvk::Stage_Comp) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  }
-  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-  }
 
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
@@ -2394,17 +2167,9 @@ void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const ldr::Span<Textu
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures,
+                                                       const lvk::StageAccess& extraDstAccess) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  StageAccess extraDstAccess = {};
-
-  if (extraDstStage == lvk::Stage_Comp) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  }
-  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-  }
 
   for (TextureHandle handle : textures) {
     lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
@@ -2499,8 +2264,8 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
-  cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2522,8 +2287,8 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
-  cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2778,7 +2543,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
+        .resolveMode = (colorSamples > 1) ? getSupportedVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                           : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -2828,7 +2593,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
           depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
-          resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
+          getSupportedVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
     }
     const VkExtent3D dim = depthTexture.vkExtent_;
     if (fbWidth) {
@@ -2921,7 +2686,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   if (ctx_->has_KHR_fragment_shading_rate_) {
     // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
-    cmdSetFragmentShadingRate({}, ShadingRateCombinerOp_Keep, ShadingRateCombinerOp_Keep);
+    cmdSetFragmentShadingRate({}, VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR, VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
   }
 
   vkCmdBeginRendering(wrapper_->cmdBuf_, &renderingInfo);
@@ -3022,9 +2787,8 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
 void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   LVK_PROFILER_FUNCTION();
 
-  const VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
   vkCmdSetDepthWriteEnable(wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
-  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
+  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (desc.compareOp != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
 
 #if defined(ANDROID)
   // This is a workaround for the issue.
@@ -3034,7 +2798,7 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
     return;
   }
 #endif
-  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
+  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, desc.compareOp);
 }
 
 void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) {
@@ -3051,13 +2815,12 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
   vkCmdBindVertexBuffers2(wrapper_->cmdBuf_, index, 1, &buf->vkBuffer_, &bufferOffset, &bufferSize, nullptr);
 }
 
-void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) {
+void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexType, uint64_t bufferOffset, uint64_t bufferSize) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-  const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
+  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, indexType); // TODO: remove KHR to update to Vulkan 1.4
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
@@ -3347,8 +3110,16 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
-  cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
+  cmdTransitionToShaderReadOnly(deps.sampledImages,
+                                {
+                                    .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                                    .access = VK_ACCESS_2_SHADER_READ_BIT,
+                                });
+  cmdTransitionToGeneral(deps.storageImages,
+                         {
+                             .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                             .access = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                         });
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],
@@ -3373,8 +3144,8 @@ void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
 }
 
 void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
-                                                   ShadingRateCombinerOp primitiveOp,
-                                                   ShadingRateCombinerOp attachmentOp) {
+                                                   VkFragmentShadingRateCombinerOpKHR primitiveOp,
+                                                   VkFragmentShadingRateCombinerOpKHR attachmentOp) {
   LVK_ASSERT_MSG(ctx_->has_KHR_fragment_shading_rate_,
                  "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
   LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
@@ -3388,10 +3159,7 @@ void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSiz
                  "This fragment size is not in vkGetPhysicalDeviceFragmentShadingRatesKHR()");
 
   const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
-  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
-      (VkFragmentShadingRateCombinerOpKHR)primitiveOp,
-      (VkFragmentShadingRateCombinerOpKHR)attachmentOp,
-  };
+  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {primitiveOp, attachmentOp};
   vkCmdSetFragmentShadingRateKHR(wrapper_->cmdBuf_, &vkFragmentSize, combinerOps);
 }
 
@@ -3407,10 +3175,8 @@ void lvk::CommandBuffer::cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query)
   vkCmdWriteTimestamp2(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, vkPool, query);
 }
 
-void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) {
+void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) {
   LVK_PROFILER_GPU_ZONE("cmdClearColorImage()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_COPY);
-
-  static_assert(sizeof(ClearColorValue) == sizeof(VkClearColorValue));
 
   lvk::VulkanImage* img = ctx_->texturesPool_.get(tex);
 
@@ -5150,13 +4916,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     aspect = VK_IMAGE_ASPECT_COLOR_BIT;
   }
 
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
-
   // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isMultiplanar ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
@@ -5175,13 +4934,13 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
                                            VK_REMAINING_MIP_LEVELS,
                                            0,
                                            numLayers,
-                                           components,
+                                           desc.components,
                                            ycbcrInfo,
                                            viewFlags,
                                            debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
           vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, 0, debugNameImageView);
@@ -5263,13 +5022,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
     return {};
   }
 
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
-
   LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
 
   image.imageView_ = image.createImageView(vkDevice_,
@@ -5280,7 +5032,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numMipLevels,
                                            desc.layer,
                                            desc.numLayers,
-                                           components,
+                                           desc.components,
                                            nullptr,
                                            0,
                                            debugName);
@@ -5291,7 +5043,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   }
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(vkDevice_,
                                                       vkImageViewType,
@@ -5364,7 +5116,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .dstAccelerationStructure = accelStruct.vkHandle,
       .geometryCount = 1,
@@ -5439,7 +5191,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .dstAccelerationStructure = accelStruct.vkHandle,
       .geometryCount = 1,
@@ -5447,7 +5199,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
       .scratchData = {.deviceAddress = getAlignedAddress(gpuAddress(scratchBuffer),
                                                          accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment)},
   };
-  if (desc.buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
+  if (desc.buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) {
     // Store scratch buffer for future updates
     accelStruct.scratchBuffer = std::move(scratchBuffer);
   }
@@ -5617,29 +5369,16 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     const lvk::ColorAttachment& attachment = desc.color[i];
     LVK_ASSERT(attachment.format != Format_Invalid);
     colorAttachmentFormats[i] = formatToVkFormat(attachment.format);
-    if (!attachment.blendEnabled) {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_FALSE,
-          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .colorBlendOp = VK_BLEND_OP_ADD,
-          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .alphaBlendOp = VK_BLEND_OP_ADD,
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-      };
-    } else {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_TRUE,
-          .srcColorBlendFactor = blendFactorToVkBlendFactor(attachment.srcRGBBlendFactor),
-          .dstColorBlendFactor = blendFactorToVkBlendFactor(attachment.dstRGBBlendFactor),
-          .colorBlendOp = blendOpToVkBlendOp(attachment.rgbBlendOp),
-          .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
-          .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
-          .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-      };
-    }
+    colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
+        .blendEnable = attachment.blendEnabled ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = attachment.srcRGBBlendFactor,
+        .dstColorBlendFactor = attachment.dstRGBBlendFactor,
+        .colorBlendOp = attachment.rgbBlendOp,
+        .srcAlphaBlendFactor = attachment.srcAlphaBlendFactor,
+        .dstAlphaBlendFactor = attachment.dstAlphaBlendFactor,
+        .alphaBlendOp = attachment.alphaBlendOp,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    };
   }
 
   const lvk::ShaderModuleState* vertModule = shaderModulesPool_.get(desc.smVert);
@@ -5735,20 +5474,20 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, has_KHR_fragment_shading_rate_)
       // from VK_EXT_fragment_density_map
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, has_EXT_fragment_density_map_)
-      .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
+      .primitiveTopology(desc.topology)
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
-      .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
+      .polygonMode(desc.polygonMode)
       .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.frontFaceStencil.stencilCompareOp))
+                       desc.frontFaceStencil.stencilFailureOp,
+                       desc.frontFaceStencil.depthStencilPassOp,
+                       desc.frontFaceStencil.depthFailureOp,
+                       desc.frontFaceStencil.stencilCompareOp)
       .stencilStateOps(VK_STENCIL_FACE_BACK_BIT,
-                       stencilOpToVkStencilOp(desc.backFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
+                       desc.backFaceStencil.stencilFailureOp,
+                       desc.backFaceStencil.depthStencilPassOp,
+                       desc.backFaceStencil.depthFailureOp,
+                       desc.backFaceStencil.stencilCompareOp)
       .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
       .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
       .shaderStage(taskModule
@@ -5767,8 +5506,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .shaderStage(geomModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
-      .cullMode(cullModeToVkCullMode(desc.cullMode))
-      .frontFace(windingModeToVkFrontFace(desc.frontFace))
+      .cullMode(desc.cullMode)
+      .frontFace(desc.frontFace)
       .vertexInputState(ciVertexInputState)
       .viewMask(viewMask)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
@@ -6209,7 +5948,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       rps.vkBindings_[rps.numBindings_++] = {
           .binding = attr.binding,
           .stride = vstate.inputBindings[attr.binding].stride,
-          .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate),
+          .inputRate = vstate.inputBindings[attr.binding].inputRate,
       };
     }
   }
@@ -6984,12 +6723,12 @@ lvk::Format lvk::VulkanContext::getSwapchainFormat() const {
   return vkFormatToFormat(swapchain_->getSurfaceFormat().format);
 }
 
-lvk::ColorSpace lvk::VulkanContext::getSwapchainColorSpace() const {
+VkColorSpaceKHR lvk::VulkanContext::getSwapchainColorSpace() const {
   if (!hasSwapchain()) {
-    return ColorSpace_SRGB_NONLINEAR;
+    return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   }
 
-  return vkColorSpaceToColorSpace(swapchain_->getSurfaceFormat().colorSpace);
+  return swapchain_->getSurfaceFormat().colorSpace;
 }
 
 uint32_t lvk::VulkanContext::getNumSwapchainImages() const {
@@ -7028,16 +6767,16 @@ void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
   initSwapchain(newWidth, newHeight);
 }
 
-bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
+bool lvk::VulkanContext::setCurrentPresentMode(VkPresentModeKHR mode) {
   if (!hasSwapchain() || !has_KHR_swapchain_maintenance1_) {
     return false;
   }
 
-  return swapchain_->setCurrentPresentMode(presentModeToVkPresentMode(mode));
+  return swapchain_->setCurrentPresentMode(mode);
 }
 
-[[nodiscard]] lvk::PresentMode lvk::VulkanContext::getCurrentPresentMode() const {
-  return swapchain_ ? vkPresentModeToPresentMode(swapchain_->currentPresentMode_) : PresentMode_FIFO;
+[[nodiscard]] VkPresentModeKHR lvk::VulkanContext::getCurrentPresentMode() const {
+  return swapchain_ ? swapchain_->currentPresentMode_ : VK_PRESENT_MODE_FIFO_KHR;
 }
 
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
@@ -7392,45 +7131,25 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
 #endif
 }
 
-uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices) {
+uint32_t lvk::VulkanContext::queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices) {
+  LVK_ASSERT(outDevices);
+
   // Physical devices
   uint32_t deviceCount = 0;
   VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, nullptr));
-  std::vector<VkPhysicalDevice> vkDevices(deviceCount);
-  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, vkDevices.data()));
 
-  auto convertVulkanDeviceTypeToLVK = [](VkPhysicalDeviceType vkDeviceType) -> HWDeviceType {
-    switch (vkDeviceType) {
-    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-      return HWDeviceType_Integrated;
-    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-      return HWDeviceType_Discrete;
-    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-      return HWDeviceType_External;
-    case VK_PHYSICAL_DEVICE_TYPE_CPU:
-      return HWDeviceType_Software;
-    default:
-      return HWDeviceType_Software;
-    }
-  };
+  if (maxOutDevices < deviceCount)
+    deviceCount = maxOutDevices;  
 
-  uint32_t numCompatibleDevices = 0;
+  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, outDevices));
 
-  for (uint32_t i = 0; i < deviceCount; ++i) {
-    VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties2 props2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-    vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
-
-    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(props2.properties.deviceType);
-
-    if (outDevices && numCompatibleDevices < maxOutDevices) {
-      outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, props2.properties.deviceName, strlen(props2.properties.deviceName));
-      numCompatibleDevices++;
+  if (outProperties) {
+    for (uint32_t i = 0; i < deviceCount; ++i) {
+      vkGetPhysicalDeviceProperties(outDevices[i], &outProperties[i]);
     }
   }
 
-  return numCompatibleDevices;
+  return deviceCount;
 }
 
 void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
@@ -7491,7 +7210,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
   LVK_ASSERT(desc.type == AccelStructType_BLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Triangles);
+  LVK_ASSERT(desc.geometryType == VK_GEOMETRY_TYPE_TRIANGLES_KHR);
   LVK_ASSERT(desc.numVertices);
   LVK_ASSERT(desc.indexBuffer.valid());
   LVK_ASSERT(desc.vertexBuffer.valid());
@@ -7523,7 +7242,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                       .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
                       .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
                       .maxVertex = desc.numVertices - 1,
-                      .indexType = indexFormatToVkIndexType(desc.indexFormat),
+                      .indexType = desc.indexFormat,
                       .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
                       .transformData = {.deviceAddress = gpuAddress(desc.transformBuffer)},
                   },
@@ -7555,7 +7274,7 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
   LVK_ASSERT(desc.type == AccelStructType_TLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Instances);
+  LVK_ASSERT(desc.geometryType == VK_GEOMETRY_TYPE_INSTANCES_KHR);
   LVK_ASSERT(desc.numVertices == 0);
   LVK_ASSERT(desc.instancesBuffer.valid());
   LVK_ASSERT(desc.buildRange.primitiveCount);
@@ -7588,7 +7307,7 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .geometryCount = 1,
       .pGeometries = &outGeometry,
   };
@@ -7605,13 +7324,12 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
   outSizesInfo.buildScratchSize += alignment;
 }
 
-lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
-  if (desc.guid == 0UL) {
-    LLOGW("Invalid hardwareGuid(%lu)", desc.guid);
-    return Result(Result::Code::RuntimeError, "Vulkan is not supported");
+lvk::Result lvk::VulkanContext::initContext(VkPhysicalDevice physicalDevice) {
+  if (!physicalDevice) {
+    return Result(Result::Code::RuntimeError, "Vulkan is not supported (no VkPhysicalDevice specified)");
   }
 
-  vkPhysicalDevice_ = (VkPhysicalDevice)desc.guid;
+  vkPhysicalDevice_ = physicalDevice;
 
   useStaging_ = !isHostVisibleSingleHeapMemory(vkPhysicalDevice_);
 
