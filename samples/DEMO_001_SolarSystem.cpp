@@ -1010,7 +1010,7 @@ VULKAN_APP_MAIN {
                                lvk::Holder<lvk::RenderPipelineHandle>& wireframe,
                                lvk::RenderPipelineDesc desc) {
     solid = ctx->createRenderPipeline(desc);
-    desc.polygonMode = lvk::PolygonMode_Line;
+    desc.polygonMode = VK_POLYGON_MODE_LINE;
     wireframe = ctx->createRenderPipeline(desc);
   };
 
@@ -1022,24 +1022,24 @@ VULKAN_APP_MAIN {
                       .smFrag = smDefault.frag,
                       .color = {{.format = ctx->getSwapchainFormat()}},
                       .depthFormat = app.getDepthFormat(),
-                      .cullMode = lvk::CullMode_Back,
+                      .cullMode = VK_CULL_MODE_BACK_BIT,
                       .debugName = "Pipeline: default",
                   });
   vulkanState.materialSaturnRings = ctx->createRenderPipeline({
-      .topology = lvk::Topology::Topology_TriangleStrip,
+      .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
       .vertexInput = vinput,
       .smVert = smDefault.vert,
       .smFrag = smDefault.frag,
       .color = {{.format = ctx->getSwapchainFormat(),
                  .blendEnabled = true,
-                 .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-                 .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha}},
+                 .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                 .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA}},
       .depthFormat = app.getDepthFormat(),
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: Saturn rings",
   });
   vulkanState.materialOrbit = ctx->createRenderPipeline({
-      .topology = lvk::Topology_LineStrip,
+      .topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
       .vertexInput =
           {
               .attributes = {{.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(GeometryShapes::Vertex, pos)}},
@@ -1049,10 +1049,10 @@ VULKAN_APP_MAIN {
       .smFrag = smOrbit.frag,
       .color = {{.format = ctx->getSwapchainFormat(),
                  .blendEnabled = true,
-                 .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-                 .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha}},
+                 .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                 .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA}},
       .depthFormat = app.getDepthFormat(),
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: orbit",
   });
   createPipelines(vulkanState.materialSun,
@@ -1063,18 +1063,18 @@ VULKAN_APP_MAIN {
                       .smFrag = smSun.frag,
                       .color = {{.format = ctx->getSwapchainFormat()}},
                       .depthFormat = app.getDepthFormat(),
-                      .cullMode = lvk::CullMode_Back,
+                      .cullMode = VK_CULL_MODE_BACK_BIT,
                       .debugName = "Pipeline: Sun",
                   });
   vulkanState.materialSunCorona = ctx->createRenderPipeline({
-      .topology = lvk::Topology_TriangleStrip,
+      .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
       .vertexInput = vinput,
       .smVert = smSunCorona.vert,
       .smFrag = smSunCorona.frag,
       .color = {{.format = ctx->getSwapchainFormat(),
                  .blendEnabled = true,
-                 .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-                 .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha}},
+                 .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                 .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA}},
       .depthFormat = app.getDepthFormat(),
       .debugName = "Pipeline: Sun corona",
   });
@@ -1395,7 +1395,7 @@ VULKAN_APP_MAIN {
         buf.cmdPushConstants(pc);
 
         // 1. Render opaque objects
-        buf.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+        buf.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
         for (const RenderOp& ROP : renderQueueOpaque) {
           buf.cmdBindRenderPipeline(g_Wireframe ? ROP.pipelineW : ROP.pipeline);
           buf.cmdDraw(ROP.numVertices, ROP.numInstances, ROP.firstVertex, ROP.idDrawData);
@@ -1411,13 +1411,13 @@ VULKAN_APP_MAIN {
             .texCube = vulkanState.texSkyBox.index(),
         };
         buf.cmdPushConstants(pcSkyBox);
-        buf.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = false});
+        buf.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = false});
         buf.cmdDraw(36);
 
         // 3. Render transparent objects
         buf.cmdBindRenderPipeline(renderQueueTransparent[0].pipeline);
         buf.cmdPushConstants(pc);
-        buf.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = false});
+        buf.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = false});
         for (const RenderOp& ROP : renderQueueTransparent) {
           buf.cmdBindRenderPipeline(g_Wireframe ? ROP.pipelineW : ROP.pipeline);
           buf.cmdDraw(ROP.numVertices, ROP.numInstances, ROP.firstVertex, ROP.idDrawData);

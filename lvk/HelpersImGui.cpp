@@ -100,11 +100,11 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
           .color = {{
               .format = ctx_.getFormat(desc.color[0].texture),
               .blendEnabled = true,
-              .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-              .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
+              .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+              .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
           }},
           .depthFormat = desc.depthStencil.texture ? ctx_.getFormat(desc.depthStencil.texture) : lvk::Format_Invalid,
-          .cullMode = lvk::CullMode_None,
+          .cullMode = VK_CULL_MODE_NONE,
           .debugName = "ImGuiRenderer: createNewPipelineState()",
       },
       nullptr);
@@ -127,9 +127,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, 
   vert_ = ctx_.createShaderModule({codeVS, Stage_Vert, "Shader Module: imgui (vert)"});
   frag_ = ctx_.createShaderModule({codeFS, Stage_Frag, "Shader Module: imgui (frag)"});
   samplerClamp_ = ctx_.createSampler({
-      .wrapU = lvk::SamplerWrap_Clamp,
-      .wrapV = lvk::SamplerWrap_Clamp,
-      .wrapW = lvk::SamplerWrap_Clamp,
+      .wrapU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+      .wrapW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
   });
 }
 
@@ -315,7 +315,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   uint32_t idxOffset = 0;
   uint32_t vtxOffset = 0;
 
-  cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, lvk::IndexFormat_UI16);
+  cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, VK_INDEX_TYPE_UINT16);
   cmdBuffer.cmdBindRenderPipeline(pipeline_);
 
   for (const ImDrawList* cmdList : dd->CmdLists) {

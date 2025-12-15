@@ -316,7 +316,7 @@ void createBottomLevelAccelerationStructure() {
       .vertexFormat = lvk::VertexFormat::Float3,
       .vertexBuffer = res.vertexBuffer,
       .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.indexBuffer,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(indices) / 3},
