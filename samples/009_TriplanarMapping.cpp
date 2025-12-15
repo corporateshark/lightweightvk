@@ -211,11 +211,11 @@ VULKAN_APP_MAIN {
           {
               .presentModes =
                   {
-                      lvk::PresentMode_Mailbox,
-                      lvk::PresentMode_Immediate,
-                      lvk::PresentMode_FIFO_Relaxed,
-                      lvk::PresentMode_FIFO_Latest_Ready,
-                      lvk::PresentMode_FIFO,
+                      VK_PRESENT_MODE_MAILBOX_KHR,
+                      VK_PRESENT_MODE_IMMEDIATE_KHR,
+                      VK_PRESENT_MODE_FIFO_RELAXED_KHR,
+                      VK_PRESENT_MODE_FIFO_LATEST_READY_KHR,
+                      VK_PRESENT_MODE_FIFO_KHR,
                   },
           },
   };
@@ -333,33 +333,24 @@ VULKAN_APP_MAIN {
     v = glm::sphericalRand(1.0f);
   }
 
-  auto presentModeToString = [](lvk::PresentMode mode) {
+  auto presentModeToString = [](VkPresentModeKHR mode) {
     switch (mode) {
-    case lvk::PresentMode_FIFO:
+    case VK_PRESENT_MODE_FIFO_KHR:
       return "FIFO (V-Sync)";
-    case lvk::PresentMode_FIFO_Relaxed:
+    case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
       return "FIFO Relaxed";
-    case lvk::PresentMode_FIFO_Latest_Ready:
+    case VK_PRESENT_MODE_FIFO_LATEST_READY_KHR:
       return "FIFO Latest Ready";
-    case lvk::PresentMode_Mailbox:
+    case VK_PRESENT_MODE_MAILBOX_KHR:
       return "Mailbox";
-    case lvk::PresentMode_Immediate:
+    case VK_PRESENT_MODE_IMMEDIATE_KHR:
       return "Immediate (No V-Sync)";
     default:
       return "Unknown";
     }
   };
 
-  // get available present modes
-  std::vector<lvk::PresentMode> availableModes;
-  lvk::VulkanContext& vulkanContext = static_cast<lvk::VulkanContext&>(*ctx);
-  for (uint32_t i = 0; i != vulkanContext.swapchain_->numRegisteredPresentModes_; i++) {
-    availableModes.push_back(lvk::vkPresentModeToPresentMode(vulkanContext.swapchain_->registeredPresentModes_[i]));
-  };
   int currentPresentModeIdx = 0;
-  if (!availableModes.empty()) {
-    (void)ctx->setCurrentPresentMode(availableModes[0]);
-  }
 
 #if defined(LVK_DEMO_WITH_SLANG)
   lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
@@ -374,8 +365,8 @@ VULKAN_APP_MAIN {
       .smFrag = frag_,
       .color = {{.format = ctx->getSwapchainFormat()}},
       .depthFormat = app.getDepthFormat(),
-      .cullMode = lvk::CullMode_Back,
-      .frontFace = lvk::WindingMode_CW,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .frontFace = VK_FRONT_FACE_CLOCKWISE,
       .debugName = "Pipeline: mesh",
   });
 
@@ -429,8 +420,8 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport(views[0].viewport);
       buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
-      buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
+      buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT16);
       const struct {
         uint64_t perFrame;
         uint64_t perObject;
@@ -454,10 +445,10 @@ VULKAN_APP_MAIN {
     ImGui::End();
     ImGui::SetNextWindowPos({0, 30}, ImGuiCond_Once);
     ImGui::Begin("Present Mode", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
-    if (availableModes.size() > 1) {
-      for (int i = 0; i != (int)availableModes.size(); i++) {
-        if (ImGui::RadioButton(presentModeToString(availableModes[i]), &currentPresentModeIdx, i)) {
-          (void)ctx->setCurrentPresentMode(availableModes[i]);
+    if (lvk::VulkanContext& vkCtx = static_cast<lvk::VulkanContext&>(*ctx); vkCtx.swapchain_->numRegisteredPresentModes_ > 1) {
+      for (uint32_t i = 0; i != vkCtx.swapchain_->numRegisteredPresentModes_; i++) {
+        if (ImGui::RadioButton(presentModeToString(vkCtx.swapchain_->registeredPresentModes_[i]), &currentPresentModeIdx, i)) {
+          (void)ctx->setCurrentPresentMode(vkCtx.swapchain_->registeredPresentModes_[i]);
         }
       }
     } else {
