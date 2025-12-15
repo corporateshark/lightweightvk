@@ -544,8 +544,8 @@ VULKAN_APP_MAIN {
                 {.format = ctx->getFormat(texNormal)},
                 {.format = ctx->getFormat(texWorldPos)},
             },
-        .cullMode = lvk::CullMode_Back,
-        .frontFace = lvk::WindingMode_CW,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .debugName = "Pipeline: deferred",
     });
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Compose = ctx->createRenderPipeline({
@@ -608,17 +608,17 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color =
                {
-                   {.loadOp = lvk::LoadOp_DontCare, .storeOp = lvk::StoreOp_Store},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = VK_ATTACHMENT_STORE_OP_STORE},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
                }},
           framebuffer,
           {.inputAttachments = {texAlbedo, texNormal, texWorldPos}});
       buffer.cmdPushDebugGroupLabel("Render deferred", 0xff0000ff);
       buffer.cmdBindRenderPipeline(renderPipelineState_Deferred);
       buffer.cmdPushConstants(ctx->gpuAddress(perFrameBuffer));
-      buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
+      buffer.cmdBindIndexBuffer(ib0_, VK_INDEX_TYPE_UINT16);
       buffer.cmdDrawIndexed(36);
       buffer.cmdPopDebugGroupLabel();
 
@@ -628,7 +628,6 @@ VULKAN_APP_MAIN {
 
       buffer.cmdPushDebugGroupLabel("Compose", 0xff0000ff);
       buffer.cmdBindRenderPipeline(renderPipelineState_Compose);
-      buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
       buffer.cmdDraw(3);
       buffer.cmdPopDebugGroupLabel();
 
@@ -638,7 +637,7 @@ VULKAN_APP_MAIN {
       const lvk::Framebuffer framebufferGUI = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
       };
-      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}}},
                                framebufferGUI,
                                {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
       app.imgui_->beginFrame(framebufferGUI);
