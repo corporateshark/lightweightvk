@@ -525,7 +525,7 @@ bool initModel(VulkanApp& app) {
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
-      .vertexFormat = lvk::VertexFormat_Float3,
+      .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
