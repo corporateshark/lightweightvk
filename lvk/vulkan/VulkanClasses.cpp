@@ -256,100 +256,6 @@ VkBuildAccelerationStructureFlagsKHR buildFlagsToVkBuildAccelerationStructureFla
   return flags;
 }
 
-VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
-  using lvk::VertexFormat;
-  switch (fmt) {
-  case VertexFormat::Invalid:
-    LVK_ASSERT(false);
-    return VK_FORMAT_UNDEFINED;
-  case VertexFormat::Float1:
-    return VK_FORMAT_R32_SFLOAT;
-  case VertexFormat::Float2:
-    return VK_FORMAT_R32G32_SFLOAT;
-  case VertexFormat::Float3:
-    return VK_FORMAT_R32G32B32_SFLOAT;
-  case VertexFormat::Float4:
-    return VK_FORMAT_R32G32B32A32_SFLOAT;
-  case VertexFormat::Byte1:
-    return VK_FORMAT_R8_SINT;
-  case VertexFormat::Byte2:
-    return VK_FORMAT_R8G8_SINT;
-  case VertexFormat::Byte3:
-    return VK_FORMAT_R8G8B8_SINT;
-  case VertexFormat::Byte4:
-    return VK_FORMAT_R8G8B8A8_SINT;
-  case VertexFormat::UByte1:
-    return VK_FORMAT_R8_UINT;
-  case VertexFormat::UByte2:
-    return VK_FORMAT_R8G8_UINT;
-  case VertexFormat::UByte3:
-    return VK_FORMAT_R8G8B8_UINT;
-  case VertexFormat::UByte4:
-    return VK_FORMAT_R8G8B8A8_UINT;
-  case VertexFormat::Short1:
-    return VK_FORMAT_R16_SINT;
-  case VertexFormat::Short2:
-    return VK_FORMAT_R16G16_SINT;
-  case VertexFormat::Short3:
-    return VK_FORMAT_R16G16B16_SINT;
-  case VertexFormat::Short4:
-    return VK_FORMAT_R16G16B16A16_SINT;
-  case VertexFormat::UShort1:
-    return VK_FORMAT_R16_UINT;
-  case VertexFormat::UShort2:
-    return VK_FORMAT_R16G16_UINT;
-  case VertexFormat::UShort3:
-    return VK_FORMAT_R16G16B16_UINT;
-  case VertexFormat::UShort4:
-    return VK_FORMAT_R16G16B16A16_UINT;
-    // Normalized variants
-  case VertexFormat::Byte2Norm:
-    return VK_FORMAT_R8G8_SNORM;
-  case VertexFormat::Byte4Norm:
-    return VK_FORMAT_R8G8B8A8_SNORM;
-  case VertexFormat::UByte2Norm:
-    return VK_FORMAT_R8G8_UNORM;
-  case VertexFormat::UByte4Norm:
-    return VK_FORMAT_R8G8B8A8_UNORM;
-  case VertexFormat::Short2Norm:
-    return VK_FORMAT_R16G16_SNORM;
-  case VertexFormat::Short4Norm:
-    return VK_FORMAT_R16G16B16A16_SNORM;
-  case VertexFormat::UShort2Norm:
-    return VK_FORMAT_R16G16_UNORM;
-  case VertexFormat::UShort4Norm:
-    return VK_FORMAT_R16G16B16A16_UNORM;
-  case VertexFormat::Int1:
-    return VK_FORMAT_R32_SINT;
-  case VertexFormat::Int2:
-    return VK_FORMAT_R32G32_SINT;
-  case VertexFormat::Int3:
-    return VK_FORMAT_R32G32B32_SINT;
-  case VertexFormat::Int4:
-    return VK_FORMAT_R32G32B32A32_SINT;
-  case VertexFormat::UInt1:
-    return VK_FORMAT_R32_UINT;
-  case VertexFormat::UInt2:
-    return VK_FORMAT_R32G32_UINT;
-  case VertexFormat::UInt3:
-    return VK_FORMAT_R32G32B32_UINT;
-  case VertexFormat::UInt4:
-    return VK_FORMAT_R32G32B32A32_UINT;
-  case VertexFormat::HalfFloat1:
-    return VK_FORMAT_R16_SFLOAT;
-  case VertexFormat::HalfFloat2:
-    return VK_FORMAT_R16G16_SFLOAT;
-  case VertexFormat::HalfFloat3:
-    return VK_FORMAT_R16G16B16_SFLOAT;
-  case VertexFormat::HalfFloat4:
-    return VK_FORMAT_R16G16B16A16_SFLOAT;
-  case VertexFormat::Int_2_10_10_10_REV:
-    return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
-  }
-  LVK_ASSERT(false);
-  return VK_FORMAT_UNDEFINED;
-}
-
 bool supportsFormat(VkPhysicalDevice physicalDevice, VkFormat format) {
   VkFormatProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
@@ -5234,7 +5140,11 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
     const VertexInput::VertexAttribute& attr = vstate.attributes[i];
 
     rps.vkAttributes_[i] = {
-        .location = attr.location, .binding = attr.binding, .format = vertexFormatToVkFormat(attr.format), .offset = (uint32_t)attr.offset};
+        .location = attr.location,
+        .binding = attr.binding,
+        .format = attr.format,
+        .offset = (uint32_t)attr.offset,
+    };
 
     if (!bufferAlreadyBound[attr.binding]) {
       bufferAlreadyBound[attr.binding] = true;
@@ -6415,7 +6325,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
               .triangles =
                   {
                       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-                      .vertexFormat = vertexFormatToVkFormat(desc.vertexFormat),
+                      .vertexFormat = desc.vertexFormat,
                       .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
                       .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
                       .maxVertex = desc.numVertices - 1,

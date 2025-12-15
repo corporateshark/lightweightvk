@@ -350,64 +350,6 @@ struct DepthState {
   bool isDepthWriteEnabled = false;
 };
 
-enum class VertexFormat {
-  Invalid = 0,
-
-  Float1,
-  Float2,
-  Float3,
-  Float4,
-
-  Byte1,
-  Byte2,
-  Byte3,
-  Byte4,
-
-  UByte1,
-  UByte2,
-  UByte3,
-  UByte4,
-
-  Short1,
-  Short2,
-  Short3,
-  Short4,
-
-  UShort1,
-  UShort2,
-  UShort3,
-  UShort4,
-
-  Byte2Norm,
-  Byte4Norm,
-
-  UByte2Norm,
-  UByte4Norm,
-
-  Short2Norm,
-  Short4Norm,
-
-  UShort2Norm,
-  UShort4Norm,
-
-  Int1,
-  Int2,
-  Int3,
-  Int4,
-
-  UInt1,
-  UInt2,
-  UInt3,
-  UInt4,
-
-  HalfFloat1,
-  HalfFloat2,
-  HalfFloat3,
-  HalfFloat4,
-
-  Int_2_10_10_10_REV,
-};
-
 enum Format : uint8_t {
   Format_Invalid = 0,
 
@@ -490,7 +432,7 @@ struct VertexInput final {
   struct VertexAttribute final {
     uint32_t location = 0; // a buffer which contains this attribute stream
     uint32_t binding = 0;
-    VertexFormat format = VertexFormat::Invalid; // per-element format
+    VkFormat format = VK_FORMAT_UNDEFINED; // per-element format
     uintptr_t offset = 0; // an offset where the first element of this attribute stream starts
   } attributes[LVK_VERTEX_ATTRIBUTES_MAX];
   struct VertexInputBinding final {
@@ -501,7 +443,7 @@ struct VertexInput final {
   // clang-format off
   uint32_t getNumAttributes() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) n++;
+    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VK_FORMAT_UNDEFINED) n++;
     return n;
   }
   uint32_t getNumInputBindings() const {
@@ -862,7 +804,7 @@ struct AccelStructDesc {
   AccelStructGeomType geometryType = AccelStructGeomType_Triangles;
   uint8_t geometryFlags = AccelStructGeometryFlagBits_Opaque;
 
-  VertexFormat vertexFormat = VertexFormat::Invalid;
+  VkFormat vertexFormat = VK_FORMAT_UNDEFINED;
   BufferHandle vertexBuffer;
   uint32_t vertexStride = 0; // zero means the size of `vertexFormat`
   uint32_t numVertices = 0;
@@ -1133,7 +1075,7 @@ struct ContextConfig {
 [[nodiscard]] uint32_t getNumImagePlanes(lvk::Format format);
 [[nodiscard]] uint32_t getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Format format, uint32_t level);
 [[nodiscard]] uint32_t getTextureBytesPerPlane(uint32_t width, uint32_t height, lvk::Format format, uint32_t plane);
-[[nodiscard]] uint32_t getVertexFormatSize(lvk::VertexFormat format);
+[[nodiscard]] uint32_t getVertexFormatSize(VkFormat format);
 void logShaderSource(const char* text);
 
 constexpr uint32_t calcNumMipLevels(uint32_t width, uint32_t height) {
