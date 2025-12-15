@@ -702,18 +702,18 @@ bool initModel(VulkanApp& app) {
 
   const auto totalPrimitiveCount = (uint32_t)indexData_.size() / 3;
   lvk::AccelStructDesc blasDesc{
-      .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .geometryFlags = 0, // not opaque: the any-hit shader does alpha testing
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.ib0_,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = totalPrimitiveCount},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = "BLAS",
   };
   const lvk::AccelStructSizes blasSizes = ctx_->getAccelStructSizes(blasDesc);
@@ -749,7 +749,7 @@ bool initModel(VulkanApp& app) {
         .instanceCustomIndex = 0,
         .mask = 0xff,
         .instanceShaderBindingTableRecordOffset = 0,
-        .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+        .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
         .accelerationStructureReference = ctx_->gpuAddress(res.BLAS_.back()),
     });
   }
@@ -764,11 +764,11 @@ bool initModel(VulkanApp& app) {
   });
 
   res.TLAS_ = ctx_->createAccelerationStructure({
-      .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = res.sbInstances_,
       .buildRange = {.primitiveCount = (uint32_t)instances.size()},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
   });
 
   return true;
@@ -837,7 +837,7 @@ VULKAN_APP_MAIN {
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
       .color = {{.format = app.ctx_->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: fullscreen",
   });
 
@@ -897,7 +897,9 @@ VULKAN_APP_MAIN {
     // Pass 2: render into the swapchain image
     {
       const lvk::RenderPass renderPassMain = {
-          .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+          .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                     .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
       };
       const lvk::Framebuffer fbMain = {
           .color = {{.texture = ctx_->getCurrentSwapchainTexture()}},
