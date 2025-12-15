@@ -705,7 +705,7 @@ bool initModel(VulkanApp& app) {
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
       .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .geometryFlags = 0, // not opaque: the any-hit shader does alpha testing
-      .vertexFormat = lvk::VertexFormat_Float3,
+      .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),

@@ -1414,7 +1414,7 @@ void createBLAS(const char* debugName,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
       .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .geometryFlags = opaque ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0u, // non-opaque: ray queries do alpha testing
-      .vertexFormat = lvk::VertexFormat_Float3,
+      .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
@@ -2007,10 +2007,10 @@ VULKAN_APP_MAIN {
   lvk::Framebuffer fbOffscreen = createOffscreenFramebuffer(app.width_ / kFramebufferScalar, app.height_ / kFramebufferScalar);
 
   const lvk::VertexInput vertexInput = {
-      .attributes = {{.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
-                     {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
-                     {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
-                     {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)}},
+      .attributes = {{.location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(VertexData, position)},
+                     {.location = 1, .format = VK_FORMAT_R16G16_SFLOAT, .offset = offsetof(VertexData, uv)},
+                     {.location = 2, .format = VK_FORMAT_R16_UINT, .offset = offsetof(VertexData, normal)},
+                     {.location = 3, .format = VK_FORMAT_R16_UINT, .offset = offsetof(VertexData, mtlIndex)}},
       .inputBindings = {{.stride = sizeof(VertexData)}},
   };
   const lvk::Format colorFormat = ctx_->getFormat(fbOffscreen.color[0].texture);
@@ -2041,9 +2041,9 @@ VULKAN_APP_MAIN {
           {
               .attributes =
                   {
-                      {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
-                      {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
-                      {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
+                      {.location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(VertexData, position)},
+                      {.location = 1, .format = VK_FORMAT_R16G16_SFLOAT, .offset = offsetof(VertexData, uv)},
+                      {.location = 2, .format = VK_FORMAT_R16_UINT, .offset = offsetof(VertexData, mtlIndex)},
                   },
               .inputBindings = {{.stride = sizeof(VertexData)}},
           },
