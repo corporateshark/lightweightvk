@@ -109,40 +109,58 @@ uint32_t lvk::getNumImagePlanes(lvk::Format format) {
   return properties[format].numPlanes;
 }
 
-uint32_t lvk::getVertexFormatSize(lvk::VertexFormat format) {
-  // clang-format off
-#define SIZE4(LVKBaseType, BaseType)           \
-  case VertexFormat::LVKBaseType##1: return sizeof(BaseType) * 1u; \
-  case VertexFormat::LVKBaseType##2: return sizeof(BaseType) * 2u; \
-  case VertexFormat::LVKBaseType##3: return sizeof(BaseType) * 3u; \
-  case VertexFormat::LVKBaseType##4: return sizeof(BaseType) * 4u;
-#define SIZE2_4_NORM(LVKBaseType, BaseType)           \
-  case VertexFormat::LVKBaseType##2Norm: return sizeof(BaseType) * 2u; \
-  case VertexFormat::LVKBaseType##4Norm: return sizeof(BaseType) * 4u;
-
-  // clang-format on
-
+uint32_t lvk::getVertexFormatSize(VkFormat format) {
+#define SIZE(Size, Type) \
+  case Type:             \
+    return Size;
   switch (format) {
-    SIZE4(Float, float);
-    SIZE4(Byte, uint8_t);
-    SIZE4(UByte, uint8_t);
-    SIZE4(Short, uint16_t);
-    SIZE4(UShort, uint16_t);
-    SIZE2_4_NORM(Byte, uint8_t);
-    SIZE2_4_NORM(UByte, uint8_t);
-    SIZE2_4_NORM(Short, uint16_t);
-    SIZE2_4_NORM(UShort, uint16_t);
-    SIZE4(Int, uint32_t);
-    SIZE4(UInt, uint32_t);
-    SIZE4(HalfFloat, uint16_t);
-  case VertexFormat::Int_2_10_10_10_REV:
-    return sizeof(uint32_t);
+    SIZE(1 * sizeof(float), VK_FORMAT_R32_SFLOAT);
+    SIZE(2 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
+    SIZE(3 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
+    SIZE(4 * sizeof(float), VK_FORMAT_R32G32B32A32_SFLOAT);
+    SIZE(1 * sizeof(uint8_t), VK_FORMAT_R8_SINT);
+    SIZE(2 * sizeof(uint8_t), VK_FORMAT_R8G8_SINT);
+    SIZE(3 * sizeof(uint8_t), VK_FORMAT_R8G8B8_SINT);
+    SIZE(4 * sizeof(uint8_t), VK_FORMAT_R8G8B8A8_SINT);
+    SIZE(1 * sizeof(uint8_t), VK_FORMAT_R8_UINT);
+    SIZE(2 * sizeof(uint8_t), VK_FORMAT_R8G8_UINT);
+    SIZE(3 * sizeof(uint8_t), VK_FORMAT_R8G8B8_UINT);
+    SIZE(4 * sizeof(uint8_t), VK_FORMAT_R8G8B8A8_UINT);
+    SIZE(1 * sizeof(uint16_t), VK_FORMAT_R16_SINT);
+    SIZE(2 * sizeof(uint16_t), VK_FORMAT_R16G16_SINT);
+    SIZE(3 * sizeof(uint16_t), VK_FORMAT_R16G16B16_SINT);
+    SIZE(4 * sizeof(uint16_t), VK_FORMAT_R16G16B16A16_SINT);
+    SIZE(1 * sizeof(uint16_t), VK_FORMAT_R16_UINT);
+    SIZE(2 * sizeof(uint16_t), VK_FORMAT_R16G16_UINT);
+    SIZE(3 * sizeof(uint16_t), VK_FORMAT_R16G16B16_UINT);
+    SIZE(4 * sizeof(uint16_t), VK_FORMAT_R16G16B16A16_UINT);
+    // Normalized variants
+    SIZE(2 * sizeof(uint8_t), VK_FORMAT_R8G8_SNORM);
+    SIZE(4 * sizeof(uint8_t), VK_FORMAT_R8G8B8A8_SNORM);
+    SIZE(2 * sizeof(uint8_t), VK_FORMAT_R8G8_UNORM);
+    SIZE(4 * sizeof(uint8_t), VK_FORMAT_R8G8B8A8_UNORM);
+    SIZE(2 * sizeof(uint16_t), VK_FORMAT_R16G16_SNORM);
+    SIZE(4 * sizeof(uint16_t), VK_FORMAT_R16G16B16A16_SNORM);
+    SIZE(2 * sizeof(uint16_t), VK_FORMAT_R16G16_UNORM);
+    SIZE(4 * sizeof(uint16_t), VK_FORMAT_R16G16B16A16_UNORM);
+    SIZE(1 * sizeof(uint32_t), VK_FORMAT_R32_SINT);
+    SIZE(2 * sizeof(uint32_t), VK_FORMAT_R32G32_SINT);
+    SIZE(3 * sizeof(uint32_t), VK_FORMAT_R32G32B32_SINT);
+    SIZE(4 * sizeof(uint32_t), VK_FORMAT_R32G32B32A32_SINT);
+    SIZE(1 * sizeof(uint32_t), VK_FORMAT_R32_UINT);
+    SIZE(2 * sizeof(uint32_t), VK_FORMAT_R32G32_UINT);
+    SIZE(3 * sizeof(uint32_t), VK_FORMAT_R32G32B32_UINT);
+    SIZE(4 * sizeof(uint32_t), VK_FORMAT_R32G32B32A32_UINT);
+    SIZE(1 * sizeof(uint16_t), VK_FORMAT_R16_SFLOAT);
+    SIZE(2 * sizeof(uint16_t), VK_FORMAT_R16G16_SFLOAT);
+    SIZE(3 * sizeof(uint16_t), VK_FORMAT_R16G16B16_SFLOAT);
+    SIZE(4 * sizeof(uint16_t), VK_FORMAT_R16G16B16A16_SFLOAT);
+    SIZE(sizeof(uint32_t), VK_FORMAT_A2B10G10R10_SNORM_PACK32);
   default:
     assert(false);
     return 0;
   }
-#undef SIZE4
-#undef SIZE2_4_NORM
+#undef SIZE
 }
 
 uint32_t lvk::getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Format format, uint32_t level) {
@@ -289,7 +307,7 @@ void lvk::logShaderSource(const char* text) {
 
 uint32_t lvk::VertexInput::getVertexSize() const {
   uint32_t vertexSize = 0;
-  for (uint32_t i = 0; i < LVK_VERTEX_ATTRIBUTES_MAX && attributes[i].format != VertexFormat::Invalid; i++) {
+  for (uint32_t i = 0; i < LVK_VERTEX_ATTRIBUTES_MAX && attributes[i].format != VK_FORMAT_UNDEFINED; i++) {
     LVK_ASSERT_MSG(attributes[i].offset == vertexSize, "Unsupported vertex attributes format");
     vertexSize += lvk::getVertexFormatSize(attributes[i].format);
   }
