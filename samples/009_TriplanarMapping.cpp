@@ -338,8 +338,8 @@ VULKAN_APP_MAIN {
   });
 
 #if !defined(ANDROID)
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
-    if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+  app.addKeyCallback([](auto* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_T && event->down) {
       texture1_.reset();
     }
   });

@@ -158,19 +158,21 @@ VULKAN_APP_MAIN {
   createDemo(ctx, app.folderContentRoot_.c_str(), "YUV 420p", lvk::Format_YUV_420p, "igl-samples/output_frame_900.420p.yuv");
 
 #if !defined(ANDROID)
-  app.addMouseButtonCallback([](auto* window, int button, int action, int mods) {
-    if (action == GLFW_PRESS && !res_.demos.empty()) {
+  app.addMouseButtonCallback([](auto* window, SDL_MouseButtonEvent* event) {
+    if (event->down && !res_.demos.empty()) {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
     }
   });
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-    } else if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+
+  app.addKeyCallback([](auto* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_ESCAPE && event->down) {
+      SDL_Event quitEvent = {.type = SDL_EVENT_QUIT};
+      SDL_PushEvent(&quitEvent);
+    } else if (event->key == SDLK_T && event->down) {
       currentDemo_ = 0;
       if (!res_.demos.empty())
         res_.demos.pop_back();
-    } else if (action == GLFW_PRESS && !res_.demos.empty()) {
+    } else if (event->down && !res_.demos.empty()) {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
     }
   });
