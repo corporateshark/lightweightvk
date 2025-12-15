@@ -249,8 +249,8 @@ VULKAN_APP_MAIN {
     });
     // nearest filtering turns the magnified offscreen texture into crisp blocks
     const lvk::Holder<lvk::SamplerHandle> sampler_ = ctx->createSampler({
-        .minFilter = lvk::SamplerFilter_Nearest,
-        .magFilter = lvk::SamplerFilter_Nearest,
+        .minFilter = VK_FILTER_NEAREST,
+        .magFilter = VK_FILTER_NEAREST,
         .debugName = "Sampler: nearest",
     });
 
@@ -371,13 +371,14 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       // 1. shade the background at quarter resolution
-      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, framebuffer);
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, framebuffer);
       buffer.cmdBindRenderPipeline(mode == Mode_Primitive ? pipelinePrimitiveRate_ : pipeline_);
       if (hasFSR) {
         // the pipeline rate is the first combiner input and the primitive rate the second: KEEP the first, REPLACE the second
-        buffer.cmdSetFragmentShadingRate(mode == Mode_Pipeline ? lvk::Dimensions{2, 2} : lvk::Dimensions{1, 1},
-                                         mode == Mode_Primitive ? lvk::ShadingRateCombinerOp_Replace : lvk::ShadingRateCombinerOp_Keep,
-                                         mode == Mode_Attachment ? lvk::ShadingRateCombinerOp_Replace : lvk::ShadingRateCombinerOp_Keep);
+        buffer.cmdSetFragmentShadingRate(
+            mode == Mode_Pipeline ? lvk::Dimensions{2, 2} : lvk::Dimensions{1, 1},
+            mode == Mode_Primitive ? VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR : VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR,
+            mode == Mode_Attachment ? VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR : VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
         buffer.cmdPushConstants(pc); // only `visualize` is read here - the background is a specialization constant
       }
       buffer.cmdPushDebugGroupLabel("Shading rate", 0xff0000ff);
@@ -387,8 +388,9 @@ VULKAN_APP_MAIN {
 
       // 2. magnify it into the swapchain and draw the UI on top (both at full shading rate)
       const lvk::Framebuffer fbSwapchain = {.color = {{.texture = swapchain}}};
-      buffer.cmdBeginRendering(
-          {.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, fbSwapchain, {.sampledImages = {offscreen_}});
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}},
+                               fbSwapchain,
+                               {.sampledImages = {offscreen_}});
       buffer.cmdBindRenderPipeline(pipelineUpscale_);
       pc.texture0 = offscreen_.index();
       buffer.cmdPushConstants(pc);

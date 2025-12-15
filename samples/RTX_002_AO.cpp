@@ -1173,16 +1173,16 @@ bool initModel(VulkanApp& app) {
   const uint32_t totalPrimitiveCount = (uint32_t)indexData_.size() / 3;
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.ib0_,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = totalPrimitiveCount},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = "BLAS",
   };
   const lvk::AccelStructSizes blasSizes = ctx_->getAccelStructSizes(blasDesc);
@@ -1234,10 +1234,10 @@ bool initModel(VulkanApp& app) {
 
   res.TLAS = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = res.sbInstances_,
       .buildRange = {.primitiveCount = (uint32_t)instances.size()},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
   });
 
   return true;
@@ -1324,26 +1324,28 @@ VULKAN_APP_MAIN {
       .debugName = "Buffer: uniforms (per object)",
   });
 
-  lvk::RenderPass renderPassZPrepass_ = {.color = {{
-                                             .loadOp = lvk::LoadOp_Clear,
-                                             .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                             .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                         }},
-                                         .depth = {
-                                             .loadOp = lvk::LoadOp_Clear,
-                                             .storeOp = lvk::StoreOp_Store,
-                                             .clearDepth = 1.0f,
-                                         }};
+  lvk::RenderPass renderPassZPrepass_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+          .clearDepth = 1.0f,
+      }};
 
-  lvk::RenderPass renderPassOffscreen_ = {.color = {{
-                                              .loadOp = lvk::LoadOp_Clear,
-                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                          }},
-                                          .depth = {
-                                              .loadOp = lvk::LoadOp_Load,
-                                              .storeOp = lvk::StoreOp_DontCare,
-                                          }};
+  lvk::RenderPass renderPassOffscreen_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+          .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      }};
 
 #if defined(LVK_DEMO_WITH_SLANG)
   res.smMeshVert_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
@@ -1380,8 +1382,8 @@ VULKAN_APP_MAIN {
                      .dataSize = sizeof(enableSpatialHash)},
         .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
         .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
-        .cullMode = lvk::CullMode_Back,
-        .frontFace = lvk::WindingMode_CCW,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .samplesCount = kNumSamplesMSAA,
         .debugName = "Pipeline: mesh",
     });
@@ -1400,8 +1402,8 @@ VULKAN_APP_MAIN {
       .smFrag = res.smMeshFragZPrepass_,
       .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
       .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
-      .cullMode = lvk::CullMode_Back,
-      .frontFace = lvk::WindingMode_CCW,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .samplesCount = kNumSamplesMSAA,
       .debugName = "Pipeline: mesh z-prepass",
   });
@@ -1411,7 +1413,7 @@ VULKAN_APP_MAIN {
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
       .color = {{.format = app.ctx_->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: fullscreen",
   });
 
@@ -1424,7 +1426,7 @@ VULKAN_APP_MAIN {
         .debugName = "Buffer: AO hash slot",
     });
     lvk::ICommandBuffer& buf = ctx_->acquireCommandBuffer();
-    buf.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    buf.cmdFillBuffer(res.sbHashSlot_, 0, VK_WHOLE_SIZE, 0);
     ctx_->submit(buf);
   }
 
@@ -1453,7 +1455,7 @@ VULKAN_APP_MAIN {
                            });
     buffer.cmdUpdateBuffer(res.ubPerObject_, 0, sizeof(perObject), &perObject);
     buffer.cmdBindVertexBuffer(0, res.vb0_, 0);
-    buffer.cmdBindIndexBuffer(res.ib0_, lvk::IndexFormat_UI32);
+    buffer.cmdBindIndexBuffer(res.ib0_, VK_INDEX_TYPE_UINT32);
 
     // Pass 1: mesh Z-prepass
     {
@@ -1468,7 +1470,7 @@ VULKAN_APP_MAIN {
           .perObject = ctx_->gpuAddress(res.ubPerObject_),
       };
       buffer.cmdPushConstants(pc);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       buffer.cmdPopDebugGroupLabel();
       buffer.cmdEndRendering();
@@ -1518,7 +1520,7 @@ VULKAN_APP_MAIN {
           .enableFiltering = enableFiltering_ ? 1 : 0,
       };
       buffer.cmdPushConstants(pc);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Equal, .isDepthWriteEnabled = false});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_EQUAL, .isDepthWriteEnabled = false});
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       buffer.cmdPopDebugGroupLabel();
       buffer.cmdEndRendering();
@@ -1534,7 +1536,9 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                         .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.sampledImages = {tex, fbOffscreen.color[0].texture}});
@@ -1622,7 +1626,7 @@ VULKAN_APP_MAIN {
       buffer.cmdEndRendering();
 
       if (resetHashMap) {
-        buffer.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
+        buffer.cmdFillBuffer(res.sbHashSlot_, 0, VK_WHOLE_SIZE, 0);
       }
 
       ctx_->submit(buffer, fbMain_.color[0].texture);
