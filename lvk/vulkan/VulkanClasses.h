@@ -381,8 +381,8 @@ class CommandBuffer final : public ICommandBuffer {
     return getVkCommandBuffer();
   }
 
-  void cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
-  void cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
+  void cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
+  void cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
   void cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
@@ -405,7 +405,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdBindDepthState(const DepthState& state) override;
 
   void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) override;
-  void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) override;
+  void cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexType, uint64_t bufferOffset, uint64_t bufferSize) override;
   void cmdPushConstants(const void* data, size_t size, size_t offset) override;
 
   void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) override;
@@ -443,7 +443,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) override;
   void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) override;
 
-  void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) override;
+  void cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) override;
   void cmdCopyImage(TextureHandle src,
                     TextureHandle dst,
                     const Dimensions& extent,
@@ -594,12 +594,12 @@ class VulkanContext final : public IContext {
 
   TextureHandle getCurrentSwapchainTexture() override;
   Format getSwapchainFormat() const override;
-  ColorSpace getSwapchainColorSpace() const override;
+  VkColorSpaceKHR getSwapchainColorSpace() const override;
   uint32_t getSwapchainCurrentImageIndex() const override;
   uint32_t getNumSwapchainImages() const override;
   void recreateSwapchain(int newWidth, int newHeight) override;
-  bool setCurrentPresentMode(PresentMode mode) override;
-  PresentMode getCurrentPresentMode() const override;
+  bool setCurrentPresentMode(VkPresentModeKHR mode) override;
+  VkPresentModeKHR getCurrentPresentMode() const override;
 
   uint32_t getFramebufferMSAABitMask() const override;
   bool isExtensionEnabled(const char* ext) const override;
@@ -616,8 +616,8 @@ class VulkanContext final : public IContext {
   VkPipeline getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask);
   VkPipeline getVkPipeline(RayTracingPipelineHandle handle);
 
-  uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
-  lvk::Result initContext(const HWDeviceDesc& desc);
+  uint32_t queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices = 1);
+  lvk::Result initContext(VkPhysicalDevice physicalDevice);
   lvk::Result initSwapchain(uint32_t width, uint32_t height);
 
   BufferHandle createBuffer(VkDeviceSize bufferSize,

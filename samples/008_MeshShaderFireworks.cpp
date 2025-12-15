@@ -780,14 +780,14 @@ VULKAN_APP_MAIN {
           .format = ctx->getSwapchainFormat(),
 #endif
           .blendEnabled = true,
-          .rgbBlendOp = lvk::BlendOp_Add,
-          .alphaBlendOp = lvk::BlendOp_Add,
-          .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .srcAlphaBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .dstRGBBlendFactor = lvk::BlendFactor_One,
-          .dstAlphaBlendFactor = lvk::BlendFactor_One,
+          .rgbBlendOp = VK_BLEND_OP_ADD,
+          .alphaBlendOp = VK_BLEND_OP_ADD,
+          .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
       }},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: mesh",
   });
 
