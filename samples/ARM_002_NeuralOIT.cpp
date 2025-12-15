@@ -1233,10 +1233,10 @@ VULKAN_APP_MAIN {
   const lvk::Format formatCount = lvk::Format_R_F16;
 
   const lvk::VertexInput vertexInput = {
-      .attributes = {{.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
-                     {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
-                     {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
-                     {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)}},
+      .attributes = {{.location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(VertexData, position)},
+                     {.location = 1, .format = VK_FORMAT_R16G16_SFLOAT, .offset = offsetof(VertexData, uv)},
+                     {.location = 2, .format = VK_FORMAT_R16_UINT, .offset = offsetof(VertexData, normal)},
+                     {.location = 3, .format = VK_FORMAT_R16_UINT, .offset = offsetof(VertexData, mtlIndex)}},
       .inputBindings = {{.stride = sizeof(VertexData)}},
   };
   const lvk::ColorAttachment blendPremultiplied = {
