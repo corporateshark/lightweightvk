@@ -339,17 +339,17 @@ void createBottomLevelAccelerationStructure() {
   });
 
   res.BLAS = ctx_->createAccelerationStructure({
-      .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vertexBuffer,
       .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = res.indexBuffer,
       .transformBuffer = transformBuffer,
       .buildRange = {.primitiveCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(indices) / 3},
       // gl_HitTriangleVertexPositionsEXT (VUID-HitTriangleVertexPositionsKHR-None-08751)
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace | lvk::AccelStructBuildFlagBits_AllowDataAccess,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR,
       .debugName = "BLAS",
   });
 }
@@ -365,7 +365,7 @@ void createTopLevelAccelerationStructure() {
           .instanceCustomIndex = 0,
           .mask = 0xff,
           .instanceShaderBindingTableRecordOffset = 0, // hit group 0
-          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
           .accelerationStructureReference = ctx_->gpuAddress(res.BLAS),
       },
       {
@@ -377,7 +377,7 @@ void createTopLevelAccelerationStructure() {
           .instanceCustomIndex = 0,
           .mask = 0xff,
           .instanceShaderBindingTableRecordOffset = 1, // hit group 1
-          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
           .accelerationStructureReference = ctx_->gpuAddress(res.BLAS),
       },
   };
@@ -392,11 +392,11 @@ void createTopLevelAccelerationStructure() {
   });
 
   res.TLAS = ctx_->createAccelerationStructure({
-      .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = res.instancesBuffer,
       .buildRange = {.primitiveCount = 2},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace | lvk::AccelStructBuildFlagBits_AllowUpdate,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
   });
 }
 
@@ -549,7 +549,8 @@ VULKAN_APP_MAIN {
     lvk::Framebuffer framebuffer = {
         .color = {{.texture = ctx_->getCurrentSwapchainTexture()}},
     };
-    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
+    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}}},
+                             framebuffer);
     app.imgui_->beginFrame(framebuffer);
     app.drawFPS();
     app.imgui_->endFrame(buffer);

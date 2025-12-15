@@ -43,37 +43,13 @@
 
 uint32_t lvk::VulkanPipelineBuilder::numPipelinesCreated_ = 0;
 
-static_assert(lvk::HWDeviceDesc::LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE == VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
-static_assert(lvk::Swizzle_Default == (uint32_t)VK_COMPONENT_SWIZZLE_IDENTITY);
-static_assert(lvk::Swizzle_0 == (uint32_t)VK_COMPONENT_SWIZZLE_ZERO);
-static_assert(lvk::Swizzle_1 == (uint32_t)VK_COMPONENT_SWIZZLE_ONE);
-static_assert(lvk::Swizzle_R == (uint32_t)VK_COMPONENT_SWIZZLE_R);
-static_assert(lvk::Swizzle_G == (uint32_t)VK_COMPONENT_SWIZZLE_G);
-static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
-static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
-static_assert(lvk::ShadingRateCombinerOp_Keep == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Replace == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Min == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Max == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR);
-static_assert(lvk::ShadingRateCombinerOp_Mul == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR);
-static_assert(lvk::ColorComponentBit_R == (uint32_t)VK_COLOR_COMPONENT_R_BIT);
-static_assert(lvk::ColorComponentBit_G == (uint32_t)VK_COLOR_COMPONENT_G_BIT);
-static_assert(lvk::ColorComponentBit_B == (uint32_t)VK_COLOR_COMPONENT_B_BIT);
-static_assert(lvk::ColorComponentBit_A == (uint32_t)VK_COLOR_COMPONENT_A_BIT);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
-static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
-static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
-static_assert(lvk::LVK_WHOLE_SIZE == VK_WHOLE_SIZE);
-// ray-tracing stages must remain contiguous; `Stage_RayGen..Stage_Callable` is used as a range test
-static_assert(lvk::Stage_AnyHit == lvk::Stage_RayGen + 1);
-static_assert(lvk::Stage_ClosestHit == lvk::Stage_RayGen + 2);
-static_assert(lvk::Stage_Miss == lvk::Stage_RayGen + 3);
-static_assert(lvk::Stage_Intersection == lvk::Stage_RayGen + 4);
-static_assert(lvk::Stage_Callable == lvk::Stage_RayGen + 5);
 
 namespace {
 
-const char* kDefaultValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
+const char* kDefaultValidationLayers[] = {
+    "VK_LAYER_KHRONOS_validation",
+};
 
 // These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
 enum Bindings {
@@ -121,6 +97,11 @@ void stripArrayIndex(std::string& s, const char* varName) {
       }
     }
   }
+}
+
+bool isIdentityMapping(const VkComponentMapping& m) {
+  return m.r == VK_COMPONENT_SWIZZLE_IDENTITY && m.g == VK_COMPONENT_SWIZZLE_IDENTITY && m.b == VK_COMPONENT_SWIZZLE_IDENTITY &&
+         m.a == VK_COMPONENT_SWIZZLE_IDENTITY;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
@@ -192,84 +173,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-VkIndexType indexFormatToVkIndexType(lvk::IndexFormat fmt) {
-  switch (fmt) {
-  case lvk::IndexFormat_UI8:
-    return VK_INDEX_TYPE_UINT8_EXT;
-  case lvk::IndexFormat_UI16:
-    return VK_INDEX_TYPE_UINT16;
-  case lvk::IndexFormat_UI32:
-    return VK_INDEX_TYPE_UINT32;
-  };
-  LVK_ASSERT(false);
-  return VK_INDEX_TYPE_NONE_KHR;
-}
-
-VkPrimitiveTopology topologyToVkPrimitiveTopology(lvk::Topology t) {
-  switch (t) {
-  case lvk::Topology_Point:
-    return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-  case lvk::Topology_Line:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-  case lvk::Topology_LineStrip:
-    return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-  case lvk::Topology_Triangle:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-  case lvk::Topology_TriangleStrip:
-    return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-  case lvk::Topology_Patch:
-    return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
-  }
-  LVK_ASSERT_MSG(false, "Implement Topology = %u", (uint32_t)t);
-  return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
-}
-
-VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
-  switch (a) {
-  case lvk::LoadOp_Load:
-    return VK_ATTACHMENT_LOAD_OP_LOAD;
-  case lvk::LoadOp_Clear:
-    return VK_ATTACHMENT_LOAD_OP_CLEAR;
-  case lvk::LoadOp_DontCare:
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  case lvk::LoadOp_None:
-    return VK_ATTACHMENT_LOAD_OP_NONE;
-  case lvk::LoadOp_Invalid:
-    LVK_ASSERT(false);
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  }
-  LVK_ASSERT(false);
-  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-}
-
-VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
-  switch (a) {
-  case lvk::StoreOp_Store:
-    return VK_ATTACHMENT_STORE_OP_STORE;
-  case lvk::StoreOp_DontCare:
-    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  case lvk::StoreOp_None:
-    return VK_ATTACHMENT_STORE_OP_NONE;
-  }
-  LVK_ASSERT(false);
-  return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-}
-
-VkResolveModeFlagBits resolveModeToVkResolveModeFlagBits(lvk::ResolveMode mode, VkResolveModeFlags supported) {
-  switch (mode) {
-  case lvk::ResolveMode_None:
-    return VK_RESOLVE_MODE_NONE;
-  case lvk::ResolveMode_SampleZero:
-    return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Average:
-    return supported & VK_RESOLVE_MODE_AVERAGE_BIT ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Min:
-    return supported & VK_RESOLVE_MODE_MIN_BIT ? VK_RESOLVE_MODE_MIN_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  case lvk::ResolveMode_Max:
-    return supported & VK_RESOLVE_MODE_MAX_BIT ? VK_RESOLVE_MODE_MAX_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-  }
-  LVK_ASSERT(false);
-  return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+VkResolveModeFlagBits getSupportedVkResolveModeFlagBits(VkResolveModeFlagBits mode, VkResolveModeFlags supported) {
+  return supported & mode ? mode : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 }
 
 VkShaderStageFlagBits shaderStageToVkShaderStage(lvk::ShaderStage stage) {
@@ -324,169 +229,6 @@ VkMemoryPropertyFlags storageTypeToVkMemoryPropertyFlags(lvk::StorageType storag
     break;
   }
   return memFlags;
-}
-
-VkBuildAccelerationStructureFlagsKHR buildFlagsToVkBuildAccelerationStructureFlags(uint8_t buildFlags) {
-  VkBuildAccelerationStructureFlagsKHR flags = 0;
-
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowCompaction) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_PreferFastTrace) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_PreferFastBuild) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_LowMemory) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowDisableOpacityMicromaps) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR;
-  }
-  if (buildFlags & lvk::AccelStructBuildFlagBits_AllowDataAccess) {
-    flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
-  }
-
-  return flags;
-}
-
-VkPolygonMode polygonModeToVkPolygonMode(lvk::PolygonMode mode) {
-  switch (mode) {
-  case lvk::PolygonMode_Fill:
-    return VK_POLYGON_MODE_FILL;
-  case lvk::PolygonMode_Line:
-    return VK_POLYGON_MODE_LINE;
-  case lvk::PolygonMode_Point:
-    return VK_POLYGON_MODE_POINT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing polygon fill mode");
-  return VK_POLYGON_MODE_FILL;
-}
-
-VkBlendFactor blendFactorToVkBlendFactor(lvk::BlendFactor value) {
-  switch (value) {
-  case lvk::BlendFactor_Zero:
-    return VK_BLEND_FACTOR_ZERO;
-  case lvk::BlendFactor_One:
-    return VK_BLEND_FACTOR_ONE;
-  case lvk::BlendFactor_SrcColor:
-    return VK_BLEND_FACTOR_SRC_COLOR;
-  case lvk::BlendFactor_OneMinusSrcColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-  case lvk::BlendFactor_DstColor:
-    return VK_BLEND_FACTOR_DST_COLOR;
-  case lvk::BlendFactor_OneMinusDstColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-  case lvk::BlendFactor_SrcAlpha:
-    return VK_BLEND_FACTOR_SRC_ALPHA;
-  case lvk::BlendFactor_OneMinusSrcAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-  case lvk::BlendFactor_DstAlpha:
-    return VK_BLEND_FACTOR_DST_ALPHA;
-  case lvk::BlendFactor_OneMinusDstAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-  case lvk::BlendFactor_BlendColor:
-    return VK_BLEND_FACTOR_CONSTANT_COLOR;
-  case lvk::BlendFactor_OneMinusBlendColor:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-  case lvk::BlendFactor_BlendAlpha:
-    return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-  case lvk::BlendFactor_OneMinusBlendAlpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
-  case lvk::BlendFactor_SrcAlphaSaturated:
-    return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-  case lvk::BlendFactor_Src1Color:
-    return VK_BLEND_FACTOR_SRC1_COLOR;
-  case lvk::BlendFactor_OneMinusSrc1Color:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR;
-  case lvk::BlendFactor_Src1Alpha:
-    return VK_BLEND_FACTOR_SRC1_ALPHA;
-  case lvk::BlendFactor_OneMinusSrc1Alpha:
-    return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
-  default:
-    LVK_ASSERT(false);
-    return VK_BLEND_FACTOR_ONE; // default for unsupported values
-  }
-}
-
-VkBlendOp blendOpToVkBlendOp(lvk::BlendOp value) {
-  switch (value) {
-  case lvk::BlendOp_Add:
-    return VK_BLEND_OP_ADD;
-  case lvk::BlendOp_Subtract:
-    return VK_BLEND_OP_SUBTRACT;
-  case lvk::BlendOp_ReverseSubtract:
-    return VK_BLEND_OP_REVERSE_SUBTRACT;
-  case lvk::BlendOp_Min:
-    return VK_BLEND_OP_MIN;
-  case lvk::BlendOp_Max:
-    return VK_BLEND_OP_MAX;
-  }
-
-  LVK_ASSERT(false);
-  return VK_BLEND_OP_ADD;
-}
-
-VkCullModeFlags cullModeToVkCullMode(lvk::CullMode mode) {
-  switch (mode) {
-  case lvk::CullMode_None:
-    return VK_CULL_MODE_NONE;
-  case lvk::CullMode_Front:
-    return VK_CULL_MODE_FRONT_BIT;
-  case lvk::CullMode_Back:
-    return VK_CULL_MODE_BACK_BIT;
-  }
-  LVK_ASSERT_MSG(false, "Implement a missing cull mode");
-  return VK_CULL_MODE_NONE;
-}
-
-VkFrontFace windingModeToVkFrontFace(lvk::WindingMode mode) {
-  switch (mode) {
-  case lvk::WindingMode_CCW:
-    return VK_FRONT_FACE_COUNTER_CLOCKWISE;
-  case lvk::WindingMode_CW:
-    return VK_FRONT_FACE_CLOCKWISE;
-  }
-  LVK_ASSERT_MSG(false, "Wrong winding order (cannot be more than 2)");
-  return VK_FRONT_FACE_CLOCKWISE;
-}
-
-VkStencilOp stencilOpToVkStencilOp(lvk::StencilOp op) {
-  switch (op) {
-  case lvk::StencilOp_Keep:
-    return VK_STENCIL_OP_KEEP;
-  case lvk::StencilOp_Zero:
-    return VK_STENCIL_OP_ZERO;
-  case lvk::StencilOp_Replace:
-    return VK_STENCIL_OP_REPLACE;
-  case lvk::StencilOp_IncrementClamp:
-    return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
-  case lvk::StencilOp_DecrementClamp:
-    return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
-  case lvk::StencilOp_Invert:
-    return VK_STENCIL_OP_INVERT;
-  case lvk::StencilOp_IncrementWrap:
-    return VK_STENCIL_OP_INCREMENT_AND_WRAP;
-  case lvk::StencilOp_DecrementWrap:
-    return VK_STENCIL_OP_DECREMENT_AND_WRAP;
-  }
-  LVK_ASSERT(false);
-  return VK_STENCIL_OP_KEEP;
-}
-
-VkVertexInputRate vertexInputRateToVkVertexInputRate(lvk::VertexInputRate rate) {
-  switch (rate) {
-  case lvk::VertexInputRate_Vertex:
-    return VK_VERTEX_INPUT_RATE_VERTEX;
-  case lvk::VertexInputRate_Instance:
-    return VK_VERTEX_INPUT_RATE_INSTANCE;
-  }
-  LVK_ASSERT(false);
-  return VK_VERTEX_INPUT_RATE_VERTEX;
 }
 
 VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
@@ -587,20 +329,9 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
  * pick one. `VulkanImage::getImageAspectFlags()` reports every aspect the format has - use that one for attachments and
  * barriers, and this one for image views.
  */
-VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, lvk::TextureAspect aspect) {
-  switch (aspect) {
-  case lvk::TextureAspect_Depth:
-    return VK_IMAGE_ASPECT_DEPTH_BIT;
-  case lvk::TextureAspect_Stencil:
-    return VK_IMAGE_ASPECT_STENCIL_BIT;
-  case lvk::TextureAspect_Plane0:
-    return VK_IMAGE_ASPECT_PLANE_0_BIT;
-  case lvk::TextureAspect_Plane1:
-    return VK_IMAGE_ASPECT_PLANE_1_BIT;
-  case lvk::TextureAspect_Plane2:
-    return VK_IMAGE_ASPECT_PLANE_2_BIT;
-  case lvk::TextureAspect_Default:
-    break;
+VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, VkImageAspectFlagBits aspect) {
+  if (aspect) {
+    return aspect;
   }
 
   if (!isDepthFormat && !isStencilFormat) {
@@ -749,53 +480,6 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
-VkPipelineStageFlags2 pipelineStageFlagsToVkPipelineStageFlags2(lvk::PipelineStageFlags stages) {
-  VkPipelineStageFlags2 flags = 0;
-  // clang-format off
-  if (stages & lvk::PipelineStageBits_DrawIndirect    ) flags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-  if (stages & lvk::PipelineStageBits_VertexInput     ) flags |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
-  if (stages & lvk::PipelineStageBits_Vertex          ) flags |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                                                                 VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
-                                                                 VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT |
-                                                                 VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT;
-  if (stages & lvk::PipelineStageBits_Task            ) flags |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
-  if (stages & lvk::PipelineStageBits_Mesh            ) flags |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
-  if (stages & lvk::PipelineStageBits_DepthStencil    ) flags |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                                                                 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-  if (stages & lvk::PipelineStageBits_Fragment        ) flags |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-  if (stages & lvk::PipelineStageBits_ColorAttachment ) flags |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-  if (stages & lvk::PipelineStageBits_Compute         ) flags |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  if (stages & lvk::PipelineStageBits_RayTracing      ) flags |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-  if (stages & lvk::PipelineStageBits_AccelStructBuild) flags |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-  if (stages & lvk::PipelineStageBits_Transfer        ) flags |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-  if (stages & lvk::PipelineStageBits_Host            ) flags |= VK_PIPELINE_STAGE_2_HOST_BIT;
-  if (stages & lvk::PipelineStageBits_AllCommands     ) flags |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-  // clang-format on
-  return flags;
-}
-
-VkAccessFlags2 accessFlagsToVkAccessFlags2(lvk::AccessFlags access) {
-  VkAccessFlags2 flags = 0;
-  // clang-format off
-  if (access & lvk::AccessBits_IndirectRead       ) flags |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
-  if (access & lvk::AccessBits_IndexRead          ) flags |= VK_ACCESS_2_INDEX_READ_BIT;
-  if (access & lvk::AccessBits_VertexAttributeRead) flags |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
-  if (access & lvk::AccessBits_ShaderRead         ) flags |= VK_ACCESS_2_SHADER_READ_BIT;
-  if (access & lvk::AccessBits_ShaderWrite        ) flags |= VK_ACCESS_2_SHADER_WRITE_BIT;
-  if (access & lvk::AccessBits_ColorRead          ) flags |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
-  if (access & lvk::AccessBits_ColorWrite         ) flags |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-  if (access & lvk::AccessBits_DepthStencilRead   ) flags |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-  if (access & lvk::AccessBits_DepthStencilWrite  ) flags |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-  if (access & lvk::AccessBits_TransferRead       ) flags |= VK_ACCESS_2_TRANSFER_READ_BIT;
-  if (access & lvk::AccessBits_TransferWrite      ) flags |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
-  if (access & lvk::AccessBits_HostRead           ) flags |= VK_ACCESS_2_HOST_READ_BIT;
-  if (access & lvk::AccessBits_HostWrite          ) flags |= VK_ACCESS_2_HOST_WRITE_BIT;
-  if (access & lvk::AccessBits_AccelStructRead    ) flags |= VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-  if (access & lvk::AccessBits_AccelStructWrite   ) flags |= VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-  // clang-format on
-  return flags;
-}
-
 VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool computeOnlyQueue) {
   constexpr VkPipelineStageFlags2 kGraphicsOnlyStages =
       VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
@@ -809,22 +493,22 @@ VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool com
   return computeOnlyQueue ? (stages & ~kGraphicsOnlyStages) : stages;
 }
 
-StageAccess stripGraphicsStageAccess(StageAccess sa, bool computeOnlyQueue) {
+lvk::StageAccess stripGraphicsStageAccess(lvk::StageAccess sa, bool computeOnlyQueue) {
   constexpr VkAccessFlags2 kGraphicsOnlyAccess = VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT |
                                                  VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
                                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
                                                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                                                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-  return computeOnlyQueue ? StageAccess{stripGraphicsStages(sa.stage, true), sa.access & ~kGraphicsOnlyAccess} : sa;
+  return computeOnlyQueue ? lvk::StageAccess{stripGraphicsStages(sa.stage, true), sa.access & ~kGraphicsOnlyAccess} : sa;
 }
 
 void emitImageQFOTransfer(VkCommandBuffer cb,
                           const lvk::VulkanImage& img,
                           VkImageLayout oldLayout,
                           VkImageLayout newLayout,
-                          StageAccess src,
-                          StageAccess dst,
+                          lvk::StageAccess src,
+                          lvk::StageAccess dst,
                           uint32_t srcQueueFamily,
                           uint32_t dstQueueFamily) {
   const VkImageMemoryBarrier2 barrier = {
@@ -849,7 +533,7 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
 }
 
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR>& formats,
-                                           lvk::ColorSpace requestedColorSpace,
+                                           VkColorSpaceKHR requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
   LVK_ASSERT(!formats.empty());
 
@@ -868,15 +552,15 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR
     return false;
   };
 
-  auto colorSpaceToVkSurfaceFormat = [](lvk::ColorSpace colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
+  auto colorSpaceToVkSurfaceFormat = [](VkColorSpaceKHR colorSpace, bool isBGR, bool hasSwapchainColorspaceExt) -> VkSurfaceFormatKHR {
     switch (colorSpace) {
-    case lvk::ColorSpace_SRGB_NONLINEAR:
+    case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
       return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
-    case lvk::ColorSpace_SRGB_EXTENDED_LINEAR:
+    case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
       if (hasSwapchainColorspaceExt)
         return VkSurfaceFormatKHR{VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT};
       [[fallthrough]];
-    case lvk::ColorSpace_HDR10:
+    case VK_COLOR_SPACE_HDR10_ST2084_EXT:
       if (hasSwapchainColorspaceExt) {
         return VkSurfaceFormatKHR{isBGR ? VK_FORMAT_A2B10G10R10_UNORM_PACK32 : VK_FORMAT_A2R10G10B10_UNORM_PACK32,
                                   VK_COLOR_SPACE_HDR10_ST2084_EXT};
@@ -1363,10 +1047,9 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   };
 
   auto chooseSwapPresentMode = [config = &ctx.config_](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
-    for (lvk::PresentMode mode : config->presentModes) {
-      const VkPresentModeKHR vkMode = presentModeToVkPresentMode(mode);
-      if (std::find(modes.cbegin(), modes.cend(), vkMode) != modes.cend()) {
-        return vkMode;
+    for (VkPresentModeKHR mode : config->presentModes) {
+      if (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend()) {
+        return mode;
       }
     }
     return VK_PRESENT_MODE_FIFO_KHR;
@@ -1444,8 +1127,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   if (std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), currentPresentMode_)) {
     registeredPresentModes_[numRegisteredPresentModes_++] = currentPresentMode_;
   }
-  for (const lvk::PresentMode m : ctx.config_.presentModes) {
-    const VkPresentModeKHR mode = presentModeToVkPresentMode(m);
+  for (VkPresentModeKHR mode : ctx.config_.presentModes) {
     if (!std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), mode)) {
       continue; // not compatible with the chosen presentMode
     }
@@ -1671,17 +1353,8 @@ uint32_t lvk::VulkanSwapchain::getSwapchainCurrentImageIndex() const {
   return currentImageIndex_;
 }
 
-lvk::SurfaceTransform lvk::VulkanSwapchain::getSurfaceTransform() const {
-  switch (preTransform_) {
-  case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
-    return SurfaceTransform_Rotate90;
-  case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
-    return SurfaceTransform_Rotate180;
-  case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
-    return SurfaceTransform_Rotate270;
-  default:
-    return SurfaceTransform_Identity;
-  }
+VkSurfaceTransformFlagBitsKHR lvk::VulkanSwapchain::getSurfaceTransform() const {
+  return preTransform_;
 }
 
 bool lvk::VulkanSwapchain::setCurrentPresentMode(VkPresentModeKHR mode) {
@@ -2386,21 +2059,21 @@ void lvk::CommandBuffer::cmdBarrier(const Barrier& barrier) {
 
   LVK_ASSERT_MSG(!isRendering_, "cmdBarrier() must be called outside cmdBeginRendering()/cmdEndRendering()");
 
-  const PipelineStageFlags allStages = barrier.srcStages | barrier.dstStages;
+  const VkPipelineStageFlags2 allStages = barrier.srcStages | barrier.dstStages;
 
-  LVK_ASSERT_MSG(!(allStages & (lvk::PipelineStageBits_RayTracing | lvk::PipelineStageBits_AccelStructBuild)) ||
+  LVK_ASSERT_MSG(!(allStages & (VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR |
+                                VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR)) ||
                      ctx_->has_KHR_acceleration_structure_,
                  "Ray tracing stages require VK_KHR_acceleration_structure");
-  LVK_ASSERT_MSG(!(allStages & (lvk::PipelineStageBits_Task | lvk::PipelineStageBits_Mesh)) || ctx_->has_EXT_mesh_shader_,
+  LVK_ASSERT_MSG(!(allStages & (VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT)) ||
+                     ctx_->has_EXT_mesh_shader_,
                  "Task and mesh stages require VK_EXT_mesh_shader");
 
   const bool computeOnlyQueue = isComputeOnlyQueue();
 
   // a compute-only queue supports neither the graphics stages nor the access types which belong to them
-  StageAccess src = stripGraphicsStageAccess(
-      {pipelineStageFlagsToVkPipelineStageFlags2(barrier.srcStages), accessFlagsToVkAccessFlags2(barrier.srcAccess)}, computeOnlyQueue);
-  StageAccess dst = stripGraphicsStageAccess(
-      {pipelineStageFlagsToVkPipelineStageFlags2(barrier.dstStages), accessFlagsToVkAccessFlags2(barrier.dstAccess)}, computeOnlyQueue);
+  StageAccess src = stripGraphicsStageAccess({barrier.srcStages, barrier.srcAccess}, computeOnlyQueue);
+  StageAccess dst = stripGraphicsStageAccess({barrier.dstStages, barrier.dstAccess}, computeOnlyQueue);
 
   // an access mask needs at least one stage which supports it, so a fully stripped stage mask takes its access with it
   if (!src.stage) src.access = VK_ACCESS_2_NONE;
@@ -2422,17 +2095,8 @@ void lvk::CommandBuffer::cmdBarrier(const Barrier& barrier) {
   vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &depInfo);
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  StageAccess extraDstAccess = {};
-
-  if (extraDstStage == lvk::Stage_Comp) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  }
-  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-  }
 
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
@@ -2476,17 +2140,9 @@ void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const ldr::Span<Textu
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures,
+                                                       const lvk::StageAccess& extraDstAccess) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  StageAccess extraDstAccess = {};
-
-  if (extraDstStage == lvk::Stage_Comp) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  }
-  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
-    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-  }
 
   for (TextureHandle handle : textures) {
     lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
@@ -2584,8 +2240,8 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
-  cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2611,8 +2267,8 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
-  cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2878,12 +2534,12 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, renderPassState_.viewMask),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
+        .resolveMode = (colorSamples > 1) ? getSupportedVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                           : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
-        .storeOp = storeOpToVkAttachmentStoreOp(descColor.storeOp),
+        .loadOp = descColor.loadOp,
+        .storeOp = descColor.storeOp,
     };
     memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
     // handle MSAA
@@ -2913,8 +2569,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = loadOpToVkAttachmentLoadOp(descDepth.loadOp),
-        .storeOp = storeOpToVkAttachmentStoreOp(descDepth.storeOp),
+        .loadOp = descDepth.loadOp,
+        .storeOp = descDepth.storeOp,
         .clearValue = {.depthStencil = {.depth = descDepth.clearDepth, .stencil = descDepth.clearStencil}},
     };
     // handle depth MSAA
@@ -2928,7 +2584,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
           depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, renderPassState_.viewMask);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
-          resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
+          getSupportedVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
     }
     const VkExtent3D dim = depthTexture.vkExtent_;
     if (fbWidth) {
@@ -2952,11 +2608,12 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
-  const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
+  const bool isStencilFormat = (renderPass.stencil.loadOp != VK_ATTACHMENT_LOAD_OP_DONT_CARE) ||
+                               (renderPass.stencil.storeOp != VK_ATTACHMENT_STORE_OP_DONT_CARE);
 
   if (depthTex && isStencilFormat) {
-    stencilAttachment.loadOp = loadOpToVkAttachmentLoadOp(renderPass.stencil.loadOp);
-    stencilAttachment.storeOp = storeOpToVkAttachmentStoreOp(renderPass.stencil.storeOp);
+    stencilAttachment.loadOp = renderPass.stencil.loadOp;
+    stencilAttachment.storeOp = renderPass.stencil.storeOp;
     stencilAttachment.clearValue.depthStencil.stencil = renderPass.stencil.clearStencil;
   }
 
@@ -3035,7 +2692,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   if (ctx_->has_KHR_fragment_shading_rate_) {
     // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
-    cmdSetFragmentShadingRate({}, ShadingRateCombinerOp_Keep, ShadingRateCombinerOp_Keep);
+    cmdSetFragmentShadingRate({}, VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR, VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
   }
 
   vkCmdBeginRendering(wrapper_->cmdBuf_, &renderingInfo);
@@ -3138,9 +2795,8 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
 void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   LVK_PROFILER_FUNCTION();
 
-  const VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
   vkCmdSetDepthWriteEnable(wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
-  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
+  vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (desc.compareOp != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
   vkCmdSetDepthBoundsTestEnable(wrapper_->cmdBuf_, desc.isDepthBoundsTestEnabled ? VK_TRUE : VK_FALSE);
 
   if (desc.isDepthBoundsTestEnabled) {
@@ -3155,7 +2811,7 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
     return;
   }
 #endif
-  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
+  vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, desc.compareOp);
 }
 
 void lvk::CommandBuffer::cmdBindStencilState(const StencilState& state) {
@@ -3171,15 +2827,6 @@ void lvk::CommandBuffer::cmdBindStencilState(const StencilState& state) {
   const StencilFaceState& front = state.front;
   const StencilFaceState& back = state.back;
 
-  const VkStencilOp frontFailOp = stencilOpToVkStencilOp(front.stencilFailureOp);
-  const VkStencilOp frontPassOp = stencilOpToVkStencilOp(front.depthStencilPassOp);
-  const VkStencilOp frontDepthFailOp = stencilOpToVkStencilOp(front.depthFailureOp);
-  const VkCompareOp frontCompareOp = compareOpToVkCompareOp(front.stencilCompareOp);
-  const VkStencilOp backFailOp = stencilOpToVkStencilOp(back.stencilFailureOp);
-  const VkStencilOp backPassOp = stencilOpToVkStencilOp(back.depthStencilPassOp);
-  const VkStencilOp backDepthFailOp = stencilOpToVkStencilOp(back.depthFailureOp);
-  const VkCompareOp backCompareOp = compareOpToVkCompareOp(back.stencilCompareOp);
-
   vkCmdSetStencilCompareMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.readMask);
   vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.writeMask);
   vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.reference);
@@ -3187,8 +2834,18 @@ void lvk::CommandBuffer::cmdBindStencilState(const StencilState& state) {
   vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.writeMask);
   vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.reference);
 
-  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, frontFailOp, frontPassOp, frontDepthFailOp, frontCompareOp);
-  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, backFailOp, backPassOp, backDepthFailOp, backCompareOp);
+  vkCmdSetStencilOp(wrapper_->cmdBuf_,
+                    VK_STENCIL_FACE_FRONT_BIT,
+                    front.stencilFailureOp,
+                    front.depthStencilPassOp,
+                    front.depthFailureOp,
+                    front.stencilCompareOp);
+  vkCmdSetStencilOp(wrapper_->cmdBuf_,
+                    VK_STENCIL_FACE_BACK_BIT,
+                    back.stencilFailureOp,
+                    back.depthStencilPassOp,
+                    back.depthFailureOp,
+                    back.stencilCompareOp);
 }
 
 void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) {
@@ -3205,16 +2862,15 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
   vkCmdBindVertexBuffers2(wrapper_->cmdBuf_, index, 1, &buf->vkBuffer_, &bufferOffset, &bufferSize, nullptr);
 }
 
-void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) {
+void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexType, uint64_t bufferOffset, uint64_t bufferSize) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
   LVK_ASSERT(!buf || buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
   LVK_ASSERT_MSG(buf || ctx_->has_KHR_maintenance6_, "An empty index buffer requires `.maintenance6`");
   LVK_ASSERT_MSG(buf || bufferOffset == 0, "An empty index buffer requires a zero `bufferOffset`");
 
-  const VkIndexType type = indexFormatToVkIndexType(indexFormat);
   // TODO: remove KHR to update to Vulkan 1.4
-  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf ? buf->vkBuffer_ : VK_NULL_HANDLE, bufferOffset, bufferSize, type);
+  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf ? buf->vkBuffer_ : VK_NULL_HANDLE, bufferOffset, bufferSize, indexType);
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
@@ -3519,8 +3175,16 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
-  cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
+  cmdTransitionToShaderReadOnly(deps.sampledImages,
+                                {
+                                    .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                                    .access = VK_ACCESS_2_SHADER_READ_BIT,
+                                });
+  cmdTransitionToGeneral(deps.storageImages,
+                         {
+                             .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                             .access = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                         });
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],
@@ -3556,8 +3220,8 @@ void lvk::CommandBuffer::cmdSetPrimitiveRestartEnable(bool enable) {
 }
 
 void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
-                                                   ShadingRateCombinerOp primitiveOp,
-                                                   ShadingRateCombinerOp attachmentOp) {
+                                                   VkFragmentShadingRateCombinerOpKHR primitiveOp,
+                                                   VkFragmentShadingRateCombinerOpKHR attachmentOp) {
   LVK_ASSERT_MSG(ctx_->has_KHR_fragment_shading_rate_,
                  "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
   LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
@@ -3568,10 +3232,7 @@ void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSiz
                  "This fragment size is not in IContext::getSupportedFragmentShadingRates()");
 
   const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
-  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
-      (VkFragmentShadingRateCombinerOpKHR)primitiveOp,
-      (VkFragmentShadingRateCombinerOpKHR)attachmentOp,
-  };
+  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {primitiveOp, attachmentOp};
   vkCmdSetFragmentShadingRateKHR(wrapper_->cmdBuf_, &vkFragmentSize, combinerOps);
 }
 
@@ -3587,10 +3248,8 @@ void lvk::CommandBuffer::cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query)
   vkCmdWriteTimestamp2(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, vkPool, query);
 }
 
-void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) {
+void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) {
   LVK_PROFILER_GPU_ZONE("cmdClearColorImage()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_COPY);
-
-  static_assert(sizeof(ClearColorValue) == sizeof(VkClearColorValue));
 
   lvk::VulkanImage* img = ctx_->texturesPool_.get(tex);
 
@@ -3815,7 +3474,7 @@ void lvk::CommandBuffer::cmdUpdateTLAS(AccelStructHandle handle, BufferHandle in
   const bool rebuild = ctx_->workaround_noMultiInstanceTLASUpdate_ && as->buildRangeInfo.primitiveCount > 1;
 
   LVK_ASSERT_MSG((as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) || rebuild,
-                 "TLAS must be created with AccelStructBuildFlagBits_AllowUpdate to be updated");
+                 "TLAS must be created with VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR to be updated");
 
   const VkAccelerationStructureGeometryKHR accelerationStructureGeometry{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
@@ -3952,7 +3611,7 @@ void lvk::CommandBuffer::cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handl
     lvk::AccelerationStructure* as = ctx_->accelStructuresPool_.get(handle);
     LVK_ASSERT(as && !as->isTLAS);
     LVK_ASSERT_MSG(as->buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
-                   "BLAS must be built with AccelStructBuildFlagBits_AllowUpdate to be refit");
+                   "BLAS must be built with VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR to be refit");
     as->geometry.geometry.triangles.pNext = as->opacityMicromap.sType ? &as->opacityMicromap : nullptr;
     buildInfos.push_back(VkAccelerationStructureBuildGeometryInfoKHR{
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
@@ -5106,13 +4765,13 @@ lvk::Holder<lvk::AccelStructHandle> lvk::VulkanContext::createAccelerationStruct
   AccelStructHandle handle;
 
   switch (desc.type) {
-  case AccelStructType_BLAS:
+  case VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR:
     handle = createBLAS(desc, &result);
     break;
-  case AccelStructType_TLAS:
+  case VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR:
     handle = createTLAS(desc, &result);
     break;
-  case AccelStructType_OpacityMicromap:
+  case VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR:
     if (!LVK_VERIFY(has_KHR_opacity_micromap_)) {
       Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_opacity_micromap is not enabled"));
       return {};
@@ -5519,14 +5178,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     image.vkFormatProperties_ = props.formatProperties;
   }
 
-  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, lvk::TextureAspect_Default);
-
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
+  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, VK_IMAGE_ASPECT_NONE);
 
   // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isMultiplanar ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
@@ -5546,13 +5198,13 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
                                            VK_REMAINING_MIP_LEVELS,
                                            0,
                                            numLayers,
-                                           components,
+                                           desc.components,
                                            ycbcrInfo,
                                            viewFlags,
                                            debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
           vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, 0, debugNameImageView);
@@ -5608,20 +5260,46 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
   memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
-  if (!LVK_VERIFY(desc.aspect != TextureAspect_Depth || image.isDepthFormat_)) {
-    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Depth needs a format with a depth aspect");
-    return {};
-  }
-  if (!LVK_VERIFY(desc.aspect != TextureAspect_Stencil || image.isStencilFormat_)) {
-    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Stencil needs a format with a stencil aspect");
+  uint32_t plane = 0;
+  bool isPlaneView = false;
+
+  switch (desc.aspect) {
+  case VK_IMAGE_ASPECT_NONE:
+    break;
+  case VK_IMAGE_ASPECT_DEPTH_BIT:
+    if (!LVK_VERIFY(image.isDepthFormat_)) {
+      Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "VK_IMAGE_ASPECT_DEPTH_BIT needs a format with a depth aspect");
+      return {};
+    }
+    break;
+  case VK_IMAGE_ASPECT_STENCIL_BIT:
+    if (!LVK_VERIFY(image.isStencilFormat_)) {
+      Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "VK_IMAGE_ASPECT_STENCIL_BIT needs a format with a stencil aspect");
+      return {};
+    }
+    break;
+  case VK_IMAGE_ASPECT_PLANE_0_BIT:
+    plane = 0;
+    isPlaneView = true;
+    break;
+  case VK_IMAGE_ASPECT_PLANE_1_BIT:
+    plane = 1;
+    isPlaneView = true;
+    break;
+  case VK_IMAGE_ASPECT_PLANE_2_BIT:
+    plane = 2;
+    isPlaneView = true;
+    break;
+  default:
+    LVK_ASSERT_MSG(false, "A texture view takes one of: NONE, DEPTH, STENCIL, PLANE_0, PLANE_1, PLANE_2");
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Unsupported texture view aspect");
     return {};
   }
 
   const uint32_t numPlanes = lvk::getNumImagePlanes(image.vkImageFormat_);
-  const bool isPlaneView = desc.aspect >= TextureAspect_Plane0;
 
   if (isPlaneView) {
-    if (!LVK_VERIFY(desc.aspect - TextureAspect_Plane0 < numPlanes)) {
+    if (!LVK_VERIFY(plane < numPlanes)) {
       Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "This texture does not have the requested plane");
       return {};
     }
@@ -5634,7 +5312,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
 
   if (isPlaneView) {
     // the view takes on the plane's own format and extent, so it behaves like any other single-plane texture
-    const uint32_t plane = desc.aspect - TextureAspect_Plane0;
     const VkFormat planeFormat = getImagePlaneVkFormat(image.vkImageFormat_, plane);
     if (!LVK_VERIFY(planeFormat != VK_FORMAT_UNDEFINED)) {
       Result::setResult(outResult, Result::Code::RuntimeError, "Unsupported multiplanar format");
@@ -5664,13 +5341,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
     return {};
   }
 
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
-
   image.imageView_ = image.createImageView(vkDevice_,
                                            vkImageViewType,
                                            image.vkImageFormat_,
@@ -5679,7 +5349,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numMipLevels,
                                            desc.layer,
                                            desc.numLayers,
-                                           components,
+                                           desc.components,
                                            nullptr,
                                            0,
                                            debugName);
@@ -5690,7 +5360,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   }
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(vkDevice_,
                                                       vkImageViewType,
@@ -5728,14 +5398,8 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
     (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
-      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
-      .buildRangeInfo =
-          {
-              .primitiveCount = desc.buildRange.primitiveCount,
-              .primitiveOffset = desc.buildRange.primitiveOffset,
-              .firstVertex = desc.buildRange.firstVertex,
-              .transformOffset = desc.buildRange.transformOffset,
-          },
+      .buildFlags = desc.buildFlags,
+      .buildRangeInfo = desc.buildRange,
       .buffer = createBuffer(
           {
               .usage = lvk::BufferUsageBits_AccelStructStorage,
@@ -5790,7 +5454,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .dstAccelerationStructure = accelStruct.vkHandle,
       .geometryCount = 1,
@@ -5812,7 +5476,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   };
   accelStruct.deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(vkDevice_, &accelerationDeviceAddressInfo);
 
-  if (desc.buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
+  if (desc.buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) {
     accelStruct.scratchBuffer = std::move(scratchBuffer);
   }
 
@@ -5822,16 +5486,15 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
 lvk::AccelStructHandle lvk::VulkanContext::createOpacityMicromap(const AccelStructDesc& desc, Result* outResult) {
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureGeometryMicromapDataKHR micromapData{};
-  std::vector<VkMicromapUsageKHR> usageCounts;
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
-  getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, usageCounts, accelerationStructureBuildSizesInfo);
+  getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, accelerationStructureBuildSizesInfo);
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
     (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
-      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .buildFlags = desc.buildFlags,
       .buffer = createBuffer(
           {
               .usage = lvk::BufferUsageBits_AccelStructStorage,
@@ -5880,7 +5543,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createOpacityMicromap(const AccelStru
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .dstAccelerationStructure = accelStruct.vkHandle,
       .geometryCount = 1,
@@ -5901,10 +5564,10 @@ lvk::AccelStructHandle lvk::VulkanContext::createOpacityMicromap(const AccelStru
 
 lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& desc, Result* outResult) {
   // see cmdUpdateTLAS(): such TLASes are rebuilt instead of updated
-  if (workaround_noMultiInstanceTLASUpdate_ && (desc.buildFlags & AccelStructBuildFlagBits_AllowUpdate) &&
+  if (workaround_noMultiInstanceTLASUpdate_ && (desc.buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) &&
       desc.buildRange.primitiveCount > 1) {
     AccelStructDesc descNoUpdate = desc;
-    descNoUpdate.buildFlags &= ~AccelStructBuildFlagBits_AllowUpdate;
+    descNoUpdate.buildFlags &= ~VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
     return createTLAS(descNoUpdate, outResult);
   }
 
@@ -5918,14 +5581,8 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   }
   lvk::AccelerationStructure accelStruct = {
       .isTLAS = true,
-      .buildFlags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
-      .buildRangeInfo =
-          {
-              .primitiveCount = desc.buildRange.primitiveCount,
-              .primitiveOffset = desc.buildRange.primitiveOffset,
-              .firstVertex = desc.buildRange.firstVertex,
-              .transformOffset = desc.buildRange.transformOffset,
-          },
+      .buildFlags = desc.buildFlags,
+      .buildRangeInfo = desc.buildRange,
       .buffer = createBuffer(
           {
               .usage = lvk::BufferUsageBits_AccelStructStorage,
@@ -5975,7 +5632,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
       .dstAccelerationStructure = accelStruct.vkHandle,
       .geometryCount = 1,
@@ -5983,7 +5640,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
       .scratchData = {.deviceAddress = getAlignedAddress(gpuAddress(scratchBuffer),
                                                          accelerationStructureProperties_.minAccelerationStructureScratchOffsetAlignment)},
   };
-  if (desc.buildFlags & lvk::AccelStructBuildFlagBits_AllowUpdate) {
+  if (desc.buildFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR) {
     // Store scratch buffer for future updates
     accelStruct.scratchBuffer = std::move(scratchBuffer);
   }
@@ -6153,29 +5810,16 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
     const lvk::ColorAttachment& attachment = desc.color[i];
     LVK_ASSERT(attachment.format != Format_Invalid);
     colorAttachmentFormats[i] = formatToVkFormat(attachment.format);
-    if (!attachment.blendEnabled) {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_FALSE,
-          .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .colorBlendOp = VK_BLEND_OP_ADD,
-          .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-          .alphaBlendOp = VK_BLEND_OP_ADD,
-          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
-      };
-    } else {
-      colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
-          .blendEnable = VK_TRUE,
-          .srcColorBlendFactor = blendFactorToVkBlendFactor(attachment.srcRGBBlendFactor),
-          .dstColorBlendFactor = blendFactorToVkBlendFactor(attachment.dstRGBBlendFactor),
-          .colorBlendOp = blendOpToVkBlendOp(attachment.rgbBlendOp),
-          .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
-          .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
-          .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
-          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
-      };
-    }
+    colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
+        .blendEnable = attachment.blendEnabled ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = attachment.srcRGBBlendFactor,
+        .dstColorBlendFactor = attachment.dstRGBBlendFactor,
+        .colorBlendOp = attachment.rgbBlendOp,
+        .srcAlphaBlendFactor = attachment.srcAlphaBlendFactor,
+        .dstAlphaBlendFactor = attachment.dstAlphaBlendFactor,
+        .alphaBlendOp = attachment.alphaBlendOp,
+        .colorWriteMask = attachment.colorWriteMask,
+    };
   }
 
   const lvk::ShaderModuleState* vertModule = shaderModulesPool_.get(desc.smVert);
@@ -6278,10 +5922,10 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
       // from VK_EXT_fragment_density_map
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, passState.hasAttachmentFDM)
-      .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
+      .primitiveTopology(desc.topology)
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
-      .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
+      .polygonMode(desc.polygonMode)
       .provokingVertex(desc.provokingVertexLast ? VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT : VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT,
                        has_EXT_provoking_vertex_)
       .shaderStage(taskModule
@@ -6302,8 +5946,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .shaderStage(geomModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
-      .cullMode(cullModeToVkCullMode(desc.cullMode))
-      .frontFace(windingModeToVkFrontFace(desc.frontFace))
+      .cullMode(desc.cullMode)
+      .frontFace(desc.frontFace)
       .vertexInputState(ciVertexInputState)
       .viewMask(passState.viewMask)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
@@ -6742,7 +6386,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       rps.vkBindings_[rps.numBindings_++] = {
           .binding = attr.binding,
           .stride = vstate.inputBindings[attr.binding].stride,
-          .inputRate = vertexInputRateToVkVertexInputRate(vstate.inputBindings[attr.binding].inputRate),
+          .inputRate = vstate.inputBindings[attr.binding].inputRate,
       };
     }
   }
@@ -7576,12 +7220,12 @@ lvk::Format lvk::VulkanContext::getSwapchainFormat() const {
   return vkFormatToFormat(swapchain_->getSurfaceFormat().format);
 }
 
-lvk::ColorSpace lvk::VulkanContext::getSwapchainColorSpace() const {
+VkColorSpaceKHR lvk::VulkanContext::getSwapchainColorSpace() const {
   if (!hasSwapchain()) {
-    return ColorSpace_SRGB_NONLINEAR;
+    return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   }
 
-  return vkColorSpaceToColorSpace(swapchain_->getSurfaceFormat().colorSpace);
+  return swapchain_->getSurfaceFormat().colorSpace;
 }
 
 uint32_t lvk::VulkanContext::getNumSwapchainImages() const {
@@ -7607,8 +7251,8 @@ lvk::TextureHandle lvk::VulkanContext::getCurrentSwapchainTexture() {
   return tex;
 }
 
-lvk::SurfaceTransform lvk::VulkanContext::getSwapchainSurfaceTransform() const {
-  return hasSwapchain() ? swapchain_->getSurfaceTransform() : SurfaceTransform_Identity;
+VkSurfaceTransformFlagBitsKHR lvk::VulkanContext::getSwapchainSurfaceTransform() const {
+  return hasSwapchain() ? swapchain_->getSurfaceTransform() : VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 }
 
 uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
@@ -7620,16 +7264,16 @@ uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
   return hasSwapchain() ? swapchain_->getSwapchainCurrentImageIndex() : 0;
 }
 
-bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
+bool lvk::VulkanContext::setCurrentPresentMode(VkPresentModeKHR mode) {
   if (!hasSwapchain() || !has_KHR_swapchain_maintenance1_) {
     return false;
   }
 
-  return swapchain_->setCurrentPresentMode(presentModeToVkPresentMode(mode));
+  return swapchain_->setCurrentPresentMode(mode);
 }
 
-[[nodiscard]] lvk::PresentMode lvk::VulkanContext::getCurrentPresentMode() const {
-  return swapchain_ ? vkPresentModeToPresentMode(swapchain_->currentPresentMode_) : PresentMode_FIFO;
+[[nodiscard]] VkPresentModeKHR lvk::VulkanContext::getCurrentPresentMode() const {
+  return swapchain_ ? swapchain_->currentPresentMode_ : VK_PRESENT_MODE_FIFO_KHR;
 }
 
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
@@ -7680,46 +7324,41 @@ bool lvk::VulkanContext::getQueryPoolResults(QueryPoolHandle pool,
   return true;
 }
 
-lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) const {
+VkAccelerationStructureBuildSizesInfoKHR lvk::VulkanContext::getAccelStructSizes(const AccelStructDesc& desc, Result* outResult) const {
   LVK_PROFILER_FUNCTION();
 
   if (!LVK_VERIFY(has_KHR_acceleration_structure_)) {
     Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_acceleration_structure is not enabled"));
-    return {};
+    return {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
   }
 
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureTrianglesOpacityMicromapKHR opacityMicromap{};
   VkAccelerationStructureGeometryMicromapDataKHR micromapData{};
-  std::vector<VkMicromapUsageKHR> usageCounts;
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
   switch (desc.type) {
-  case AccelStructType_BLAS:
+  case VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR:
     getBuildInfoBLAS(desc, accelerationStructureGeometry, opacityMicromap, accelerationStructureBuildSizesInfo);
     break;
-  case AccelStructType_TLAS:
+  case VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR:
     getBuildInfoTLAS(desc, accelerationStructureGeometry, accelerationStructureBuildSizesInfo);
     break;
-  case AccelStructType_OpacityMicromap:
+  case VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR:
     if (!LVK_VERIFY(has_KHR_opacity_micromap_)) {
       Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_opacity_micromap is not enabled"));
-      return {};
+      return {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
     }
-    getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, usageCounts, accelerationStructureBuildSizesInfo);
+    getBuildInfoOpacityMicromap(desc, accelerationStructureGeometry, micromapData, accelerationStructureBuildSizesInfo);
     break;
   default:
     LVK_ASSERT_MSG(false, "Invalid acceleration structure type");
     Result::setResult(outResult, Result(Result::Code::ArgumentOutOfRange, "Invalid acceleration structure type"));
-    return {};
+    return {.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
   }
 
   Result::setResult(outResult, Result::Code::Ok);
 
-  return lvk::AccelStructSizes{
-      .accelerationStructureSize = accelerationStructureBuildSizesInfo.accelerationStructureSize,
-      .updateScratchSize = accelerationStructureBuildSizesInfo.updateScratchSize,
-      .buildScratchSize = accelerationStructureBuildSizesInfo.buildScratchSize,
-  };
+  return accelerationStructureBuildSizesInfo;
 }
 
 lvk::Result lvk::VulkanContext::createInstance() {
@@ -8035,45 +7674,25 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
 #endif
 }
 
-uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices) {
+uint32_t lvk::VulkanContext::queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices) {
+  LVK_ASSERT(outDevices);
+
   // Physical devices
   uint32_t deviceCount = 0;
   VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, nullptr));
-  std::vector<VkPhysicalDevice> vkDevices(deviceCount);
-  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, vkDevices.data()));
 
-  auto convertVulkanDeviceTypeToLVK = [](VkPhysicalDeviceType vkDeviceType) -> HWDeviceType {
-    switch (vkDeviceType) {
-    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-      return HWDeviceType_Integrated;
-    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-      return HWDeviceType_Discrete;
-    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-      return HWDeviceType_External;
-    case VK_PHYSICAL_DEVICE_TYPE_CPU:
-      return HWDeviceType_Software;
-    default:
-      return HWDeviceType_Software;
-    }
-  };
+  if (maxOutDevices < deviceCount)
+    deviceCount = maxOutDevices;
 
-  uint32_t numCompatibleDevices = 0;
+  VK_ASSERT(vkEnumeratePhysicalDevices(vkInstance_, &deviceCount, outDevices));
 
-  for (uint32_t i = 0; i < deviceCount; ++i) {
-    VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties2 props2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-    vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
-
-    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(props2.properties.deviceType);
-
-    if (outDevices && numCompatibleDevices < maxOutDevices) {
-      outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, props2.properties.deviceName, strlen(props2.properties.deviceName));
-      numCompatibleDevices++;
+  if (outProperties) {
+    for (uint32_t i = 0; i < deviceCount; ++i) {
+      vkGetPhysicalDeviceProperties(outDevices[i], &outProperties[i]);
     }
   }
 
-  return numCompatibleDevices;
+  return deviceCount;
 }
 
 void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
@@ -8153,8 +7772,8 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureTrianglesOpacityMicromapKHR& outOpacityMicromap,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
-  LVK_ASSERT(desc.type == AccelStructType_BLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Triangles);
+  LVK_ASSERT(desc.type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+  LVK_ASSERT(desc.geometryType == VK_GEOMETRY_TYPE_TRIANGLES_KHR);
   LVK_ASSERT(desc.numVertices);
   LVK_ASSERT(desc.indexBuffer.valid());
   LVK_ASSERT(desc.vertexBuffer.valid());
@@ -8164,15 +7783,6 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
   LVK_ASSERT(buffersPool_.get(desc.vertexBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
   LVK_ASSERT(!desc.transformBuffer.valid() || (buffersPool_.get(desc.transformBuffer)->vkUsageFlags_ &
                                                VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR));
-
-  VkGeometryFlagsKHR geometryFlags = 0;
-
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_Opaque) {
-    geometryFlags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
-  }
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_NoDuplicateAnyHit) {
-    geometryFlags |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-  }
 
   outGeometry = VkAccelerationStructureGeometryKHR{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
@@ -8186,12 +7796,12 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                       .vertexData = {.deviceAddress = gpuAddress(desc.vertexBuffer)},
                       .vertexStride = desc.vertexStride ? desc.vertexStride : lvk::getVertexFormatSize(desc.vertexFormat),
                       .maxVertex = desc.numVertices - 1,
-                      .indexType = indexFormatToVkIndexType(desc.indexFormat),
+                      .indexType = desc.indexFormat,
                       .indexData = {.deviceAddress = gpuAddress(desc.indexBuffer)},
                       .transformData = {.deviceAddress = desc.transformBuffer.valid() ? gpuAddress(desc.transformBuffer) : 0},
                   },
           },
-      .flags = geometryFlags,
+      .flags = desc.geometryFlags,
   };
 
   outOpacityMicromap = {};
@@ -8202,15 +7812,15 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
     const lvk::VulkanBuffer* indexBuffer = buffersPool_.get(desc.micromapIndexBuffer);
     LVK_ASSERT(micromap && micromap->vkHandle);
     LVK_ASSERT(indexBuffer && (indexBuffer->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR));
-    const uint32_t indexStride = desc.micromapIndexFormat == IndexFormat_UI8    ? sizeof(uint8_t)
-                                 : desc.micromapIndexFormat == IndexFormat_UI16 ? sizeof(uint16_t)
-                                                                                       : sizeof(uint32_t);
+    const uint32_t indexStride = desc.micromapIndexFormat == VK_INDEX_TYPE_UINT8    ? sizeof(uint8_t)
+                                 : desc.micromapIndexFormat == VK_INDEX_TYPE_UINT16 ? sizeof(uint16_t)
+                                                                                    : sizeof(uint32_t);
     // VUID-vkCmdBuildAccelerationStructuresKHR-indexBuffer-11577
     LVK_ASSERT(desc.micromapIndexOffset % indexStride == 0);
     LVK_ASSERT(desc.micromapIndexOffset + (VkDeviceSize)indexStride * desc.buildRange.primitiveCount <= indexBuffer->bufferSize_);
     outOpacityMicromap = VkAccelerationStructureTrianglesOpacityMicromapKHR{
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_KHR,
-        .indexType = indexFormatToVkIndexType(desc.micromapIndexFormat),
+        .indexType = desc.micromapIndexFormat,
         .indexBuffer = gpuAddress(desc.micromapIndexBuffer) + desc.micromapIndexOffset,
         .indexStride = indexStride,
         .micromap = micromap->vkHandle,
@@ -8221,7 +7831,7 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .geometryCount = 1,
       .pGeometries = &outGeometry,
   };
@@ -8241,21 +7851,12 @@ void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
 void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
-  LVK_ASSERT(desc.type == AccelStructType_TLAS);
-  LVK_ASSERT(desc.geometryType == AccelStructGeomType_Instances);
+  LVK_ASSERT(desc.type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+  LVK_ASSERT(desc.geometryType == VK_GEOMETRY_TYPE_INSTANCES_KHR);
   LVK_ASSERT(desc.numVertices == 0);
   LVK_ASSERT(desc.instancesBuffer.valid());
   LVK_ASSERT(desc.buildRange.primitiveCount);
   LVK_ASSERT(buffersPool_.get(desc.instancesBuffer)->vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-
-  VkGeometryFlagsKHR geometryFlags = 0;
-
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_Opaque) {
-    geometryFlags |= VK_GEOMETRY_OPAQUE_BIT_KHR;
-  }
-  if (desc.geometryFlags & AccelStructGeometryFlagBits_NoDuplicateAnyHit) {
-    geometryFlags |= VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-  }
 
   outGeometry = VkAccelerationStructureGeometryKHR{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
@@ -8269,13 +7870,13 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
                       .data = {.deviceAddress = gpuAddress(desc.instancesBuffer)},
                   },
           },
-      .flags = geometryFlags,
+      .flags = desc.geometryFlags,
   };
 
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .geometryCount = 1,
       .pGeometries = &outGeometry,
   };
@@ -8295,9 +7896,8 @@ void lvk::VulkanContext::getBuildInfoTLAS(const AccelStructDesc& desc,
 void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc,
                                                      VkAccelerationStructureGeometryKHR& outGeometry,
                                                      VkAccelerationStructureGeometryMicromapDataKHR& outMicromapData,
-                                                     std::vector<VkMicromapUsageKHR>& outUsageCounts,
                                                      VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
-  LVK_ASSERT(desc.type == AccelStructType_OpacityMicromap);
+  LVK_ASSERT(desc.type == VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR);
   LVK_ASSERT(desc.micromapData.valid());
   LVK_ASSERT(desc.micromapTriangles.valid());
   LVK_ASSERT(desc.micromapUsageCounts && desc.micromapNumUsageCounts);
@@ -8315,25 +7915,17 @@ void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc
   // VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11552 (guaranteed by createBuffer())
   LVK_ASSERT(data % 128 == 0 && triangleArray % 128 == 0);
 
-  outUsageCounts.clear();
-  outUsageCounts.reserve(desc.micromapNumUsageCounts);
-
   uint64_t numTriangles = 0;
 
   for (uint32_t i = 0; i != desc.micromapNumUsageCounts; i++) {
-    const OpacityMicromapUsage& usage = desc.micromapUsageCounts[i];
+    const VkMicromapUsageKHR& usage = desc.micromapUsageCounts[i];
     // VUID-VkAccelerationStructureGeometryMicromapDataKHR-subdivisionLevel-11645
     // VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11564
-    const uint32_t maxSubdivisionLevel = usage.format == OpacityMicromapFormat_2State
+    const uint32_t maxSubdivisionLevel = usage.format == VK_OPACITY_MICROMAP_FORMAT_2_STATE_KHR
                                              ? opacityMicromapProperties_.maxOpacity2StateSubdivisionLevel
                                              : opacityMicromapProperties_.maxOpacity4StateSubdivisionLevel;
     LVK_ASSERT_MSG(usage.subdivisionLevel <= maxSubdivisionLevel, "Opacity micromap subdivision level is not supported");
     numTriangles += usage.count;
-    outUsageCounts.push_back(VkMicromapUsageKHR{
-        .count = usage.count,
-        .subdivisionLevel = usage.subdivisionLevel,
-        .format = static_cast<VkOpacityMicromapFormatKHR>(usage.format),
-    });
   }
 
   // VUID-VkAccelerationStructureGeometryMicromapDataKHR-count-11643
@@ -8343,8 +7935,8 @@ void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc
 
   outMicromapData = VkAccelerationStructureGeometryMicromapDataKHR{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_MICROMAP_DATA_KHR,
-      .usageCountsCount = (uint32_t)outUsageCounts.size(),
-      .pUsageCounts = outUsageCounts.data(),
+      .usageCountsCount = desc.micromapNumUsageCounts,
+      .pUsageCounts = desc.micromapUsageCounts,
       .data = data,
       .triangleArray = triangleArray,
       .triangleArrayStride = sizeof(VkMicromapTriangleKHR),
@@ -8359,7 +7951,7 @@ void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc
   const VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
-      .flags = buildFlagsToVkBuildAccelerationStructureFlags(desc.buildFlags),
+      .flags = desc.buildFlags,
       .geometryCount = 1,
       .pGeometries = &outGeometry,
   };
@@ -8372,13 +7964,12 @@ void lvk::VulkanContext::getBuildInfoOpacityMicromap(const AccelStructDesc& desc
   outSizesInfo.buildScratchSize += alignment;
 }
 
-lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
-  if (desc.guid == 0UL) {
-    LLOGW("Invalid hardwareGuid(%lu)", desc.guid);
-    return Result(Result::Code::RuntimeError, "Vulkan is not supported");
+lvk::Result lvk::VulkanContext::initContext(VkPhysicalDevice physicalDevice) {
+  if (!physicalDevice) {
+    return Result(Result::Code::RuntimeError, "Vulkan is not supported (no VkPhysicalDevice specified)");
   }
 
-  vkPhysicalDevice_ = (VkPhysicalDevice)desc.guid;
+  vkPhysicalDevice_ = physicalDevice;
 
   useStaging_ = !isHostVisibleSingleHeapMemory(vkPhysicalDevice_);
 

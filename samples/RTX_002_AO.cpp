@@ -122,7 +122,7 @@ VSOutput vertexMain(float3 pos : POSITION, float2 uv : TEXCOORD0, uint mtlIndex 
   return out;
 }
 
-// alpha testing: the main pass uses CompareOp_Equal, so it never shades the texels discarded here
+// alpha testing: the main pass uses VK_COMPARE_OP_EQUAL, so it never shades the texels discarded here
 [shader("fragment")]
 void fragmentMain(VSOutput input) {
   if (input.texAlpha > 0 && textureBindless2D(input.texAlpha, 0, input.uv).r < 0.5)
@@ -709,7 +709,7 @@ void main() {
 }
 )";
 
-// alpha testing: the main pass uses CompareOp_Equal, so it never shades the texels discarded here
+// alpha testing: the main pass uses VK_COMPARE_OP_EQUAL, so it never shades the texels discarded here
 const char* kCodeZPrepassFS = R"(
 layout (location=0) in vec2 v_uv;
 layout (location=1) flat in uint v_texDiffuse;
@@ -1411,23 +1411,23 @@ void createBLAS(const char* debugName,
   });
 
   lvk::AccelStructDesc blasDesc{
-      .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
-      .geometryFlags = uint8_t(opaque ? lvk::AccelStructGeometryFlagBits_Opaque : 0), // non-opaque: ray queries do alpha testing
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+      .geometryFlags = opaque ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0u, // non-opaque: ray queries do alpha testing
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
-      .indexFormat = lvk::IndexFormat_UI32,
+      .indexFormat = VK_INDEX_TYPE_UINT32,
       .indexBuffer = indexBuffer,
       .transformBuffer = transformBuffer,
       .micromap = opacityMicromap,
       .micromapIndexBuffer = opacityMicromapIndices,
       .buildRange = {.primitiveCount = numTriangles},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = debugName,
   };
-  const lvk::AccelStructSizes blasSizes = ctx_->getAccelStructSizes(blasDesc);
+  const VkAccelerationStructureBuildSizesInfoKHR blasSizes = ctx_->getAccelStructSizes(blasDesc);
   LLOGL("%s sizes (bytes):\n   buildScratchSize = %llu,\n   accelerationStructureSize = %llu\n",
         debugName,
         blasSizes.buildScratchSize,
@@ -1448,11 +1448,11 @@ void createBLAS(const char* debugName,
     blasDesc.micromapIndexOffset = i * sizeof(int32_t);
     res.BLAS.emplace_back(ctx_->createAccelerationStructure(blasDesc));
     outInstances.emplace_back(lvk::AccelStructInstance{
-        .transform = (const lvk::mat3x4&)transform,
+        .transform = (const VkTransformMatrixKHR&)transform,
         .instanceCustomIndex = i,
         .mask = 0xff,
         .instanceShaderBindingTableRecordOffset = 0,
-        .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+        .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
         .accelerationStructureReference = ctx_->gpuAddress(res.BLAS.back()),
     });
   }
@@ -1469,11 +1469,11 @@ void createBLAS(const char* debugName,
   });
 
   return ctx_->createAccelerationStructure({
-      .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = instancesBuffer,
       .buildRange = {.primitiveCount = (uint32_t)instances.size()},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
       .debugName = debugName,
   });
 }
@@ -1559,8 +1559,8 @@ struct {
 void compactOpacity() {
   const uint32_t numTriangles = (uint32_t)indexData_.size() / 3;
 
-  // per triangle: an index into `levels`/`offsets`, or `OpacityMicromapSpecialIndex_FullyOpaque` for materials without alpha
-  std::vector<int32_t> ommIndices(numTriangles, lvk::OpacityMicromapSpecialIndex_FullyOpaque);
+  // per triangle: an index into `levels`/`offsets`, or `VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_OPAQUE_KHR` for materials without alpha
+  std::vector<int32_t> ommIndices(numTriangles, VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_OPAQUE_KHR);
   std::vector<uint8_t>& levels = opacityBake_.levels;
   std::vector<uint32_t>& offsets = opacityBake_.offsets;
   std::vector<uint8_t>& data = opacityBake_.data;
@@ -1591,7 +1591,7 @@ void compactOpacity() {
 
   for (uint32_t t = 0; t != numTriangles; t++) {
     const uint32_t* triangle = &indexData_[3 * t];
-    if (ommIndices[t] == lvk::OpacityMicromapSpecialIndex_FullyOpaque) {
+    if (ommIndices[t] == VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_OPAQUE_KHR) {
       opaqueIndices.insert(opaqueIndices.end(), triangle, triangle + 3);
     } else {
       alphaTestedIndices.insert(alphaTestedIndices.end(), triangle, triangle + 3);
@@ -1772,10 +1772,10 @@ void finishBakingOpacity() {
   const size_t dataSize = numEntries ? offsets[numEntries - 1] + meshopt_opacityMapEntrySize(levels[numEntries - 1], 4) : 0;
 
   if (supportsOpacityMicromaps_ && numEntries) {
-    std::vector<lvk::OpacityMicromapTriangle> ommTriangles(numEntries);
-    std::vector<lvk::OpacityMicromapUsage> usageCounts;
+    std::vector<VkMicromapTriangleKHR> ommTriangles(numEntries);
+    std::vector<VkMicromapUsageKHR> usageCounts;
     for (size_t e = 0; e != numEntries; e++) {
-      ommTriangles[e] = {.dataOffset = offsets[e], .subdivisionLevel = levels[e], .format = lvk::OpacityMicromapFormat_4State};
+      ommTriangles[e] = {.dataOffset = offsets[e], .subdivisionLevel = levels[e], .format = VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR};
       if (usageCounts.size() <= levels[e]) {
         usageCounts.resize(levels[e] + 1);
       }
@@ -1783,13 +1783,14 @@ void finishBakingOpacity() {
     }
     for (size_t level = 0; level != usageCounts.size(); level++) {
       usageCounts[level].subdivisionLevel = (uint32_t)level;
+      usageCounts[level].format = VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR;
     }
-    std::erase_if(usageCounts, [](const lvk::OpacityMicromapUsage& u) { return u.count == 0; });
+    std::erase_if(usageCounts, [](const VkMicromapUsageKHR& u) { return u.count == 0; });
 
     lvk::Holder<lvk::BufferHandle> sbTriangles = ctx_->createBuffer({
         .usage = lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
         .storage = lvk::StorageType_Device,
-        .size = sizeof(lvk::OpacityMicromapTriangle) * ommTriangles.size(),
+        .size = sizeof(VkMicromapTriangleKHR) * ommTriangles.size(),
         .data = ommTriangles.data(),
         .debugName = "Buffer: opacity micromap triangles",
     });
@@ -1801,12 +1802,12 @@ void finishBakingOpacity() {
         .debugName = "Buffer: opacity micromap data",
     });
     res.opacityMicromap_ = ctx_->createAccelerationStructure({
-        .type = lvk::AccelStructType_OpacityMicromap,
+        .type = VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
         .micromapData = sbData,
         .micromapTriangles = sbTriangles,
         .micromapUsageCounts = usageCounts.data(),
         .micromapNumUsageCounts = (uint32_t)usageCounts.size(),
-        .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+        .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
         .debugName = "Opacity micromap",
     });
   }
@@ -1962,26 +1963,28 @@ VULKAN_APP_MAIN {
       .debugName = "Buffer: uniforms (per object)",
   });
 
-  lvk::RenderPass renderPassZPrepass_ = {.color = {{
-                                             .loadOp = lvk::LoadOp_Clear,
-                                             .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                             .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                         }},
-                                         .depth = {
-                                             .loadOp = lvk::LoadOp_Clear,
-                                             .storeOp = lvk::StoreOp_Store,
-                                             .clearDepth = 1.0f,
-                                         }};
+  lvk::RenderPass renderPassZPrepass_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+          .clearDepth = 1.0f,
+      }};
 
-  lvk::RenderPass renderPassOffscreen_ = {.color = {{
-                                              .loadOp = lvk::LoadOp_Clear,
-                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                          }},
-                                          .depth = {
-                                              .loadOp = lvk::LoadOp_Load,
-                                              .storeOp = lvk::StoreOp_DontCare,
-                                          }};
+  lvk::RenderPass renderPassOffscreen_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+          .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      }};
 
 #if defined(LVK_DEMO_WITH_SLANG)
   res.smMeshVert_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
@@ -2024,8 +2027,8 @@ VULKAN_APP_MAIN {
                        .dataSize = sizeof(enableSpatialHash)},
           .color = {{.format = colorFormat}},
           .depthFormat = depthFormat,
-          .cullMode = lvk::CullMode_Back,
-          .frontFace = lvk::WindingMode_CCW,
+          .cullMode = VK_CULL_MODE_BACK_BIT,
+          .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
           .samplesCount = kNumSamplesMSAA,
           .debugName = "Pipeline: mesh",
       });
@@ -2048,8 +2051,8 @@ VULKAN_APP_MAIN {
       .smFrag = res.smMeshFragZPrepass_,
       .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
       .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
-      .cullMode = lvk::CullMode_Back,
-      .frontFace = lvk::WindingMode_CCW,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .samplesCount = kNumSamplesMSAA,
       .debugName = "Pipeline: mesh z-prepass",
   });
@@ -2059,7 +2062,7 @@ VULKAN_APP_MAIN {
       .smVert = res.smFullscreenVert_,
       .smFrag = res.smFullscreenFrag_,
       .color = {{.format = app.ctx_->getSwapchainFormat()}},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: fullscreen",
   });
 
@@ -2072,7 +2075,7 @@ VULKAN_APP_MAIN {
         .debugName = "Buffer: AO hash slot",
     });
     lvk::ICommandBuffer& buf = ctx_->acquireCommandBuffer();
-    buf.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    buf.cmdFillBuffer(res.sbHashSlot_, 0, VK_WHOLE_SIZE, 0);
     ctx_->submit(buf);
   }
 
@@ -2128,7 +2131,7 @@ VULKAN_APP_MAIN {
                            });
     buffer.cmdUpdateBuffer(res.ubPerObject_, 0, sizeof(perObject), &perObject);
     buffer.cmdBindVertexBuffer(0, res.vb0_, 0);
-    buffer.cmdBindIndexBuffer(res.ib0_, lvk::IndexFormat_UI32);
+    buffer.cmdBindIndexBuffer(res.ib0_, VK_INDEX_TYPE_UINT32);
 
     // Pass 1: mesh Z-prepass
     {
@@ -2147,7 +2150,7 @@ VULKAN_APP_MAIN {
           .enableTextures = enableTextures_ ? 1u : 0u,
       };
       buffer.cmdPushConstants(pc);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       buffer.cmdPopDebugGroupLabel();
       buffer.cmdEndRendering();
@@ -2205,7 +2208,7 @@ VULKAN_APP_MAIN {
           .indices = ctx_->gpuAddress(alphaTestedIndices),
       };
       buffer.cmdPushConstants(pc);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Equal, .isDepthWriteEnabled = false});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_EQUAL, .isDepthWriteEnabled = false});
       buffer.cmdDrawIndexed(static_cast<uint32_t>(indexData_.size()));
       buffer.cmdPopDebugGroupLabel();
       buffer.cmdEndRendering();
@@ -2221,7 +2224,9 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                         .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.sampledImages = {tex, fbOffscreen.color[0].texture}});
@@ -2319,7 +2324,7 @@ VULKAN_APP_MAIN {
       buffer.cmdEndRendering();
 
       if (resetHashMap) {
-        buffer.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
+        buffer.cmdFillBuffer(res.sbHashSlot_, 0, VK_WHOLE_SIZE, 0);
       }
 
       ctx_->submit(buffer, fbMain_.color[0].texture);
