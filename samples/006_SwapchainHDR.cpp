@@ -75,8 +75,8 @@ VULKAN_APP_MAIN {
       .height = -80,
       .contextConfig =
           {
-              .swapchainRequestedColorSpace = lvk::ColorSpace_HDR10,
-              //.swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_EXTENDED_LINEAR,
+              .swapchainRequestedColorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT,
+              //.swapchainRequestedColorSpace = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT,
           },
   };
   VULKAN_APP_DECLARE(app, cfg);
