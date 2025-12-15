@@ -489,7 +489,7 @@ VULKAN_APP_MAIN {
       .smFrag = frag_,
       .color = {{.format = ctx->getSwapchainFormat()}},
       .depthFormat = app.getDepthFormat(),
-      .cullMode = lvk::CullMode_Back,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
       .debugName = "Pipeline: mesh",
   });
 
@@ -520,7 +520,7 @@ VULKAN_APP_MAIN {
       .smVert = vertShadow_,
       .smFrag = fragShadow_,
       .depthFormat = ctx->getFormat(shadowMap),
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: shadow",
   });
 
@@ -595,7 +595,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport({0.0f, 0.0f, (float)shadowMapSize, (float)shadowMapSize, 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, shadowMapSize, shadowMapSize});
       buffer.cmdPushDebugGroupLabel("Render Shadow", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrameShadow);
       buffer.cmdPopDebugGroupLabel();
     }
@@ -619,7 +619,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrame);
       buffer.cmdPopDebugGroupLabel();
     }

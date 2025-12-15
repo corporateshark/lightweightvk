@@ -550,46 +550,6 @@ glslang_resource_t lvk::getGlslangResource(const VkPhysicalDeviceLimits& limits)
   return resource;
 }
 
-namespace {
-
-VkFilter samplerFilterToVkFilter(lvk::SamplerFilter filter) {
-  switch (filter) {
-  case lvk::SamplerFilter_Nearest:
-    return VK_FILTER_NEAREST;
-  case lvk::SamplerFilter_Linear:
-    return VK_FILTER_LINEAR;
-  }
-  LVK_ASSERT_MSG(false, "SamplerFilter value not handled: %d", (int)filter);
-  return VK_FILTER_LINEAR;
-}
-
-VkSamplerMipmapMode samplerMipMapToVkSamplerMipmapMode(lvk::SamplerMip filter) {
-  switch (filter) {
-  case lvk::SamplerMip_Disabled:
-  case lvk::SamplerMip_Nearest:
-    return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-  case lvk::SamplerMip_Linear:
-    return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  }
-  LVK_ASSERT_MSG(false, "SamplerMipMap value not handled: %d", (int)filter);
-  return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-}
-
-VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(lvk::SamplerWrap mode) {
-  switch (mode) {
-  case lvk::SamplerWrap_Repeat:
-    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  case lvk::SamplerWrap_Clamp:
-    return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  case lvk::SamplerWrap_MirrorRepeat:
-    return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-  }
-  LVK_ASSERT_MSG(false, "SamplerWrapMode value not handled: %d", (int)mode);
-  return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-}
-
-} // namespace
-
 VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits) {
   LVK_ASSERT_MSG(desc.mipLodMax >= desc.mipLodMin,
                  "mipLodMax (%d) must be greater than or equal to mipLodMin (%d)",
@@ -600,19 +560,19 @@ VkSamplerCreateInfo lvk::samplerStateDescToVkSamplerCreateInfo(const lvk::Sample
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .pNext = nullptr,
       .flags = 0,
-      .magFilter = samplerFilterToVkFilter(desc.magFilter),
-      .minFilter = samplerFilterToVkFilter(desc.minFilter),
-      .mipmapMode = samplerMipMapToVkSamplerMipmapMode(desc.mipMap),
-      .addressModeU = samplerWrapModeToVkSamplerAddressMode(desc.wrapU),
-      .addressModeV = samplerWrapModeToVkSamplerAddressMode(desc.wrapV),
-      .addressModeW = samplerWrapModeToVkSamplerAddressMode(desc.wrapW),
+      .magFilter = desc.magFilter,
+      .minFilter = desc.minFilter,
+      .mipmapMode = desc.mipMap,
+      .addressModeU = desc.wrapU,
+      .addressModeV = desc.wrapV,
+      .addressModeW = desc.wrapW,
       .mipLodBias = 0.0f,
       .anisotropyEnable = VK_FALSE,
       .maxAnisotropy = 0.0f,
       .compareEnable = desc.depthCompareEnabled ? VK_TRUE : VK_FALSE,
-      .compareOp = desc.depthCompareEnabled ? lvk::compareOpToVkCompareOp(desc.depthCompareOp) : VK_COMPARE_OP_ALWAYS,
+      .compareOp = desc.depthCompareEnabled ? desc.depthCompareOp : VK_COMPARE_OP_ALWAYS,
       .minLod = float(desc.mipLodMin),
-      .maxLod = desc.mipMap == lvk::SamplerMip_Disabled ? float(desc.mipLodMin) : float(desc.mipLodMax),
+      .maxLod = float(desc.mipLodMax),
       .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
       .unnormalizedCoordinates = VK_FALSE,
   };
@@ -1127,29 +1087,6 @@ uint32_t lvk::getNumImagePlanes(VkFormat format) {
   default:
     return 1;
   }
-}
-
-VkCompareOp lvk::compareOpToVkCompareOp(lvk::CompareOp func) {
-  switch (func) {
-  case lvk::CompareOp_Never:
-    return VK_COMPARE_OP_NEVER;
-  case lvk::CompareOp_Less:
-    return VK_COMPARE_OP_LESS;
-  case lvk::CompareOp_Equal:
-    return VK_COMPARE_OP_EQUAL;
-  case lvk::CompareOp_LessEqual:
-    return VK_COMPARE_OP_LESS_OR_EQUAL;
-  case lvk::CompareOp_Greater:
-    return VK_COMPARE_OP_GREATER;
-  case lvk::CompareOp_NotEqual:
-    return VK_COMPARE_OP_NOT_EQUAL;
-  case lvk::CompareOp_GreaterEqual:
-    return VK_COMPARE_OP_GREATER_OR_EQUAL;
-  case lvk::CompareOp_AlwaysPass:
-    return VK_COMPARE_OP_ALWAYS;
-  }
-  LVK_ASSERT_MSG(false, "CompareFunction value not handled: %d", (int)func);
-  return VK_COMPARE_OP_ALWAYS;
 }
 
 VkExtent2D lvk::getImagePlaneExtent(VkExtent2D plane0, lvk::Format format, uint32_t plane) {

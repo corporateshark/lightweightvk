@@ -376,7 +376,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdBindDepthState(const DepthState& state) override;
 
   void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset) override;
-  void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t indexBufferOffset) override;
+  void cmdBindIndexBuffer(BufferHandle indexBuffer, VkIndexType indexFormat, uint64_t indexBufferOffset) override;
   void cmdPushConstants(const void* data, size_t size, size_t offset) override;
 
   void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) override;
@@ -414,7 +414,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) override;
   void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) override;
 
-  void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) override;
+  void cmdClearColorImage(TextureHandle tex, const VkClearColorValue& value, const TextureLayers& layers) override;
   void cmdCopyImage(TextureHandle src,
                     TextureHandle dst,
                     const Dimensions& extent,
@@ -575,8 +575,8 @@ class VulkanContext final : public IContext {
   VkPipeline getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask);
   VkPipeline getVkPipeline(RayTracingPipelineHandle handle);
 
-  uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
-  lvk::Result initContext(const HWDeviceDesc& desc);
+  uint32_t queryDevices(VkPhysicalDevice* outDevices, VkPhysicalDeviceProperties* outProperties, uint32_t maxOutDevices = 1);
+  lvk::Result initContext(VkPhysicalDevice physicalDevice);
   lvk::Result initSwapchain(uint32_t width, uint32_t height);
 
   BufferHandle createBuffer(VkDeviceSize bufferSize,
