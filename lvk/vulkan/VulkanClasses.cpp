@@ -2589,17 +2589,17 @@ void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset,
   bufferBarrier(buffer, VK_PIPELINE_STAGE_2_TRANSFER_BIT, dstStage);
 }
 
-void lvk::CommandBuffer::cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferOffset, BufferHandle dstBuffer, size_t dstBufferOffset, size_t size) {
+void lvk::CommandBuffer::cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) {
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT(srcBuffer.valid());
   LVK_ASSERT(dstBuffer.valid());
   LVK_ASSERT(size);
   // Check buffer regions do not overlap
   if (srcBuffer == dstBuffer) {
-    if (srcBufferOffset < dstBufferOffset) {
-      LVK_ASSERT(dstBufferOffset - srcBufferOffset >= size);
+    if (srcOffset < dstOffset) {
+      LVK_ASSERT(dstOffset - srcOffset >= size);
     } else {
-      LVK_ASSERT(srcBufferOffset - dstBufferOffset >= size);
+      LVK_ASSERT(srcOffset - dstOffset >= size);
     }
   }
 
@@ -2611,8 +2611,8 @@ void lvk::CommandBuffer::cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferO
 
   const VkBufferCopy2 copyRegion = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2,
-      .srcOffset = srcBufferOffset,
-      .dstOffset = dstBufferOffset,
+      .srcOffset = srcOffset,
+      .dstOffset = dstOffset,
       .size = size,
   };
 

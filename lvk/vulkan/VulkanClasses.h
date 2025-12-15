@@ -373,7 +373,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdPushConstants(const void* data, size_t size, size_t offset) override;
 
   void cmdFillBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, uint32_t data) override;
-  void cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferOffset, BufferHandle dstBuffer, size_t dstBufferOffset, size_t size);
+  void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size);
   void cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) override;
 
   void cmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t baseInstance) override;

@@ -1002,7 +1002,7 @@ class ICommandBuffer {
 
   virtual void cmdFillBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, uint32_t data) = 0;
   virtual void cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) = 0;
-  virtual void cmdCopyBuffer(BufferHandle srcBuffer, size_t srcBufferOffset, BufferHandle dstBuffer, size_t dstBufferOffset, size_t size) = 0;
+  virtual void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) = 0;
   template<typename Struct>
   void cmdUpdateBuffer(BufferHandle buffer, const Struct& data, size_t bufferOffset = 0) {
     this->cmdUpdateBuffer(buffer, bufferOffset, sizeof(Struct), &data);
