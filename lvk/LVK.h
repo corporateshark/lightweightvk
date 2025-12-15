@@ -365,64 +365,6 @@ struct DepthState {
   bool isDepthWriteEnabled = false;
 };
 
-enum VertexFormat : uint8_t {
-  VertexFormat_Invalid = 0,
-
-  VertexFormat_Float1,
-  VertexFormat_Float2,
-  VertexFormat_Float3,
-  VertexFormat_Float4,
-
-  VertexFormat_Byte1,
-  VertexFormat_Byte2,
-  VertexFormat_Byte3,
-  VertexFormat_Byte4,
-
-  VertexFormat_UByte1,
-  VertexFormat_UByte2,
-  VertexFormat_UByte3,
-  VertexFormat_UByte4,
-
-  VertexFormat_Short1,
-  VertexFormat_Short2,
-  VertexFormat_Short3,
-  VertexFormat_Short4,
-
-  VertexFormat_UShort1,
-  VertexFormat_UShort2,
-  VertexFormat_UShort3,
-  VertexFormat_UShort4,
-
-  VertexFormat_Byte2Norm,
-  VertexFormat_Byte4Norm,
-
-  VertexFormat_UByte2Norm,
-  VertexFormat_UByte4Norm,
-
-  VertexFormat_Short2Norm,
-  VertexFormat_Short4Norm,
-
-  VertexFormat_UShort2Norm,
-  VertexFormat_UShort4Norm,
-
-  VertexFormat_Int1,
-  VertexFormat_Int2,
-  VertexFormat_Int3,
-  VertexFormat_Int4,
-
-  VertexFormat_UInt1,
-  VertexFormat_UInt2,
-  VertexFormat_UInt3,
-  VertexFormat_UInt4,
-
-  VertexFormat_HalfFloat1,
-  VertexFormat_HalfFloat2,
-  VertexFormat_HalfFloat3,
-  VertexFormat_HalfFloat4,
-
-  VertexFormat_Int_2_10_10_10_REV,
-};
-
 enum Format : uint8_t {
   Format_Invalid = 0,
 
@@ -557,7 +499,7 @@ struct VertexInput final {
   struct VertexAttribute final {
     uint32_t location = 0; // a buffer which contains this attribute stream
     uint32_t binding = 0;
-    VertexFormat format = VertexFormat_Invalid; // per-element format
+    VkFormat format = VK_FORMAT_UNDEFINED; // per-element format
     uintptr_t offset = 0; // an offset where the first element of this attribute stream starts
   } attributes[LVK_VERTEX_ATTRIBUTES_MAX];
   struct VertexInputBinding final {
@@ -568,7 +510,7 @@ struct VertexInput final {
   // clang-format off
   uint32_t getNumAttributes() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat_Invalid) n++;
+    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VK_FORMAT_UNDEFINED) n++;
     return n;
   }
   uint32_t getNumInputBindings() const {
@@ -891,7 +833,7 @@ struct AccelStructDesc {
   AccelStructGeomType geometryType = AccelStructGeomType_Triangles;
   uint8_t geometryFlags = AccelStructGeometryFlagBits_Opaque;
 
-  VertexFormat vertexFormat = VertexFormat_Invalid;
+  VkFormat vertexFormat = VK_FORMAT_UNDEFINED;
   BufferHandle vertexBuffer;
   uint32_t vertexStride = 0; // zero means the size of `vertexFormat`
   uint32_t numVertices = 0;
@@ -1163,7 +1105,7 @@ struct ContextConfig {
 [[nodiscard]] uint32_t getNumImagePlanes(lvk::Format format);
 [[nodiscard]] uint32_t getTextureBytesPerLayer(uint32_t width, uint32_t height, lvk::Format format, uint32_t level);
 [[nodiscard]] uint32_t getTextureBytesPerPlane(uint32_t width, uint32_t height, lvk::Format format, uint32_t plane);
-[[nodiscard]] uint32_t getVertexFormatSize(lvk::VertexFormat format);
+[[nodiscard]] uint32_t getVertexFormatSize(VkFormat format);
 void logShaderSource(const char* text);
 
 constexpr uint32_t calcNumMipLevels(uint32_t width, uint32_t height) {
