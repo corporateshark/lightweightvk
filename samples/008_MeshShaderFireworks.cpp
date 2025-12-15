@@ -785,14 +785,14 @@ VULKAN_APP_MAIN {
           .format = ctx->getSwapchainFormat(),
 #endif
           .blendEnabled = true,
-          .rgbBlendOp = lvk::BlendOp_Add,
-          .alphaBlendOp = lvk::BlendOp_Add,
-          .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .srcAlphaBlendFactor = lvk::BlendFactor_SrcAlpha,
-          .dstRGBBlendFactor = lvk::BlendFactor_One,
-          .dstAlphaBlendFactor = lvk::BlendFactor_One,
+          .rgbBlendOp = VK_BLEND_OP_ADD,
+          .alphaBlendOp = VK_BLEND_OP_ADD,
+          .srcRGBBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+          .dstRGBBlendFactor = VK_BLEND_FACTOR_ONE,
+          .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
       }},
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: mesh",
   });
 
@@ -908,7 +908,7 @@ VULKAN_APP_MAIN {
     for (uint32_t i = 0; i != views.size(); i++) {
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           lvk::Framebuffer{
               .color = {{.texture = views[i].colorTexture}},
@@ -939,7 +939,11 @@ VULKAN_APP_MAIN {
 #if !defined(LVK_DEMO_WITH_OPENXR)
     // ImGui overlay (non-XR only)
     const lvk::Framebuffer framebuffer = {.color = {{.texture = views[0].colorTexture}}};
-    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
+    buffer.cmdBeginRendering(
+        lvk::RenderPass{
+            .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}},
+        },
+        framebuffer);
     app.imgui_->beginFrame(framebuffer);
     ImGui::SetNextWindowPos({0, 0});
     ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
