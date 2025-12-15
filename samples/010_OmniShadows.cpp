@@ -491,7 +491,7 @@ VULKAN_APP_MAIN {
       .smFrag = frag_,
       .color = {{.format = ctx->getSwapchainFormat()}},
       .depthFormat = app.getDepthFormat(),
-      .cullMode = lvk::CullMode_Back,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
       .debugName = "Pipeline: mesh",
   });
 
@@ -511,10 +511,10 @@ VULKAN_APP_MAIN {
     layers[l] = ctx->createTextureView(shadowMap,
                                        {.layer = l,
                                         .components = {
-                                            .r = lvk::Swizzle_R,
-                                            .g = lvk::Swizzle_R,
-                                            .b = lvk::Swizzle_R,
-                                            .a = lvk::Swizzle_1,
+                                            .r = VK_COMPONENT_SWIZZLE_R,
+                                            .g = VK_COMPONENT_SWIZZLE_R,
+                                            .b = VK_COMPONENT_SWIZZLE_R,
+                                            .a = VK_COMPONENT_SWIZZLE_ONE,
                                         }});
   }
 
@@ -522,7 +522,7 @@ VULKAN_APP_MAIN {
       .smVert = vertShadow_,
       .smFrag = fragShadow_,
       .depthFormat = ctx->getFormat(shadowMap),
-      .cullMode = lvk::CullMode_None,
+      .cullMode = VK_CULL_MODE_NONE,
       .debugName = "Pipeline: shadow",
   });
 
@@ -597,7 +597,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport({0.0f, 0.0f, (float)shadowMapSize, (float)shadowMapSize, 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, shadowMapSize, shadowMapSize});
       buffer.cmdPushDebugGroupLabel("Render Shadow", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrameShadow);
       buffer.cmdPopDebugGroupLabel();
     }
@@ -621,7 +621,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindViewport(views[0].viewport);
       buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
+      buffer.cmdBindDepthState({.compareOp = VK_COMPARE_OP_LESS, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrame);
       buffer.cmdPopDebugGroupLabel();
     }
