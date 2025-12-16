@@ -211,7 +211,7 @@
     "name": "android-validation-layers",
     "source": {
         "type": "archive",
-        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.328.1/android-binaries-1.4.328.1.zip",
+        "url": "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.335.0/android-binaries-1.4.335.0.zip",
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"
     }
 },
