@@ -508,7 +508,7 @@ VULKAN_APP_MAIN {
   for (uint32_t l = 0; l != LVK_ARRAY_NUM_ELEMENTS(layers); l++) {
     layers[l] = ctx->createTextureView(shadowMap,
                                        {.layer = l,
-                                        .swizzle = {
+                                        .components = {
                                             .r = lvk::Swizzle_R,
                                             .g = lvk::Swizzle_R,
                                             .b = lvk::Swizzle_R,

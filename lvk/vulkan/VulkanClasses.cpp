@@ -869,7 +869,7 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
                                               uint32_t numLevels,
                                               uint32_t baseLayer,
                                               uint32_t numLayers,
-                                              const VkComponentMapping mapping,
+                                              const VkComponentMapping components,
                                               const VkSamplerYcbcrConversionInfo* ycbcr,
                                               const char* debugName) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
@@ -880,7 +880,7 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
       .image = vkImage_,
       .viewType = type,
       .format = format,
-      .components = mapping,
+      .components = components,
       .subresourceRange = {aspectMask, baseLevel, numLevels ? numLevels : numLevels_, baseLayer, numLayers},
   };
   VkImageView vkView = VK_NULL_HANDLE;
@@ -4304,20 +4304,20 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     aspect = VK_IMAGE_ASPECT_COLOR_BIT;
   }
 
-  const VkComponentMapping mapping = {
-      .r = VkComponentSwizzle(desc.swizzle.r),
-      .g = VkComponentSwizzle(desc.swizzle.g),
-      .b = VkComponentSwizzle(desc.swizzle.b),
-      .a = VkComponentSwizzle(desc.swizzle.a),
+  const VkComponentMapping components = {
+      .r = VkComponentSwizzle(desc.components.r),
+      .g = VkComponentSwizzle(desc.components.g),
+      .b = VkComponentSwizzle(desc.components.b),
+      .a = VkComponentSwizzle(desc.components.a),
   };
 
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
   image.imageView_ = image.createImageView(
-      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, mapping, ycbcrInfo, debugNameImageView);
+      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, components, ycbcrInfo, debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.swizzle.identity()) {
+    if (!desc.components.identity()) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
           vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, debugNameImageView);
@@ -4399,11 +4399,11 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
     return {};
   }
 
-  const VkComponentMapping mapping = {
-      .r = VkComponentSwizzle(desc.swizzle.r),
-      .g = VkComponentSwizzle(desc.swizzle.g),
-      .b = VkComponentSwizzle(desc.swizzle.b),
-      .a = VkComponentSwizzle(desc.swizzle.a),
+  const VkComponentMapping components = {
+      .r = VkComponentSwizzle(desc.components.r),
+      .g = VkComponentSwizzle(desc.components.g),
+      .b = VkComponentSwizzle(desc.components.b),
+      .a = VkComponentSwizzle(desc.components.a),
   };
 
   LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
@@ -4416,7 +4416,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numMipLevels,
                                            desc.layer,
                                            desc.numLayers,
-                                           mapping,
+                                           components,
                                            nullptr,
                                            debugName);
 
@@ -4426,7 +4426,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   }
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.swizzle.identity()) {
+    if (!desc.components.identity()) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(vkDevice_,
                                                       vkImageViewType,
