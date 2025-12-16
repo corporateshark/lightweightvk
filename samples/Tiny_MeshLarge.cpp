@@ -32,8 +32,8 @@
 #include <glm/gtc/random.hpp>
 
 #include <ktx.h>
-#include <ktx-software/lib/vkformat_enum.h>
-#include <ktx-software/lib/gl_format.h>
+#include <ktx-software/lib/src/gl_format.h>
+#include <ktx-software/lib/src/vkformat_enum.h>
 #include <ldrutils/lmath/Colors.h>
 #include <ldrutils/lutils/ScopeExit.h>
 
