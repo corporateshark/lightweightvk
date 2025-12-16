@@ -244,13 +244,6 @@ enum TextureType : uint8_t {
   TextureType_Cube,
 };
 
-struct HWDeviceDesc {
-  enum { LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE = 256 };
-  uintptr_t guid = 0;
-  VkPhysicalDeviceType type = VK_PHYSICAL_DEVICE_TYPE_CPU;
-  char name[LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {0};
-};
-
 enum StorageType {
   StorageType_Device,
   StorageType_HostVisible,
@@ -695,26 +688,6 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_InputAttachment = 1 << 3,
 };
 
-enum Swizzle : uint8_t {
-  Swizzle_Default = 0,
-  Swizzle_0,
-  Swizzle_1,
-  Swizzle_R,
-  Swizzle_G,
-  Swizzle_B,
-  Swizzle_A,
-};
-
-struct ComponentMapping {
-  Swizzle r = Swizzle_Default;
-  Swizzle g = Swizzle_Default;
-  Swizzle b = Swizzle_Default;
-  Swizzle a = Swizzle_Default;
-  bool identity() const {
-    return r == Swizzle_Default && g == Swizzle_Default && b == Swizzle_Default && a == Swizzle_Default;
-  }
-};
-
 struct TextureDesc {
   TextureType type = TextureType_2D;
   Format format = Format_Invalid;
@@ -725,7 +698,7 @@ struct TextureDesc {
   uint8_t usage = TextureUsageBits_Sampled;
   uint32_t numMipLevels = 1;
   StorageType storage = StorageType_Device;
-  ComponentMapping components = {};
+  VkComponentMapping components = {};
   const void* data = nullptr;
   uint32_t dataNumMipLevels = 1; // how many mip-levels we want to upload
   bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
@@ -738,7 +711,7 @@ struct TextureViewDesc {
   uint32_t numLayers = 1;
   uint32_t mipLevel = 0;
   uint32_t numMipLevels = 1;
-  ComponentMapping components = {};
+  VkComponentMapping components = {};
 };
 
 enum AccelStructType : uint8_t {

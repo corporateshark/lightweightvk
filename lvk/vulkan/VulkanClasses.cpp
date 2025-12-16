@@ -41,20 +41,14 @@
 
 uint32_t lvk::VulkanPipelineBuilder::numPipelinesCreated_ = 0;
 
-static_assert(lvk::HWDeviceDesc::LVK_MAX_PHYSICAL_DEVICE_NAME_SIZE == VK_MAX_PHYSICAL_DEVICE_NAME_SIZE);
-static_assert(lvk::Swizzle_Default == (uint32_t)VK_COMPONENT_SWIZZLE_IDENTITY);
-static_assert(lvk::Swizzle_0 == (uint32_t)VK_COMPONENT_SWIZZLE_ZERO);
-static_assert(lvk::Swizzle_1 == (uint32_t)VK_COMPONENT_SWIZZLE_ONE);
-static_assert(lvk::Swizzle_R == (uint32_t)VK_COMPONENT_SWIZZLE_R);
-static_assert(lvk::Swizzle_G == (uint32_t)VK_COMPONENT_SWIZZLE_G);
-static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
-static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 
 namespace {
 
-const char* kDefaultValidationLayers[] = {"VK_LAYER_KHRONOS_validation"};
+const char* kDefaultValidationLayers[] = {
+    "VK_LAYER_KHRONOS_validation",
+};
 
 // These bindings should match GLSL declarations injected into shaders in VulkanContext::createShaderModule().
 enum Bindings {
@@ -75,6 +69,11 @@ VkDeviceSize getAlignedSize(uint64_t value, uint64_t alignment) {
 uint64_t getAlignedAddress(uint64_t addr, uint64_t align) {
   const uint64_t offs = addr % align;
   return offs ? addr + (align - offs) : addr;
+}
+
+bool isIdentityMapping(const VkComponentMapping& m) {
+  return m.r == VK_COMPONENT_SWIZZLE_IDENTITY && m.g == VK_COMPONENT_SWIZZLE_IDENTITY && m.b == VK_COMPONENT_SWIZZLE_IDENTITY &&
+         m.a == VK_COMPONENT_SWIZZLE_IDENTITY;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
@@ -4135,20 +4134,13 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     aspect = VK_IMAGE_ASPECT_COLOR_BIT;
   }
 
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
-
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isDisjoint ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
   image.imageView_ = image.createImageView(
-      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, components, ycbcrInfo, debugNameImageView);
+      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, desc.components, ycbcrInfo, debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
           vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, debugNameImageView);
@@ -4230,13 +4222,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
     return {};
   }
 
-  const VkComponentMapping components = {
-      .r = VkComponentSwizzle(desc.components.r),
-      .g = VkComponentSwizzle(desc.components.g),
-      .b = VkComponentSwizzle(desc.components.b),
-      .a = VkComponentSwizzle(desc.components.a),
-  };
-
   LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
 
   image.imageView_ = image.createImageView(vkDevice_,
@@ -4247,7 +4232,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numMipLevels,
                                            desc.layer,
                                            desc.numLayers,
-                                           components,
+                                           desc.components,
                                            nullptr,
                                            debugName);
 
@@ -4257,7 +4242,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   }
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
-    if (!desc.components.identity()) {
+    if (!isIdentityMapping(desc.components)) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(vkDevice_,
                                                       vkImageViewType,

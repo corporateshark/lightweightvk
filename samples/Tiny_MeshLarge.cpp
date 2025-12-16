@@ -668,17 +668,15 @@ void createOffscreenFramebuffer();
 bool init(lvk::LVKwindow* window) {
   {
     const uint32_t pixel = 0xFFFFFFFF;
-    textureDummyWhite_ = ctx_->createTexture(
-        {
-            .type = lvk::TextureType_2D,
-            .format = lvk::Format_R_UN8,
-            .dimensions = {1, 1},
-            .usage = lvk::TextureUsageBits_Sampled,
-            .components = {lvk::Swizzle_1, lvk::Swizzle_1, lvk::Swizzle_1, lvk::Swizzle_1},
-            .data = &pixel,
-            .debugName = "dummy 1x1 (white)",
-        },
-        nullptr);
+    textureDummyWhite_ = ctx_->createTexture({
+        .type = lvk::TextureType_2D,
+        .format = lvk::Format_R_UN8,
+        .dimensions = {1, 1},
+        .usage = lvk::TextureUsageBits_Sampled,
+        .components = {VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE},
+        .data = &pixel,
+        .debugName = "dummy 1x1 (white)",
+    });
   }
 
   ubPerFrame_ = ctx_->createBuffer({
@@ -1889,8 +1887,9 @@ lvk::TextureHandle createTexture(const LoadedImage& img) {
       .dimensions = {img.w, img.h},
       .usage = lvk::TextureUsageBits_Sampled,
       .numMipLevels = lvk::calcNumMipLevels(img.w, img.h),
-      .components = (img.channels == 1) ? lvk::ComponentMapping{lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R}
-                                        : lvk::ComponentMapping{},
+      .components = (img.channels == 1)
+                       ? VkComponentMapping{VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R}
+                       : VkComponentMapping{},
       .data = initialData,
       .dataNumMipLevels = initialDataNumMipLevels,
       .generateMipmaps = generateMipmaps,

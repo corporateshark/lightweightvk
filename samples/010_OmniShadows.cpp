@@ -509,10 +509,10 @@ VULKAN_APP_MAIN {
     layers[l] = ctx->createTextureView(shadowMap,
                                        {.layer = l,
                                         .components = {
-                                            .r = lvk::Swizzle_R,
-                                            .g = lvk::Swizzle_R,
-                                            .b = lvk::Swizzle_R,
-                                            .a = lvk::Swizzle_1,
+                                            .r = VK_COMPONENT_SWIZZLE_R,
+                                            .g = VK_COMPONENT_SWIZZLE_R,
+                                            .b = VK_COMPONENT_SWIZZLE_R,
+                                            .a = VK_COMPONENT_SWIZZLE_ONE,
                                         }});
   }
 
