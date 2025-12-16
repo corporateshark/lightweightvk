@@ -827,7 +827,7 @@ struct TextureDesc {
   uint8_t usage = TextureUsageBits_Sampled;
   uint32_t numMipLevels = 1;
   StorageType storage = StorageType_Device;
-  ComponentMapping swizzle = {};
+  ComponentMapping components = {};
   const void* data = nullptr;
   uint32_t dataNumMipLevels = 1; // how many mip-levels we want to upload
   bool generateMipmaps = false; // generate mip-levels immediately, valid only with non-null data
@@ -840,7 +840,7 @@ struct TextureViewDesc {
   uint32_t numLayers = 1;
   uint32_t mipLevel = 0;
   uint32_t numMipLevels = 1;
-  ComponentMapping swizzle = {};
+  ComponentMapping components = {};
 };
 
 enum AccelStructType : uint8_t {
