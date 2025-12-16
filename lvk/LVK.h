@@ -720,20 +720,6 @@ enum AccelStructType : uint8_t {
   AccelStructType_BLAS = 2,
 };
 
-enum AccelStructGeomType : uint8_t {
-  AccelStructGeomType_Triangles = 0,
-  AccelStructGeomType_AABBs = 1,
-  AccelStructGeomType_Instances = 2,
-};
-
-enum AccelStructBuildFlagBits : uint8_t {
-  AccelStructBuildFlagBits_AllowUpdate = 1 << 0,
-  AccelStructBuildFlagBits_AllowCompaction = 1 << 1,
-  AccelStructBuildFlagBits_PreferFastTrace = 1 << 2,
-  AccelStructBuildFlagBits_PreferFastBuild = 1 << 3,
-  AccelStructBuildFlagBits_LowMemory = 1 << 4,
-};
-
 enum AccelStructGeometryFlagBits : uint8_t {
   AccelStructGeometryFlagBits_Opaque = 1 << 0,
   AccelStructGeometryFlagBits_NoDuplicateAnyHit = 1 << 1,
@@ -774,7 +760,7 @@ struct AccelStructInstance {
 
 struct AccelStructDesc {
   AccelStructType type = AccelStructType_Invalid;
-  AccelStructGeomType geometryType = AccelStructGeomType_Triangles;
+  VkGeometryTypeKHR geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
   uint8_t geometryFlags = AccelStructGeometryFlagBits_Opaque;
 
   VkFormat vertexFormat = VK_FORMAT_UNDEFINED;
@@ -786,7 +772,7 @@ struct AccelStructDesc {
   BufferHandle transformBuffer;
   BufferHandle instancesBuffer;
   AccelStructBuildRange buildRange = {};
-  uint8_t buildFlags = AccelStructBuildFlagBits_PreferFastTrace;
+  VkBuildAccelerationStructureFlagsKHR buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
   const char* debugName = "";
 };
 

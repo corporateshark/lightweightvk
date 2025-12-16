@@ -312,7 +312,7 @@ void createBottomLevelAccelerationStructure() {
 
   res.BLAS = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_BLAS,
-      .geometryType = lvk::AccelStructGeomType_Triangles,
+      .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
       .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
       .vertexBuffer = res.vertexBuffer,
       .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
@@ -349,10 +349,10 @@ void createTopLevelAccelerationStructure() {
 
   res.TLAS = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_TLAS,
-      .geometryType = lvk::AccelStructGeomType_Instances,
+      .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
       .instancesBuffer = res.instancesBuffer,
       .buildRange = {.primitiveCount = 1},
-      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace | lvk::AccelStructBuildFlagBits_AllowUpdate,
+      .buildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
   });
 }
 
