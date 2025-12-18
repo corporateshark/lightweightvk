@@ -8,9 +8,11 @@ The main goals of LightweightVK:
 1. **Lean.** Minimalistic API without bloat (no `std::vector`, `std::unordered_map` etc in the API).
 2. **Bindless.** Utilize Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address features for modern bindless-only API design. Ray tracing features are fully integrated with the bindless-only design.
 3. **Agile.** A playground for experiments to enable quick exploration of ideas and adoption of Vulkan API changes.
-Designed for rapid prototyping of Vulkan-based renderers.
+4. **Multilingual.** In addition to raw SPIR-V, there's built-in support for `Glslang` and `Slang` shaders, which is invaluable for rapid prototyping.
 
-There are no plans to keep this fork in sync with the upstream.
+Designed for rapid prototyping of modern Vulkan-based renderers.
+
+There are **no plans to keep this fork in sync with upstream**, since the **API was completely redesigned** in a *bindless* manner.
 
 Discord: https://discord.com/invite/bEyHyKCrvq
 
