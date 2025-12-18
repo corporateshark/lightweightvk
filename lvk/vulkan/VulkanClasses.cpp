@@ -6659,15 +6659,18 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
     deferredTask(std::packaged_task<void()>([device = vkDevice_, dp = vkDPool_]() { vkDestroyDescriptorPool(device, dp, nullptr); }));
   }
 
-  bool hasYUVImages = false;
+  VkSampler firstYcbcrSampler = VK_NULL_HANDLE;
 
   // check if we have any YUV images
   for (const auto& obj : texturesPool_.objects_) {
     const VulkanImage* img = &obj.obj_;
     // multisampled images cannot be directly accessed from shaders
     const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
-    hasYUVImages = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
-    if (hasYUVImages) {
+    const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
+    if (isYUVImage) {
+      // find the first Ycbcr sampler and use it as a dummy
+      // (https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html#VUID-VkDescriptorSetLayoutBinding-descriptorType-12200)
+      firstYcbcrSampler = getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_));
       break;
     }
   }
@@ -6675,16 +6678,15 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
   std::vector<VkSampler> immutableSamplers;
   const VkSampler* immutableSamplersData = nullptr;
 
-  if (hasYUVImages) {
-    VkSampler dummySampler = samplersPool_.objects_[0].obj_;
-    immutableSamplers.resize(maxTextures, dummySampler);
+  if (firstYcbcrSampler) {
+    immutableSamplers.resize(maxTextures, firstYcbcrSampler);
     for (size_t i = 0; i != texturesPool_.objects_.size(); i++) {
       const auto& obj = texturesPool_.objects_[i];
       const VulkanImage* img = &obj.obj_;
       // multisampled images cannot be directly accessed from shaders
       const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
       const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
-      immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : dummySampler;
+      immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : firstYcbcrSampler;
     }
     immutableSamplersData = immutableSamplers.data();
   }
