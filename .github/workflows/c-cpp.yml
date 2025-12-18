@@ -263,7 +263,7 @@ jobs:
             ./build/samples/005_MeshShaders      --headless --screenshot-frame 1 --screenshot-file 005_MeshShaders.png      --log-file 005_MeshShaders.txt
 
         - name: Upload artifacts
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v6
           with:
             name: LogsAndScreenshots
             path: |
