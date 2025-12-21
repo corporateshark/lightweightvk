@@ -5,12 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "VulkanUtils.h"
-
-#include <lvk/vulkan/VulkanClasses.h>
-
 #include <glslang/Include/glslang_c_interface.h>
-#include <ldrutils/lutils/ScopeExit.h>
 
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 #include <slang.h>
@@ -18,6 +13,11 @@
 #include <slang-com-ptr.h>
 #include <core/slang-basic.h>
 #endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+
+#include "VulkanUtils.h"
+
+#include <lvk/vulkan/VulkanClasses.h>
+#include <ldrutils/lutils/ScopeExit.h>
 
 const char* lvk::getVulkanResultString(VkResult result) {
 #define RESULT_CASE(res) \
