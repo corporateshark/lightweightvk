@@ -138,7 +138,7 @@ if(LVK_DEPLOY_DEPS)
     FetchContent_Populate(
       slang
       GIT_REPOSITORY https://github.com/shader-slang/slang
-      GIT_TAG        v2025.24
+      GIT_TAG        v2025.24.2
       SOURCE_DIR     ${LVK_ROOT_DIR}/third-party/deps/src/slang
     )
   endif()
