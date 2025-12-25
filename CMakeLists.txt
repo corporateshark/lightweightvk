@@ -8,7 +8,10 @@ cmake_minimum_required(VERSION 3.22)
 include(CMakeDependentOption)
 include(FetchContent)
 
-project("LVK" CXX C)
+project("LVK"
+  LANGUAGES CXX C
+  HOMEPAGE_URL "https://github.com/corporateshark/lightweightvk"
+)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
