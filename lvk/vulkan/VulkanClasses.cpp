@@ -6850,10 +6850,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, has_EXT_ray_tracing_invocation_reorder, &rayTracingInvocationReorderFeatures);
   addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_EXT_swapchain_maintenance1_, &swapchainMaintenance1Features);
   if (config_.vulkanVersion <= lvk::VulkanVersion_1_3) {
-#if defined(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME)
-    if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features))
-#endif // VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME
-    {
+    if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
       addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
     }
   }
