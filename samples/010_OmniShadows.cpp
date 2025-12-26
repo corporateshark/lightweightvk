@@ -588,7 +588,7 @@ VULKAN_APP_MAIN {
             .viewMask = 0b111111,
         },
         {
-            .depthStencil = shadowMap,
+            .depthStencil = {shadowMap},
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Shadow_);
