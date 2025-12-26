@@ -6743,6 +6743,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .pNext = &deviceFeatures13,
       .indexTypeUint8 = vkFeatures14_.indexTypeUint8,
       .dynamicRenderingLocalRead = vkFeatures14_.dynamicRenderingLocalRead,
+      .maintenance5 = VK_TRUE,
   };
 #endif // VK_API_VERSION_1_4
 
@@ -6787,6 +6788,24 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
       .deviceFault = VK_TRUE,
   };
+  VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5Features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR,
+      .maintenance5 = VK_TRUE,
+  };
+
+  auto addExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](const char* name,
+                                                                                     void* features = nullptr) mutable -> void {
+    if (!hasExtension(name, allDeviceExtensions)) {
+      LLOGW("Unsupported mandatory extension %s", name);
+      return;
+    }
+    deviceExtensionNames.push_back(name);
+    if (features) {
+      std::launder(reinterpret_cast<VkBaseOutStructure*>(features))->pNext =
+          std::launder(reinterpret_cast<VkBaseOutStructure*>(createInfoNext));
+      createInfoNext = features;
+    }
+  };
 
   auto addOptionalExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](
                                   const char* name, bool& enabled, void* features = nullptr) mutable -> bool {
@@ -6815,6 +6834,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
   };
 
+  if (config_.vulkanVersion < VulkanVersion_1_4) {
+    addExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, &maintenance5Features);
+  }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_EXT_calibrated_timestamps_, nullptr);
 #endif
