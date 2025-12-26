@@ -74,6 +74,66 @@ static void handle_cmd(android_app* androidApp, int32_t cmd) {
   }
 }
 
+static int32_t handle_input(android_app* androidApp, AInputEvent* event) {
+  VulkanApp* app = (VulkanApp*)androidApp->userData;
+
+  if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+    int32_t action = AMotionEvent_getAction(event);
+    int32_t actionMasked = action & AMOTION_EVENT_ACTION_MASK;
+
+    float x = AMotionEvent_getX(event, 0);
+    float y = AMotionEvent_getY(event, 0);
+
+    // Store both normalized [0,1] and pixel coordinates
+    float normalizedX = x / (app->width_ * app->cfg_.framebufferScalar);
+    float normalizedY = 1.0f - (y / (app->height_ * app->cfg_.framebufferScalar));
+
+    // Update ImGui
+    ImGuiIO& io = ImGui::GetIO();
+
+    switch (actionMasked) {
+    case AMOTION_EVENT_ACTION_DOWN:
+      // Update position BEFORE setting mouse down for proper hit testing
+      io.MousePos = ImVec2(x / app->cfg_.framebufferScalar, y / app->cfg_.framebufferScalar);
+      io.MouseDown[0] = true;
+
+      // Always update position
+      app->mouseState_.pos.x = normalizedX;
+      app->mouseState_.pos.y = normalizedY;
+
+      // Check if touch started on ImGui window AFTER updating both position and down state
+      app->imguiCapturedTouch_ = io.WantCaptureMouse;
+
+      // Set pressedLeft immediately if not captured
+      if (!app->imguiCapturedTouch_) {
+        app->mouseState_.pressedLeft = true;
+      }
+
+      LLOGD("Touch down: %.2f, %.2f (ImGui captured: %d)", x, y, app->imguiCapturedTouch_);
+      return 1;
+
+    case AMOTION_EVENT_ACTION_MOVE:
+      io.MousePos = ImVec2(x / app->cfg_.framebufferScalar, y / app->cfg_.framebufferScalar);
+      app->mouseState_.pos.x = normalizedX;
+      app->mouseState_.pos.y = normalizedY;
+      return 1;
+
+    case AMOTION_EVENT_ACTION_UP:
+    case AMOTION_EVENT_ACTION_CANCEL:
+      // Keep position valid for the up event so ImGui can process the click
+      io.MousePos = ImVec2(x / app->cfg_.framebufferScalar, y / app->cfg_.framebufferScalar);
+      io.MouseDown[0] = false;
+
+      app->mouseState_.pressedLeft = false;
+      app->imguiCapturedTouch_ = false;
+      LLOGD("Touch up: %.2f, %.2f", x, y);
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
 static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
   LLOGD("resize_callback()");
 
@@ -162,6 +222,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 #if defined(ANDROID)
   androidApp_->userData = this;
   androidApp_->onAppCmd = handle_cmd;
+  androidApp_->onInputEvent = handle_input;
 
   int events = 0;
   android_poll_source* source = nullptr;
@@ -313,6 +374,21 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     timeStamp = newTimeStamp;
     if (ctx_) {
       const float ratio = width_ / (float)height_;
+
+      const bool justPressed = mouseState_.pressedLeft && !imguiLastPressedLeft_;
+
+      positioner_.update(
+          deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : (mouseState_.pressedLeft && !justPressed));
+
+      // clear ImGui hover state one frame after touch ends
+      if (imguiClearMouseNextFrame_) {
+        ImGui::GetIO().MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+        imguiClearMouseNextFrame_ = false;
+      }
+
+      imguiClearMouseNextFrame_ = !mouseState_.pressedLeft && imguiLastPressedLeft_;
+      imguiLastPressedLeft_ = mouseState_.pressedLeft;
+
       drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
     }
     if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {

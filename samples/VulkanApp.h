@@ -101,6 +101,9 @@ class VulkanApp {
   int height_ = 0;
 #if defined(ANDROID)
   android_app* androidApp_ = nullptr;
+  bool imguiCapturedTouch_ = false;
+  bool imguiLastPressedLeft_ = false;
+  bool imguiClearMouseNextFrame_ = false;
 #else
   GLFWwindow* window_ = nullptr;
 #endif // ANDROID
