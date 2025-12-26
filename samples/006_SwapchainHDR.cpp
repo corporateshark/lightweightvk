@@ -83,7 +83,7 @@ VULKAN_APP_MAIN {
 
   lvk::IContext* ctx = app.ctx_.get();
 
-  LLOGL("Swapchain format     : %u\n", ctx->getSwapchainFormat() );
+  LLOGL("Swapchain format     : %u\n", ctx->getSwapchainFormat());
   LLOGL("Swapchain color space: %u\n", ctx->getSwapchainColorSpace());
 
   {

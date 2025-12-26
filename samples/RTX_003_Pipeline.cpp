@@ -281,7 +281,7 @@ layout(push_constant) uniform constants {
   uint tlas;
   bool enableShadows;
 } pc;
-)"\
+)"
 
 const char* codeRayGen = R"(
 #version 460

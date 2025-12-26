@@ -296,7 +296,7 @@ VULKAN_APP_MAIN {
         (dir / path("src/bistro/BuildingTextures/wood_polished_01_diff.png")).string().c_str(), &texWidth, &texHeight, &channels, 4);
     SCOPE_EXIT {
       stbi_image_free(pixels);
-    };    
+    };
     if (!pixels) {
       LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
       LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");

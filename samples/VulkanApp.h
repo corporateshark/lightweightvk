@@ -1,9 +1,9 @@
 ﻿/*
-* LightweightVK
-*
-* This source code is licensed under the MIT license found in the
-* LICENSE file in the root directory of this source tree.
-*/
+ * LightweightVK
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 // Based on https://github.com/PacktPublishing/3D-Graphics-Rendering-Cookbook-Second-Edition/blob/main/shared/VulkanApp.h
 
@@ -87,12 +87,12 @@ class VulkanApp {
   lvk::Format getDepthFormat() const;
   lvk::TextureHandle getDepthTexture() const;
 #if !defined(ANDROID)
-    void addMouseButtonCallback(GLFWmousebuttonfun cb) {
-      callbacksMouseButton.push_back(cb);
-    }
-    void addKeyCallback(GLFWkeyfun cb) {
-      callbacksKey.push_back(cb);
-    }
+  void addMouseButtonCallback(GLFWmousebuttonfun cb) {
+    callbacksMouseButton.push_back(cb);
+  }
+  void addKeyCallback(GLFWkeyfun cb) {
+    callbacksKey.push_back(cb);
+  }
 #endif // ANDROID
  public:
   std::string folderThirdParty_;
