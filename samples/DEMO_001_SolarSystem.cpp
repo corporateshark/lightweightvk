@@ -475,12 +475,12 @@ struct SceneNode final {
 };
 
 struct OrbitAnimator final {
-  OrbitAnimator(const vec3& axis, const float angle, const float speed, float radius = 0.0f) :
-    rotationAxis(axis),
-    normalizedRotationAxis(glm::normalize(axis)),
-    orbitalRadius(radius),
-    rotationSpeed(speed),
-    rotationAngle(angle) {}
+  OrbitAnimator(const vec3& axis, const float angle, const float speed, float radius = 0.0f)
+  : rotationAxis(axis)
+  , normalizedRotationAxis(glm::normalize(axis))
+  , orbitalRadius(radius)
+  , rotationSpeed(speed)
+  , rotationAngle(angle) {}
 
   void update(float deltaSeconds) {
     rotationAngle = fmodf(rotationAngle + rotationSpeed * deltaSeconds, 360.0f);

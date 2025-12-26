@@ -395,8 +395,15 @@ struct Particle {
 
   Particle() = default;
 
-  Particle(vec3 pos, vec3 vel, vec3 color, int ttl, bool fadingOut = false) :
-    pos(pos), velocity(vel), baseColor(color), currentColor(color), TTL(ttl), initialLT(ttl), alive(true), fadingOut(fadingOut) {}
+  Particle(vec3 pos, vec3 vel, vec3 color, int ttl, bool fadingOut = false)
+  : pos(pos)
+  , velocity(vel)
+  , baseColor(color)
+  , currentColor(color)
+  , TTL(ttl)
+  , initialLT(ttl)
+  , alive(true)
+  , fadingOut(fadingOut) {}
 
   ParticleStateMessage update() {
     pos += velocity;

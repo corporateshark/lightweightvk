@@ -52,8 +52,10 @@ struct TextureFormatProperties {
   const uint8_t numPlanes : 2 = 1;
 };
 
+// clang-format off
 #define PROPS(fmt, bpb, ...) \
   TextureFormatProperties { .format = lvk::Format_##fmt, .bytesPerBlock = bpb, ##__VA_ARGS__ }
+// clang-format on
 
 static constexpr TextureFormatProperties properties[] = {
     PROPS(Invalid, 1),

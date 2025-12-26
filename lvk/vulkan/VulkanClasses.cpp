@@ -1136,8 +1136,12 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
   return view;
 }
 
-lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32_t height) :
-  ctx_(ctx), device_(ctx.vkDevice_), graphicsQueue_(ctx.deviceQueues_.graphicsQueue), width_(width), height_(height) {
+lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32_t height)
+: ctx_(ctx)
+, device_(ctx.vkDevice_)
+, graphicsQueue_(ctx.deviceQueues_.graphicsQueue)
+, width_(width)
+, height_(height) {
   surfaceFormat_ =
       chooseSwapSurfaceFormat(ctx.deviceSurfaceFormats_, ctx.config_.swapchainRequestedColorSpace, ctx.has_EXT_swapchain_colorspace_);
 
@@ -1398,8 +1402,11 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
 lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
                                                       uint32_t queueFamilyIndex,
                                                       bool has_EXT_device_fault,
-                                                      const char* debugName) :
-  device_(device), queueFamilyIndex_(queueFamilyIndex), has_EXT_device_fault_(has_EXT_device_fault), debugName_(debugName) {
+                                                      const char* debugName)
+: device_(device)
+, queueFamilyIndex_(queueFamilyIndex)
+, has_EXT_device_fault_(has_EXT_device_fault)
+, debugName_(debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
 
   vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue_);
@@ -1756,26 +1763,26 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::getNextSubmitHandle() const {
   return nextSubmitHandle_;
 }
 
-lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
-  vertexInputState_(VkPipelineVertexInputStateCreateInfo{
+lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
+: vertexInputState_(VkPipelineVertexInputStateCreateInfo{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
       .vertexBindingDescriptionCount = 0,
       .pVertexBindingDescriptions = nullptr,
       .vertexAttributeDescriptionCount = 0,
       .pVertexAttributeDescriptions = nullptr,
-  }),
-  inputAssembly_({
+  })
+, inputAssembly_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .flags = 0,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
       .primitiveRestartEnable = VK_FALSE,
-  }),
-  tessellationState_({
+  })
+, tessellationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
       .flags = 0,
       .patchControlPoints = 0,
-  }),
-  rasterizationState_({
+  })
+, rasterizationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .flags = 0,
       .depthClampEnable = VK_FALSE,
@@ -1788,8 +1795,8 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
       .depthBiasClamp = 0.0f,
       .depthBiasSlopeFactor = 0.0f,
       .lineWidth = 1.0f,
-  }),
-  multisampleState_({
+  })
+, multisampleState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
       .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
       .sampleShadingEnable = VK_FALSE,
@@ -1797,8 +1804,8 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
       .pSampleMask = nullptr,
       .alphaToCoverageEnable = VK_FALSE,
       .alphaToOneEnable = VK_FALSE,
-  }),
-  depthStencilState_({
+  })
+, depthStencilState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .pNext = NULL,
       .flags = 0,
@@ -3682,8 +3689,9 @@ void lvk::VulkanStagingDevice::waitAndReset() {
   regions_.push_back({0, stagingBufferSize_, SubmitHandle()});
 }
 
-lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface) :
-  config_(config), vkSurface_(surface) {
+lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface)
+: config_(config)
+, vkSurface_(surface) {
   LVK_PROFILER_THREAD("MainThread");
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
@@ -4201,7 +4209,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     };
     vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, vkFormat, &props);
     if ((props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0) {
-       LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
+      LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
     }
     vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
     awaitingNewImmutableSamplers_ = true;

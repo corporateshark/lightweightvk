@@ -68,8 +68,9 @@ template<typename ObjectType>
 class Handle final {
  public:
   Handle() = default;
-  explicit Handle(void* ptr) :
-    index_(reinterpret_cast<ptrdiff_t>(ptr) & 0xffffffff), gen_((reinterpret_cast<ptrdiff_t>(ptr) >> 32) & 0xffffffff) {}
+  explicit Handle(void* ptr)
+  : index_(reinterpret_cast<ptrdiff_t>(ptr) & 0xffffffff)
+  , gen_((reinterpret_cast<ptrdiff_t>(ptr) >> 32) & 0xffffffff) {}
 
   bool empty() const {
     return gen_ == 0;
@@ -593,20 +594,19 @@ struct VertexInput final {
     VertexInputRate inputRate = VertexInputRate::VertexInputRate_Vertex;
   } inputBindings[LVK_VERTEX_BUFFER_MAX];
 
+  // clang-format off
   uint32_t getNumAttributes() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) {
-      n++;
-    }
+    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) n++;
     return n;
   }
   uint32_t getNumInputBindings() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_BUFFER_MAX && inputBindings[n].stride) {
-      n++;
-    }
+    while (n < LVK_VERTEX_BUFFER_MAX && inputBindings[n].stride) n++;
     return n;
   }
+  // clang-format on
+
   uint32_t getVertexSize() const;
 
   bool operator==(const VertexInput& other) const {
@@ -633,10 +633,16 @@ struct ShaderModuleDesc {
   const char* debugName = "";
 
   ShaderModuleDesc(const char* source, lvk::ShaderStage stage, const char* debugName) : stage(stage), data(source), debugName(debugName) {}
-  ShaderModuleDesc(const char* source, const char* entryPointName, lvk::ShaderStage stage, const char* debugName) :
-    stage(stage), data(source), entryPointName(entryPointName), debugName(debugName) {}
-  ShaderModuleDesc(const void* data, size_t dataLength, lvk::ShaderStage stage, const char* debugName) :
-    stage(stage), data(static_cast<const char*>(data)), dataSize(dataLength), debugName(debugName) {
+  ShaderModuleDesc(const char* source, const char* entryPointName, lvk::ShaderStage stage, const char* debugName)
+  : stage(stage)
+  , data(source)
+  , entryPointName(entryPointName)
+  , debugName(debugName) {}
+  ShaderModuleDesc(const void* data, size_t dataLength, lvk::ShaderStage stage, const char* debugName)
+  : stage(stage)
+  , data(static_cast<const char*>(data))
+  , dataSize(dataLength)
+  , debugName(debugName) {
     LVK_ASSERT(dataSize);
   }
 };
@@ -728,12 +734,14 @@ struct RayTracingPipelineDesc final {
   const char* entryPoint = "main";
   const char* debugName = "";
 
+  // clang-format off
 #define GET_SHADER_GROUP_SIZE(name, module) \
   [[nodiscard]] uint32_t getShaderGroupSize##name() const { \
     uint32_t n = 0; \
     while (n < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE && module[n]) n++; \
     return n; \
   }
+  // clang-format on
 
   GET_SHADER_GROUP_SIZE(RayGen, smRayGen)
   GET_SHADER_GROUP_SIZE(AnyHit, smAnyHit)
