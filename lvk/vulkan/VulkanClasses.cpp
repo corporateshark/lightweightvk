@@ -6282,10 +6282,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, hasRayQuery_, &rayQueryFeatures);
   addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, hasRayTracingPipeline_, &rayTracingFeatures);
   addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_EXT_swapchain_maintenance1_, &swapchainMaintenance1Features);
-#if defined(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME)
-  if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has8BitIndices_, &indexTypeUint8Features))
-#endif // VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME
-  {
+  if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has8BitIndices_, &indexTypeUint8Features)) {
     addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has8BitIndices_, &indexTypeUint8Features);
   }
 
