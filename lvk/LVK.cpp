@@ -52,8 +52,10 @@ struct TextureFormatProperties {
   const uint8_t numPlanes : 2 = 1;
 };
 
+// clang-format off
 #define PROPS(fmt, bpb, ...) \
   TextureFormatProperties { .format = lvk::Format_##fmt, .bytesPerBlock = bpb, ##__VA_ARGS__ }
+// clang-format on
 
 static constexpr TextureFormatProperties properties[] = {
     PROPS(Invalid, 1),
@@ -373,16 +375,16 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #elif defined(ANDROID)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
 #elif defined(__linux__)
-  #if defined(LVK_WITH_WAYLAND)
-    wl_surface* waylandWindow = glfwGetWaylandWindow(window);
-    if (!waylandWindow) {
-      LVK_ASSERT_MSG(false, "Wayland window not found");
-      return nullptr;
-    }
-    ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
-  #else
-    ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
-  #endif
+#if defined(LVK_WITH_WAYLAND)
+  wl_surface* waylandWindow = glfwGetWaylandWindow(window);
+  if (!waylandWindow) {
+    LVK_ASSERT_MSG(false, "Wayland window not found");
+    return nullptr;
+  }
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
+#else
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
+#endif
 #elif defined(__APPLE__)
   ctx = std::make_unique<VulkanContext>(cfg, createCocoaWindowView(window));
 #else

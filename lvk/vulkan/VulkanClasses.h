@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <lvk/vulkan/VulkanUtils.h>
 #include <lvk/Pool.h>
+#include <lvk/vulkan/VulkanUtils.h>
 
 #include <deque>
 #include <future>
@@ -636,7 +636,7 @@ class VulkanContext final : public IContext {
                                                     .pNext = &vkFeatures12_};
   VkPhysicalDeviceFeatures2 vkFeatures10_ = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &vkFeatures11_};
 
-public:
+ public:
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
   VkPhysicalDeviceAccelerationStructurePropertiesKHR accelerationStructureProperties_ = {

@@ -68,8 +68,9 @@ template<typename ObjectType>
 class Handle final {
  public:
   Handle() = default;
-  explicit Handle(void* ptr) :
-    index_(reinterpret_cast<ptrdiff_t>(ptr) & 0xffffffff), gen_((reinterpret_cast<ptrdiff_t>(ptr) >> 32) & 0xffffffff) {}
+  explicit Handle(void* ptr)
+  : index_(reinterpret_cast<ptrdiff_t>(ptr) & 0xffffffff)
+  , gen_((reinterpret_cast<ptrdiff_t>(ptr) >> 32) & 0xffffffff) {}
 
   bool empty() const {
     return gen_ == 0;
@@ -102,7 +103,7 @@ class Handle final {
   }
 
  private:
-  Handle(uint32_t index, uint32_t gen) : index_(index), gen_(gen){};
+  Handle(uint32_t index, uint32_t gen) : index_(index), gen_(gen) {};
 
   template<typename ObjectType_, typename ImplObjectType>
   friend class Pool;
@@ -266,7 +267,7 @@ struct HWDeviceDesc {
 enum StorageType {
   StorageType_Device,
   StorageType_HostVisible,
-  StorageType_Memoryless
+  StorageType_Memoryless,
 };
 
 enum CullMode : uint8_t { CullMode_None, CullMode_Front, CullMode_Back };
@@ -363,7 +364,7 @@ enum BlendOp : uint8_t {
   BlendOp_Subtract,
   BlendOp_ReverseSubtract,
   BlendOp_Min,
-  BlendOp_Max
+  BlendOp_Max,
 };
 
 enum BlendFactor : uint8_t {
@@ -573,20 +574,19 @@ struct VertexInput final {
     uint32_t stride = 0;
   } inputBindings[LVK_VERTEX_BUFFER_MAX];
 
+  // clang-format off
   uint32_t getNumAttributes() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) {
-      n++;
-    }
+    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) n++;
     return n;
   }
   uint32_t getNumInputBindings() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_BUFFER_MAX && inputBindings[n].stride) {
-      n++;
-    }
+    while (n < LVK_VERTEX_BUFFER_MAX && inputBindings[n].stride) n++;
     return n;
   }
+  // clang-format on
+
   uint32_t getVertexSize() const;
 
   bool operator==(const VertexInput& other) const {
@@ -612,8 +612,11 @@ struct ShaderModuleDesc {
   const char* debugName = "";
 
   ShaderModuleDesc(const char* source, lvk::ShaderStage stage, const char* debugName) : stage(stage), data(source), debugName(debugName) {}
-  ShaderModuleDesc(const void* data, size_t dataLength, lvk::ShaderStage stage, const char* debugName) :
-    stage(stage), data(static_cast<const char*>(data)), dataSize(dataLength), debugName(debugName) {
+  ShaderModuleDesc(const void* data, size_t dataLength, lvk::ShaderStage stage, const char* debugName)
+  : stage(stage)
+  , data(static_cast<const char*>(data))
+  , dataSize(dataLength)
+  , debugName(debugName) {
     LVK_ASSERT(dataSize);
   }
 };
@@ -1052,7 +1055,7 @@ class IContext {
                                                                             Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<RenderPipelineHandle> createRenderPipeline(const RenderPipelineDesc& desc, Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<RayTracingPipelineHandle> createRayTracingPipeline(const RayTracingPipelineDesc& desc,
-                                                                            Result* outResult = nullptr) = 0;
+                                                                                  Result* outResult = nullptr) = 0;
   [[nodiscard]] virtual Holder<ShaderModuleHandle> createShaderModule(const ShaderModuleDesc& desc, Result* outResult = nullptr) = 0;
 
   [[nodiscard]] virtual Holder<QueryPoolHandle> createQueryPool(uint32_t numQueries,
@@ -1096,7 +1099,7 @@ class IContext {
   virtual ColorSpace getSwapChainColorSpace() const = 0;
   virtual uint32_t getNumSwapchainImages() const = 0;
   virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
-  
+
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 

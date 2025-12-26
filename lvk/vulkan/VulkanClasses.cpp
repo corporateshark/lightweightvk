@@ -1071,8 +1071,12 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
   return imageViewForFramebuffer_[level][layer];
 }
 
-lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32_t height) :
-  ctx_(ctx), device_(ctx.vkDevice_), graphicsQueue_(ctx.deviceQueues_.graphicsQueue), width_(width), height_(height) {
+lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32_t height)
+: ctx_(ctx)
+, device_(ctx.vkDevice_)
+, graphicsQueue_(ctx.deviceQueues_.graphicsQueue)
+, width_(width)
+, height_(height) {
   surfaceFormat_ = chooseSwapSurfaceFormat(ctx.deviceSurfaceFormats_, ctx.config_.swapChainColorSpace);
 
   LVK_ASSERT_MSG(ctx.vkSurface_ != VK_NULL_HANDLE,
@@ -1125,26 +1129,26 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   const VkImageUsageFlags usageFlags = chooseUsageFlags(ctx.getVkPhysicalDevice(), ctx.vkSurface_, surfaceFormat_.format);
   const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
   const VkSwapchainCreateInfoKHR ci = {
-    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface = ctx.vkSurface_,
-    .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_),
-    .imageFormat = surfaceFormat_.format,
-    .imageColorSpace = surfaceFormat_.colorSpace,
-    .imageExtent = {.width = width, .height = height},
-    .imageArrayLayers = 1,
-    .imageUsage = usageFlags,
-    .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    .queueFamilyIndexCount = 1,
-    .pQueueFamilyIndices = &ctx.deviceQueues_.graphicsQueueFamilyIndex,
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .surface = ctx.vkSurface_,
+      .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_),
+      .imageFormat = surfaceFormat_.format,
+      .imageColorSpace = surfaceFormat_.colorSpace,
+      .imageExtent = {.width = width, .height = height},
+      .imageArrayLayers = 1,
+      .imageUsage = usageFlags,
+      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = 1,
+      .pQueueFamilyIndices = &ctx.deviceQueues_.graphicsQueueFamilyIndex,
 #if defined(ANDROID)
-    .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+      .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 #else
-    .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
+      .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
 #endif
-    .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
-    .presentMode = chooseSwapPresentMode(ctx.devicePresentModes_),
-    .clipped = VK_TRUE,
-    .oldSwapchain = VK_NULL_HANDLE,
+      .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+      .presentMode = chooseSwapPresentMode(ctx.devicePresentModes_),
+      .clipped = VK_TRUE,
+      .oldSwapchain = VK_NULL_HANDLE,
   };
   VK_ASSERT(vkCreateSwapchainKHR(device_, &ci, nullptr, &swapchain_));
 
@@ -1306,8 +1310,10 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   return Result();
 }
 
-lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device, uint32_t queueFamilyIndex, const char* debugName) :
-  device_(device), queueFamilyIndex_(queueFamilyIndex), debugName_(debugName) {
+lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device, uint32_t queueFamilyIndex, const char* debugName)
+: device_(device)
+, queueFamilyIndex_(queueFamilyIndex)
+, debugName_(debugName) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
 
   vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue_);
@@ -1595,26 +1601,26 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::getNextSubmitHandle() const {
   return nextSubmitHandle_;
 }
 
-lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
-  vertexInputState_(VkPipelineVertexInputStateCreateInfo{
+lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
+: vertexInputState_(VkPipelineVertexInputStateCreateInfo{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
       .vertexBindingDescriptionCount = 0,
       .pVertexBindingDescriptions = nullptr,
       .vertexAttributeDescriptionCount = 0,
       .pVertexAttributeDescriptions = nullptr,
-  }),
-  inputAssembly_({
+  })
+, inputAssembly_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .flags = 0,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
       .primitiveRestartEnable = VK_FALSE,
-  }),
-  tessellationState_({
+  })
+, tessellationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
       .flags = 0,
       .patchControlPoints = 0,
-  }),
-  rasterizationState_({
+  })
+, rasterizationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .flags = 0,
       .depthClampEnable = VK_FALSE,
@@ -1627,8 +1633,8 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
       .depthBiasClamp = 0.0f,
       .depthBiasSlopeFactor = 0.0f,
       .lineWidth = 1.0f,
-  }),
-  multisampleState_({
+  })
+, multisampleState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
       .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
       .sampleShadingEnable = VK_FALSE,
@@ -1636,8 +1642,8 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder() :
       .pSampleMask = nullptr,
       .alphaToCoverageEnable = VK_FALSE,
       .alphaToOneEnable = VK_FALSE,
-  }),
-  depthStencilState_({
+  })
+, depthStencilState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .pNext = NULL,
       .flags = 0,
@@ -3433,8 +3439,9 @@ void lvk::VulkanStagingDevice::waitAndReset() {
   regions_.push_front({0, stagingBufferSize_, SubmitHandle()});
 }
 
-lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface) :
-  config_(config), vkSurface_(surface) {
+lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface)
+: config_(config)
+, vkSurface_(surface) {
   LVK_PROFILER_THREAD("MainThread");
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
@@ -3922,7 +3929,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     };
     vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, vkFormat, &props);
     if ((props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0) {
-       LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
+      LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
     }
     vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
     awaitingNewImmutableSamplers_ = true;
@@ -5788,37 +5795,36 @@ void lvk::VulkanContext::createInstance() {
     VK_ASSERT(vkEnumerateInstanceExtensionProperties(nullptr, &count, allInstanceExtensions.data()));
   }
   // collect instance extensions from all validation layers
-    if (config_.enableValidation) {
-      for (const char* layer : kDefaultValidationLayers) {
-        uint32_t count = 0;
-        VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
-        if (count > 0) {
-          const size_t sz = allInstanceExtensions.size();
-          allInstanceExtensions.resize(sz + count);
-          VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, allInstanceExtensions.data() + sz));
-        }
+  if (config_.enableValidation) {
+    for (const char* layer : kDefaultValidationLayers) {
+      uint32_t count = 0;
+      VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
+      if (count > 0) {
+        const size_t sz = allInstanceExtensions.size();
+        allInstanceExtensions.resize(sz + count);
+        VK_ASSERT(vkEnumerateInstanceExtensionProperties(layer, &count, allInstanceExtensions.data() + sz));
       }
     }
-
+  }
 
   std::vector<const char*> instanceExtensionNames = {
-    VK_KHR_SURFACE_EXTENSION_NAME,
+      VK_KHR_SURFACE_EXTENSION_NAME,
 #if defined(_WIN32)
-    VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+      VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
-    VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
+      VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
 #elif defined(__linux__)
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-    VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+      VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
 #else
-    VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
+      VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
 #endif
 #elif defined(__APPLE__)
-    VK_EXT_LAYER_SETTINGS_EXTENSION_NAME,
-    VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
+      VK_EXT_LAYER_SETTINGS_EXTENSION_NAME,
+      VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
 #endif
 #if defined(LVK_WITH_VULKAN_PORTABILITY)
-    VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+      VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
   };
 
@@ -5871,15 +5877,15 @@ void lvk::VulkanContext::createInstance() {
 #endif // __APPLE__
 
   const VkValidationFeaturesEXT features = {
-    .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-    .pNext = nullptr,
+      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+      .pNext = nullptr,
 #if !defined(ANDROID)
-    .enabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesEnabled) : 0u,
-    .pEnabledValidationFeatures = config_.enableValidation ? validationFeaturesEnabled : nullptr,
+      .enabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesEnabled) : 0u,
+      .pEnabledValidationFeatures = config_.enableValidation ? validationFeaturesEnabled : nullptr,
 #endif
 #if defined(__APPLE__)
-    .disabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesDisabled) : 0u,
-    .pDisabledValidationFeatures = config_.enableValidation ? validationFeaturesDisabled : nullptr,
+      .disabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesDisabled) : 0u,
+      .pDisabledValidationFeatures = config_.enableValidation ? validationFeaturesDisabled : nullptr,
 #endif
   };
 
@@ -5924,18 +5930,18 @@ void lvk::VulkanContext::createInstance() {
   flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 #endif
   const VkInstanceCreateInfo ci = {
-    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-    .pNext = &layerSettingsCreateInfo,
+      .pNext = &layerSettingsCreateInfo,
 #else
-    .pNext = config_.enableValidation ? &features : nullptr,
+      .pNext = config_.enableValidation ? &features : nullptr,
 #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-    .flags = flags,
-    .pApplicationInfo = &appInfo,
-    .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
-    .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
-    .enabledExtensionCount = (uint32_t)instanceExtensionNames.size(),
-    .ppEnabledExtensionNames = instanceExtensionNames.data(),
+      .flags = flags,
+      .pApplicationInfo = &appInfo,
+      .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
+      .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
+      .enabledExtensionCount = (uint32_t)instanceExtensionNames.size(),
+      .ppEnabledExtensionNames = instanceExtensionNames.data(),
   };
   VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
 
