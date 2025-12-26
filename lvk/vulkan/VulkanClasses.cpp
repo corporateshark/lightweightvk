@@ -4200,7 +4200,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
     };
     vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, vkFormat, &props);
-    if (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT == 0) {
+    if ((props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DISJOINT_BIT) == 0) {
        LLOGW("VK_FORMAT_FEATURE_DISJOINT_BIT is not supported for VkFormat = %u\n", (uint32_t)vkFormat);
     }
     vkCreateFlags |= VK_IMAGE_CREATE_DISJOINT_BIT | VK_IMAGE_CREATE_ALIAS_BIT | VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
