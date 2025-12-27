@@ -1183,8 +1183,6 @@ typedef struct GLFWwindow GLFWwindow;
 
 namespace lvk {
 
-using ShaderModuleErrorCallback = void (*)(lvk::IContext*, lvk::ShaderModuleHandle, int line, int col, const char* debugName);
-
 constexpr uint32_t kMaxCustomExtensions = 32;
 
 enum VulkanVersion {
@@ -1200,7 +1198,6 @@ struct ContextConfig {
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;
-  ShaderModuleErrorCallback shaderModuleErrorCallback = nullptr;
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
   void* extensionsDeviceFeatures = nullptr; // inserted into VkPhysicalDeviceVulkan11Features::pNext

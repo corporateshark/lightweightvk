@@ -130,26 +130,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
 
   if (isError) {
     lvk::VulkanContext* ctx = static_cast<lvk::VulkanContext*>(userData);
-
-    if (ctx->config_.shaderModuleErrorCallback != nullptr) {
-      // retrieve source code references - this is very experimental and depends a lot on the validation layer output
-      int line = 0;
-      int col = 0;
-      const char* substr1 = strstr(cbData->pMessage, "Shader validation error occurred at line ");
-      if (substr1 && sscanf(substr1, "Shader validation error occurred at line %d, column %d.", &line, &col) >= 1) {
-        const char* substr2 = strstr(cbData->pMessage, "Shader Module (Shader Module: ");
-        char* shaderModuleDebugName = (char*)alloca(len + 1);
-        VkShaderModule shaderModule = VK_NULL_HANDLE;
-#if VK_USE_64_BIT_PTR_DEFINES
-        if (substr2 && sscanf(substr2, "Shader Module (Shader Module: %[^)])(%p)", shaderModuleDebugName, &shaderModule) == 2) {
-#else
-        if (substr2 && sscanf(substr2, "Shader Module (Shader Module: %[^)])(%llu)", shaderModuleDebugName, &shaderModule) == 2) {
-#endif // VK_USE_64_BIT_PTR_DEFINES
-          ctx->invokeShaderModuleErrorCallback(line, col, shaderModuleDebugName, shaderModule);
-        }
-      }
-    }
-
     if (ctx->config_.terminateOnValidationError) {
       LVK_ASSERT(false);
       std::terminate();
@@ -7797,24 +7777,6 @@ void lvk::VulkanContext::waitDeferredTasks() {
     task.task_();
   }
   pimpl_->deferredTasks_.clear();
-}
-
-void lvk::VulkanContext::invokeShaderModuleErrorCallback(int line, int col, const char* debugName, VkShaderModule sm) {
-  if (!config_.shaderModuleErrorCallback) {
-    return;
-  }
-
-  lvk::ShaderModuleHandle handle;
-
-  for (uint32_t i = 0; i != shaderModulesPool_.objects_.size(); i++) {
-    if (shaderModulesPool_.objects_[i].obj_.sm == sm) {
-      handle = shaderModulesPool_.getHandle(i);
-    }
-  }
-
-  if (!handle.empty()) {
-    config_.shaderModuleErrorCallback(this, handle, line, col, debugName);
-  }
 }
 
 uint32_t lvk::VulkanContext::getMaxStorageBufferRange() const {
