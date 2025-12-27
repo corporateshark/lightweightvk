@@ -323,7 +323,13 @@ struct RayTracingPipelineState final {
 };
 
 struct ShaderModuleState final {
-  VkShaderModule sm = VK_NULL_HANDLE;
+  VkShaderModuleCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = 0,
+      .codeSize = 0,
+      .pCode = nullptr,
+  };
   uint32_t pushConstantsSize = 0;
 };
 

@@ -950,14 +950,15 @@ VkBindImageMemoryInfo lvk::getBindImageMemoryInfo(const VkBindImagePlaneMemoryIn
 }
 
 VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
-                                                                      VkShaderModule shaderModule,
+                                                                      const VkShaderModuleCreateInfo& ci,
                                                                       const char* entryPoint,
                                                                       const VkSpecializationInfo* specializationInfo) {
   return VkPipelineShaderStageCreateInfo{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .pNext = &ci,
       .flags = 0,
       .stage = stage,
-      .module = shaderModule,
+      .module = VK_NULL_HANDLE,
       .pName = entryPoint ? entryPoint : "main",
       .pSpecializationInfo = specializationInfo,
   };
@@ -1257,13 +1258,6 @@ VkImageView lvk::getVkImageView(const IContext* ctx, TextureHandle texture) {
     return VK_NULL_HANDLE;
 
   return static_cast<const VulkanContext*>(ctx)->texturesPool_.get(texture)->imageView_;
-}
-
-VkShaderModule lvk::getVkShaderModule(const IContext* ctx, ShaderModuleHandle shader) {
-  if (!ctx || shader.empty())
-    return VK_NULL_HANDLE;
-
-  return static_cast<const VulkanContext*>(ctx)->shaderModulesPool_.get(shader)->sm;
 }
 
 VkDeviceAddress lvk::getVkAccelerationStructureDeviceAddress(const IContext* ctx, AccelStructHandle accelStruct) {

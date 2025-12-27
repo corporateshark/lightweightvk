@@ -1892,7 +1892,7 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::patchControlPoints(uint3
 }
 
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::shaderStage(VkPipelineShaderStageCreateInfo stage) {
-  if (stage.module != VK_NULL_HANDLE) {
+  if (stage.pNext) {
     LVK_ASSERT(numShaderStages_ < LVK_ARRAY_NUM_ELEMENTS(shaderStages_));
     shaderStages_[numShaderStages_++] = stage;
   }
@@ -4862,21 +4862,21 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
                        compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
       .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
       .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
-      .shaderStage(taskModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->sm, desc.entryPointTask, &si)
+      .shaderStage(taskModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(meshModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->sm, desc.entryPointMesh, &si)
-                       : lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertModule->sm, desc.entryPointVert, &si))
-      .shaderStage(lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->sm, desc.entryPointFrag, &si))
+                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si)
+                       : lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertModule->ci, desc.entryPointVert, &si))
+      .shaderStage(lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si))
       .shaderStage(tescModule ? lvk::getPipelineShaderStageCreateInfo(
-                                    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->sm, desc.entryPointTesc, &si)
+                                    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->ci, desc.entryPointTesc, &si)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(teseModule ? lvk::getPipelineShaderStageCreateInfo(
-                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseModule->sm, desc.entryPointTese, &si)
+                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseModule->ci, desc.entryPointTese, &si)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(geomModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->sm, desc.entryPointGeom, &si)
+                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .cullMode(cullModeToVkCullMode(desc.cullMode))
       .frontFace(windingModeToVkFrontFace(desc.frontFaceWinding))
@@ -5009,7 +5009,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
 #define ADD_STAGE(shaderModule, vkStageFlag)                                                                                        \
   for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {                                                                 \
     if (shaderModule[i])                                                                                                            \
-      ciShaderStages[numShaderStages++] = lvk::getPipelineShaderStageCreateInfo(vkStageFlag, shaderModule[i]->sm, "main", &siComp); \
+      ciShaderStages[numShaderStages++] = lvk::getPipelineShaderStageCreateInfo(vkStageFlag, shaderModule[i]->ci, "main", &siComp); \
   }
   ADD_STAGE(moduleRGen, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
   ADD_STAGE(moduleMiss, VK_SHADER_STAGE_MISS_BIT_KHR);
@@ -5210,7 +5210,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
     const VkComputePipelineCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .flags = 0,
-        .stage = lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, sm->sm, cps->desc_.entryPoint, &siComp),
+        .stage = lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, sm->ci, cps->desc_.entryPoint, &siComp),
         .layout = cps->pipelineLayout_,
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = -1,
@@ -5392,11 +5392,7 @@ void lvk::VulkanContext::destroy(lvk::ShaderModuleHandle handle) {
     return;
   }
 
-  if (state->sm != VK_NULL_HANDLE) {
-    // a shader module can be destroyed while pipelines created using its shaders are still in use
-    // https://registry.khronos.org/vulkan/specs/1.3/html/chap9.html#vkDestroyShaderModule
-    vkDestroyShaderModule(getVkDevice(), state->sm, nullptr);
-  }
+  free((void*)state->ci.pCode);
 
   shaderModulesPool_.destroy(handle);
 }
@@ -5799,27 +5795,12 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
                                                                        size_t numBytes,
                                                                        const char* debugName,
                                                                        Result* outResult) const {
-  VkShaderModule vkShaderModule = VK_NULL_HANDLE;
+  (void)debugName;
 
-  const VkShaderModuleCreateInfo ci = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = numBytes,
-      .pCode = (const uint32_t*)spirv,
-  };
-
-  {
-    const VkResult result = vkCreateShaderModule(vkDevice_, &ci, nullptr, &vkShaderModule);
-
-    lvk::setResultFrom(outResult, result);
-
-    if (result != VK_SUCCESS) {
-      return {.sm = VK_NULL_HANDLE};
-    }
+  if (!spirv || !numBytes) {
+    Result::setResult(outResult, Result(Result::Code::ArgumentOutOfRange, "Expecting non-empty SPIR-V code"));
+    return {};
   }
-
-  VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SHADER_MODULE, (uint64_t)vkShaderModule, debugName));
-
-  LVK_ASSERT(vkShaderModule != VK_NULL_HANDLE);
 
   SpvReflectShaderModule mdl;
   SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
@@ -5835,8 +5816,16 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
     pushConstantsSize = std::max(pushConstantsSize, block.offset + block.size);
   }
 
+  const VkShaderModuleCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = numBytes,
+      .pCode = (const uint32_t*)malloc(numBytes),
+  };
+
+  memcpy((void*)ci.pCode, spirv, numBytes);
+
   return {
-      .sm = vkShaderModule,
+      .ci = ci,
       .pushConstantsSize = pushConstantsSize,
   };
 }

@@ -92,7 +92,7 @@ VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,
                                            const VkSampler* immutableSamplers = nullptr);
 VkSpecializationInfo getPipelineShaderStageSpecializationInfo(lvk::SpecializationConstantDesc desc, VkSpecializationMapEntry* outEntries);
 VkPipelineShaderStageCreateInfo getPipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
-                                                                 VkShaderModule shaderModule,
+                                                                 const VkShaderModuleCreateInfo& ci,
                                                                  const char* entryPoint,
                                                                  const VkSpecializationInfo* specializationInfo);
 VkBindImageMemoryInfo getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* next, VkImage image, VkDeviceMemory memory);
@@ -128,7 +128,6 @@ VkCommandBuffer getVkCommandBuffer(const ICommandBuffer& buffer);
 VkBuffer getVkBuffer(const IContext* ctx, BufferHandle buffer);
 VkImage getVkImage(const IContext* ctx, TextureHandle texture);
 VkImageView getVkImageView(const IContext* ctx, TextureHandle texture);
-VkShaderModule getVkShaderModule(const IContext* ctx, ShaderModuleHandle shader);
 VkDeviceAddress getVkAccelerationStructureDeviceAddress(const IContext* ctx, AccelStructHandle accelStruct);
 VkAccelerationStructureKHR getVkAccelerationStructure(const IContext* ctx, AccelStructHandle accelStruct);
 VkBuffer getVkBuffer(const IContext* ctx, AccelStructHandle accelStruct);
