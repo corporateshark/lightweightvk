@@ -601,9 +601,6 @@ class VulkanContext final : public IContext {
   void checkAndUpdateDescriptorSets();
   void bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const;
 
-  // for shaders debugging
-  void invokeShaderModuleErrorCallback(int line, int col, const char* debugName, VkShaderModule sm);
-
  private:
   void createInstance();
   void createSurface(void* window, void* display);
