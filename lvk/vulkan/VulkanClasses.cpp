@@ -6719,7 +6719,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
       .pNext = &deviceFeatures13,
       .indexTypeUint8 = vkFeatures14_.indexTypeUint8,
-      .dynamicRenderingLocalRead = vkFeatures14_.dynamicRenderingLocalRead,
+      .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
   };
 #endif // VK_API_VERSION_1_4
@@ -6769,6 +6769,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR,
       .maintenance5 = VK_TRUE,
   };
+  VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR dynamicRenderingLocalReadFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR,
+      .dynamicRenderingLocalRead = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](const char* name,
                                                                                      void* features = nullptr) mutable -> void {
@@ -6813,6 +6817,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   if (config_.vulkanVersion < VulkanVersion_1_4) {
     addExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, &maintenance5Features);
+    addExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME, &dynamicRenderingLocalReadFeatures);
   }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_EXT_calibrated_timestamps_, nullptr);
