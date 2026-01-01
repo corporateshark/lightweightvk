@@ -251,6 +251,7 @@ jobs:
           env:
             CC:  ${{ matrix.config.cc }}
             CXX: ${{ matrix.config.cxx }}
+            SDL_VIDEODRIVER: dummy
           run: |
             cmake ${{ env.CMAKE_GENERATOR }} -S "${{ github.workspace }}" -B build ${{ matrix.config.cmake_args }} -DCMAKE_BUILD_TYPE=Debug
             cd build
