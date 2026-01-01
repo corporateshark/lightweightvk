@@ -2427,6 +2427,27 @@ void lvk::CommandBuffer::cmdEndRendering() {
   framebuffer_ = {};
 }
 
+void lvk::CommandBuffer::cmdNextSubpass() {
+  LVK_ASSERT(isRendering_);
+
+  const VkMemoryBarrier2 memoryBarrier = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+      .dstAccessMask = VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT,
+  };
+
+  const VkDependencyInfo dependencyInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+      .memoryBarrierCount = 1,
+      .pMemoryBarriers = &memoryBarrier,
+  };
+
+  vkCmdPipelineBarrier2(wrapper_->cmdBuf_, &dependencyInfo);
+}
+
 void lvk::CommandBuffer::cmdBindViewport(const Viewport& viewport) {
   // https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
   const VkViewport vp = {

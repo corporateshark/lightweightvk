@@ -367,6 +367,7 @@ class CommandBuffer final : public ICommandBuffer {
 
   void cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& desc, const Dependencies& deps) override;
   void cmdEndRendering() override;
+  void cmdNextSubpass() override;
 
   void cmdBindViewport(const Viewport& viewport) override;
   void cmdBindScissorRect(const ScissorRect& rect) override;

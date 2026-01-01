@@ -993,6 +993,7 @@ class ICommandBuffer {
 
   virtual void cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& desc, const Dependencies& deps = {}) = 0;
   virtual void cmdEndRendering() = 0;
+  virtual void cmdNextSubpass() = 0;
 
   virtual void cmdBindViewport(const Viewport& viewport) = 0;
   virtual void cmdBindScissorRect(const ScissorRect& rect) = 0;
