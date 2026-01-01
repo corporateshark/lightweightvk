@@ -286,6 +286,8 @@ uint32_t lvk::VertexInput::getVertexSize() const {
 
 #if LVK_WITH_SDL3
 SDL_Window* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable) {
+  SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
     return nullptr;
