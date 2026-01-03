@@ -6185,7 +6185,7 @@ void lvk::VulkanContext::createInstance() {
     }
   }
 
-  std::vector<const char*> instanceExtensionNames = {
+  enabledInstanceExtensionNames_ = {
       VK_KHR_SURFACE_EXTENSION_NAME,
 #if defined(_WIN32)
       VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
@@ -6210,34 +6210,34 @@ void lvk::VulkanContext::createInstance() {
   const bool hasDebugUtils = hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, allInstanceExtensions);
 
   if (hasDebugUtils) {
-    instanceExtensionNames.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    enabledInstanceExtensionNames_.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
 
   if (config_.enableValidation) {
-    instanceExtensionNames.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
+    enabledInstanceExtensionNames_.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
   }
 
   if (config_.enableHeadlessSurface) {
-    instanceExtensionNames.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
+    enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
   }
 
   if (hasExtension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, allInstanceExtensions)) {
     has_EXT_swapchain_colorspace_ = true;
-    instanceExtensionNames.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+    enabledInstanceExtensionNames_.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
   }
 
   if (hasExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
     // required by the device extension VK_EXT_swapchain_maintenance1
-    instanceExtensionNames.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    enabledInstanceExtensionNames_.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
   if (hasExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, allInstanceExtensions)) {
     // required by the instance extension VK_EXT_surface_maintenance1
-    instanceExtensionNames.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    enabledInstanceExtensionNames_.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
   }
 
   for (const char* ext : config_.extensionsInstance) {
     if (ext) {
-      instanceExtensionNames.push_back(ext);
+      enabledInstanceExtensionNames_.push_back(ext);
     }
   }
 
@@ -6327,8 +6327,8 @@ void lvk::VulkanContext::createInstance() {
       .pApplicationInfo = &appInfo,
       .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
       .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
-      .enabledExtensionCount = (uint32_t)instanceExtensionNames.size(),
-      .ppEnabledExtensionNames = instanceExtensionNames.data(),
+      .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames_.size(),
+      .ppEnabledExtensionNames = enabledInstanceExtensionNames_.data(),
   };
   VK_ASSERT(vkCreateInstance(&ci, nullptr, &vkInstance_));
 
@@ -6665,7 +6665,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   };
   const uint32_t numQueues = ciQueue[0].queueFamilyIndex == ciQueue[1].queueFamilyIndex ? 1 : 2;
 
-  std::vector<const char*> deviceExtensionNames = {
+  enabledDeviceExtensionNames_ = {
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 #if defined(LVK_WITH_VULKAN_PORTABILITY)
       "VK_KHR_portability_subset",
@@ -6674,7 +6674,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   for (const char* ext : config_.extensionsDevice) {
     if (ext) {
-      deviceExtensionNames.push_back(ext);
+      enabledDeviceExtensionNames_.push_back(ext);
     }
   }
 
@@ -6796,13 +6796,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .dynamicRenderingLocalRead = VK_TRUE,
   };
 
-  auto addExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](const char* name,
-                                                                                     void* features = nullptr) mutable -> void {
+  auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
       LLOGW("Unsupported mandatory extension %s", name);
       return;
     }
-    deviceExtensionNames.push_back(name);
+    enabledDeviceExtensionNames_.push_back(name);
     if (features) {
       std::launder(reinterpret_cast<VkBaseOutStructure*>(features))->pNext =
           std::launder(reinterpret_cast<VkBaseOutStructure*>(createInfoNext));
@@ -6810,12 +6809,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
   };
 
-  auto addOptionalExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](
+  auto addOptionalExtension = [&allDeviceExtensions, this, &createInfoNext](
                                   const char* name, bool& enabled, void* features = nullptr) mutable -> bool {
     if (!hasExtension(name, allDeviceExtensions))
       return false;
     enabled = true;
-    deviceExtensionNames.push_back(name);
+    enabledDeviceExtensionNames_.push_back(name);
     if (features) {
       std::launder(reinterpret_cast<VkBaseOutStructure*>(features))->pNext =
           std::launder(reinterpret_cast<VkBaseOutStructure*>(createInfoNext));
@@ -6823,13 +6822,13 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
     return true;
   };
-  auto addOptionalExtensions = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](
+  auto addOptionalExtensions = [&allDeviceExtensions, this, &createInfoNext](
                                    const char* name1, const char* name2, bool& enabled, void* features = nullptr) mutable {
     if (!hasExtension(name1, allDeviceExtensions) || !hasExtension(name2, allDeviceExtensions))
       return;
     enabled = true;
-    deviceExtensionNames.push_back(name1);
-    deviceExtensionNames.push_back(name2);
+    enabledDeviceExtensionNames_.push_back(name1);
+    enabledDeviceExtensionNames_.push_back(name2);
     if (features) {
       std::launder(reinterpret_cast<VkBaseOutStructure*>(features))->pNext =
           std::launder(reinterpret_cast<VkBaseOutStructure*>(createInfoNext));
@@ -6864,7 +6863,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   // check extensions
   {
     std::string missingExtensions;
-    for (const char* ext : deviceExtensionNames) {
+    for (const char* ext : enabledDeviceExtensionNames_) {
       if (!hasExtension(ext, allDeviceExtensions))
         missingExtensions += "\n   " + std::string(ext);
     }
@@ -7040,8 +7039,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .pNext = createInfoNext,
       .queueCreateInfoCount = numQueues,
       .pQueueCreateInfos = ciQueue,
-      .enabledExtensionCount = (uint32_t)deviceExtensionNames.size(),
-      .ppEnabledExtensionNames = deviceExtensionNames.data(),
+      .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames_.size(),
+      .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
       .pEnabledFeatures = &deviceFeatures10,
   };
   VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
@@ -7797,4 +7796,16 @@ void lvk::VulkanContext::waitDeferredTasks() {
 
 uint32_t lvk::VulkanContext::getMaxStorageBufferRange() const {
   return vkPhysicalDeviceProperties2_.properties.limits.maxStorageBufferRange;
+}
+
+bool lvk::VulkanContext::isExtensionEnabled(const char* ext) const {
+  for (const char* name : enabledInstanceExtensionNames_) {
+    if (strcmp(ext, name) == 0)
+      return true;
+  }
+  for (const char* name : enabledDeviceExtensionNames_) {
+    if (strcmp(ext, name) == 0)
+      return true;
+  }
+  return false;
 }

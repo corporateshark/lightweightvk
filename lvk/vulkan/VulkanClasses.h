@@ -562,6 +562,7 @@ class VulkanContext final : public IContext {
   void recreateSwapchain(int newWidth, int newHeight) override;
 
   uint32_t getFramebufferMSAABitMask() const override;
+  bool isExtensionEnabled(const char* ext) const override;
 
   double getTimestampPeriodToMs() const override;
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
@@ -754,6 +755,8 @@ class VulkanContext final : public IContext {
   bool has_EXT_swapchain_maintenance1_ = false;
   bool has_EXT_hdr_metadata_ = false;
   bool has_EXT_device_fault_ = false;
+  std::vector<const char*> enabledInstanceExtensionNames_;
+  std::vector<const char*> enabledDeviceExtensionNames_;
 
   TextureHandle dummyTexture_;
 

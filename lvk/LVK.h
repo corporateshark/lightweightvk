@@ -1165,6 +1165,8 @@ class IContext {
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 
+  virtual bool isExtensionEnabled(const char* ext) const = 0;
+
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;
   virtual bool getQueryPoolResults(QueryPoolHandle pool,
