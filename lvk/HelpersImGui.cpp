@@ -80,6 +80,7 @@ namespace lvk {
 
 lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(const lvk::Framebuffer& desc) {
   const uint32_t nonLinearColorSpace = ctx_.getSwapChainColorSpace() == ColorSpace_SRGB_NONLINEAR ? 1u : 0u;
+  static_assert(LVK_MAX_COLOR_ATTACHMENTS == 8, "Update all color attachments below");
   return ctx_.createRenderPipeline(
       {
           .smVert = vert_,
@@ -87,12 +88,17 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
           .specInfo = {.entries = {{.constantId = 0, .size = sizeof(nonLinearColorSpace)}},
                        .data = &nonLinearColorSpace,
                        .dataSize = sizeof(nonLinearColorSpace)},
-          .color = {{
-              .format = ctx_.getFormat(desc.color[0].texture),
-              .blendEnabled = true,
-              .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
-              .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
-          }},
+          .color = {{.format = ctx_.getFormat(desc.color[0].texture),
+                     .blendEnabled = true,
+                     .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
+                     .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha},
+                    {.format = desc.color[1].texture ? ctx_.getFormat(desc.color[1].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[2].texture ? ctx_.getFormat(desc.color[2].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[3].texture ? ctx_.getFormat(desc.color[3].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[4].texture ? ctx_.getFormat(desc.color[4].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[5].texture ? ctx_.getFormat(desc.color[5].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[6].texture ? ctx_.getFormat(desc.color[6].texture) : lvk::Format_Invalid},
+                    {.format = desc.color[7].texture ? ctx_.getFormat(desc.color[7].texture) : lvk::Format_Invalid}},
           .depthFormat = desc.depthStencil.texture ? ctx_.getFormat(desc.depthStencil.texture) : lvk::Format_Invalid,
           .cullMode = lvk::CullMode_None,
       },
