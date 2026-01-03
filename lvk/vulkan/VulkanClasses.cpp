@@ -1084,6 +1084,12 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.cend()) {
       return VK_PRESENT_MODE_MAILBOX_KHR;
     }
+    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend()) {
+      return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
+    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != modes.cend()) {
+      return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    }
     return VK_PRESENT_MODE_FIFO_KHR;
   };
 
