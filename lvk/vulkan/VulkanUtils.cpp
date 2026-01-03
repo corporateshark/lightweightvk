@@ -1212,6 +1212,11 @@ StageAccess lvk::getPipelineStageAccess(VkImageLayout layout) {
         .stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         .access = VK_ACCESS_2_NONE | VK_ACCESS_2_SHADER_WRITE_BIT,
     };
+  case VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .access = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT,
+    };
   default:
     LVK_ASSERT_MSG(false, "Unsupported image layout transition!");
     return {
