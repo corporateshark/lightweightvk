@@ -6848,6 +6848,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   };
 
   if (config_.vulkanVersion < VulkanVersion_1_4) {
+    addExtension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, nullptr);
     addExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, &maintenance5Features);
     addExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME, &dynamicRenderingLocalReadFeatures);
     if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
