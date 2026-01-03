@@ -755,6 +755,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_swapchain_maintenance1_ = false;
   bool has_EXT_hdr_metadata_ = false;
   bool has_EXT_device_fault_ = false;
+  bool has_EXT_shader_tile_image = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

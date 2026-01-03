@@ -6795,6 +6795,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR,
       .dynamicRenderingLocalRead = VK_TRUE,
   };
+  VkPhysicalDeviceShaderTileImageFeaturesEXT shaderTileImageFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_TILE_IMAGE_FEATURES_EXT,
+      .shaderTileImageColorReadAccess = VK_TRUE,
+      .shaderTileImageDepthReadAccess = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -6839,6 +6844,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (config_.vulkanVersion < VulkanVersion_1_4) {
     addExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, &maintenance5Features);
     addExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME, &dynamicRenderingLocalReadFeatures);
+    if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
+      addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
+    }
   }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_EXT_calibrated_timestamps_, nullptr);
@@ -6852,13 +6860,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(
       VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, has_EXT_ray_tracing_invocation_reorder, &rayTracingInvocationReorderFeatures);
   addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_EXT_swapchain_maintenance1_, &swapchainMaintenance1Features);
-  if (config_.vulkanVersion <= lvk::VulkanVersion_1_3) {
-    if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
-      addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
-    }
-  }
   addOptionalExtension(VK_EXT_HDR_METADATA_EXTENSION_NAME, has_EXT_hdr_metadata_);
   addOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, has_EXT_device_fault_, &deviceFaultFeatures);
+  addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
 
   // check extensions
   {
