@@ -251,7 +251,13 @@ enum TextureType : uint8_t {
 
 enum SamplerFilter : uint8_t { SamplerFilter_Nearest = 0, SamplerFilter_Linear };
 enum SamplerMip : uint8_t { SamplerMip_Disabled = 0, SamplerMip_Nearest, SamplerMip_Linear };
-enum SamplerWrap : uint8_t { SamplerWrap_Repeat = 0, SamplerWrap_Clamp, SamplerWrap_MirrorRepeat };
+enum SamplerWrap : uint8_t {
+  SamplerWrap_Repeat = 0,
+  SamplerWrap_Clamp, // to edge
+  SamplerWrap_ClampToBorder,
+  SamplerWrap_MirrorRepeat,
+  SamplerWrap_MirrorClampToEdge,
+};
 
 enum HWDeviceType {
   HWDeviceType_Integrated = 1,
