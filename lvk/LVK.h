@@ -981,6 +981,7 @@ struct Dependencies {
   enum { LVK_MAX_SUBMIT_DEPENDENCIES = 4 };
   TextureHandle textures[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
   BufferHandle buffers[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
+  TextureHandle inputAttachments[LVK_MAX_COLOR_ATTACHMENTS] = {};
 };
 
 class ICommandBuffer {
@@ -988,6 +989,7 @@ class ICommandBuffer {
   virtual ~ICommandBuffer() = default;
 
   virtual void transitionToShaderReadOnly(TextureHandle surface) const = 0;
+  virtual void transitionToRenderingLocalRead(TextureHandle surface) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;

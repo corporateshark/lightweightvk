@@ -2051,6 +2051,21 @@ void lvk::CommandBuffer::transitionToShaderReadOnly(TextureHandle handle) const 
   }
 }
 
+void lvk::CommandBuffer::transitionToRenderingLocalRead(TextureHandle handle) const {
+  LVK_PROFILER_FUNCTION();
+
+  const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+
+  LVK_ASSERT(!img.isSwapchainImage_);
+  LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+                 "Input attachment texture must have VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT (lvk::TextureUsageBits_InputAttachment)");
+
+  const VkImageAspectFlags flags = img.getImageAspectFlags();
+  img.transitionLayout(wrapper_->cmdBuf_,
+                       VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
+                       VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+}
+
 void lvk::CommandBuffer::cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) {
   LVK_PROFILER_FUNCTION();
 
