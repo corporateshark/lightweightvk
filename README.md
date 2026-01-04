@@ -19,6 +19,9 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 ## Supported rendering backends
 
  * Vulkan 1.3 (Windows, Linux, MacOS, Android)
+   * mandatory **VK_KHR_dynamic_rendering_local_read**
+   * mandatory **VK_KHR_maintenance5**
+   * mandatory **VK_KHR_push_descriptor**
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)
@@ -41,7 +44,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
 
-On MacOS, `MoltenVK 1.3+` and `VulkanSDK 1.4.321+` are required.
+On MacOS, `MoltenVK 1.4+` and `VulkanSDK 1.4.321+` are required.
 
 ## Build
 
