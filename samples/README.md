@@ -20,6 +20,10 @@
 
 ![lvk_android](../.github/samples/005_MeshShaders.jpg)
 
+## 007_DynamicRenderingLocalRead
+
+![lvk_android](../.github/samples/007_DynamicRenderingLocalRead.jpg)
+
 ## 008_MeshShaderFireworks
 
 ![lvk_android](../.github/samples/008_MeshShaderFireworks.jpg)
