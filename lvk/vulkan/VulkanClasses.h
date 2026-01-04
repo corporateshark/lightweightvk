@@ -443,6 +443,12 @@ class CommandBuffer final : public ICommandBuffer {
   lvk::Framebuffer framebuffer_ = {};
   lvk::SubmitHandle lastSubmitHandle_ = {};
 
+  struct {
+    VkDescriptorImageInfo imageInfos[LVK_MAX_COLOR_ATTACHMENTS] = {};
+    VkWriteDescriptorSet writes[LVK_MAX_COLOR_ATTACHMENTS] = {};
+    uint32_t count = 0;
+  } inputAttachments_;
+
   VkPipeline lastPipelineBound_ = VK_NULL_HANDLE;
 
   bool isRendering_ = false;
@@ -732,6 +738,7 @@ class VulkanContext final : public IContext {
   VkSemaphore timelineSemaphore_ = VK_NULL_HANDLE;
   std::unique_ptr<lvk::VulkanImmediateCommands> immediate_;
   std::unique_ptr<lvk::VulkanStagingDevice> stagingDevice_;
+  VkDescriptorSetLayout dslInputAttachments_ = VK_NULL_HANDLE;
   std::vector<DescriptorSet> DSets_ = {};
   size_t lastUpdatedDSet_ = 0;
   // don't use staging on devices with shared host-visible memory

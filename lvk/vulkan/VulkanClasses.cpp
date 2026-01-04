@@ -63,6 +63,8 @@ enum Bindings {
   kBinding_NumBindings = 5,
 };
 
+const uint32_t kDescriptorSet_InputAttachments = 4; // for VkDescriptorSetLayout in getVkPipeline()
+
 VkDeviceSize getAlignedSize(uint64_t value, uint64_t alignment) {
   return (value + alignment - 1) & ~(alignment - 1);
 }
@@ -2311,6 +2313,33 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
                                      VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
   }
 
+  // calculate and transition input attachments
+  {
+    uint32_t i = 0;
+    while (i != LVK_MAX_COLOR_ATTACHMENTS && deps.inputAttachments[i]) {
+      const lvk::TextureHandle handle = deps.inputAttachments[i];
+      const lvk::VulkanImage* tex = ctx_->texturesPool_.get(handle);
+      LVK_ASSERT(tex);
+      transitionToRenderingLocalRead(handle);
+      inputAttachments_.imageInfos[i] = {
+          .sampler = VK_NULL_HANDLE,
+          .imageView = tex->imageView_,
+          .imageLayout = VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
+      };
+      inputAttachments_.writes[i] = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = VK_NULL_HANDLE, // ignored for push descriptors
+          .dstBinding = i,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+          .pImageInfo = &inputAttachments_.imageInfos[i],
+      };
+      i++;
+    }
+    inputAttachments_.count = i;
+  }
+
   VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
   uint32_t mipLevel = 0;
   uint32_t fbWidth = 0;
@@ -2519,6 +2548,14 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
     lastPipelineBound_ = pipeline;
     vkCmdBindPipeline(wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     ctx_->bindDefaultDescriptorSets(wrapper_->cmdBuf_, VK_PIPELINE_BIND_POINT_GRAPHICS, rps->pipelineLayout_);
+    if (inputAttachments_.count) {
+      vkCmdPushDescriptorSetKHR(wrapper_->cmdBuf_,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                rps->pipelineLayout_,
+                                kDescriptorSet_InputAttachments,
+                                inputAttachments_.count,
+                                inputAttachments_.writes);
+    }
   }
 }
 
@@ -3798,6 +3835,7 @@ lvk::VulkanContext::~VulkanContext() {
     vkDestroyDescriptorPool(vkDevice_, dset.vkDPool, nullptr);
     vkDestroyDescriptorSetLayout(vkDevice_, dset.vkDSL, nullptr);
   }
+  vkDestroyDescriptorSetLayout(vkDevice_, dslInputAttachments_, nullptr);
   vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
   vkDestroyPipelineCache(vkDevice_, pipelineCache_, nullptr);
 
@@ -4860,7 +4898,13 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     }
 
     // duplicate for MoltenVK
-    const VkDescriptorSetLayout dsls[] = {dset.vkDSL, dset.vkDSL, dset.vkDSL, dset.vkDSL};
+    const VkDescriptorSetLayout dsls[kDescriptorSet_InputAttachments + 1] = {
+        dset.vkDSL,
+        dset.vkDSL,
+        dset.vkDSL,
+        dset.vkDSL,
+        dslInputAttachments_,
+    };
     const VkPushConstantRange range = {
         .stageFlags = rps->shaderStageFlags_,
         .offset = 0,
@@ -7208,6 +7252,25 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   // add one empty dset
   DSets_.push_back({});
 
+  // create one separate DSL for input attachments
+  {
+    VkDescriptorSetLayoutBinding bindings[LVK_MAX_COLOR_ATTACHMENTS];
+    for (uint32_t i = 0; i != LVK_ARRAY_NUM_ELEMENTS(bindings); i++) {
+      bindings[i] = lvk::getDSLBinding(i, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+    };
+    const VkPhysicalDeviceLimits& limits = this->getVkPhysicalDeviceProperties().limits;
+    const VkDescriptorSetLayoutCreateInfo dslci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
+        .bindingCount = std::min((uint32_t)LVK_MAX_COLOR_ATTACHMENTS, limits.maxPerStageDescriptorInputAttachments),
+        .pBindings = bindings,
+    };
+    VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &dslInputAttachments_));
+    VK_ASSERT(lvk::setDebugObjectName(vkDevice_,
+                                      VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+                                      (uint64_t)dslInputAttachments_,
+                                      "Descriptor Set Layout: VulkanContext::dslInputAttachments_"));
+  }
   return Result();
 }
 
