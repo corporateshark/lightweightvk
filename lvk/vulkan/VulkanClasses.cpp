@@ -6177,6 +6177,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceVulkan12Features deviceFeatures12 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &deviceFeatures11,
+      .samplerMirrorClampToEdge = VK_TRUE,
       .drawIndirectCount = vkFeatures12_.drawIndirectCount, // enable if supported
       .storageBuffer8BitAccess = vkFeatures12_.storageBuffer8BitAccess, // enable if supported
       .uniformAndStorageBuffer8BitAccess = vkFeatures12_.uniformAndStorageBuffer8BitAccess, // enable if supported
