@@ -581,8 +581,12 @@ VkSamplerAddressMode samplerWrapModeToVkSamplerAddressMode(lvk::SamplerWrap mode
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
   case lvk::SamplerWrap_Clamp:
     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  case lvk::SamplerWrap_ClampToBorder:
+    return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
   case lvk::SamplerWrap_MirrorRepeat:
     return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+  case lvk::SamplerWrap_MirrorClampToEdge:
+    return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
   }
   LVK_ASSERT_MSG(false, "SamplerWrapMode value not handled: %d", (int)mode);
   return VK_SAMPLER_ADDRESS_MODE_REPEAT;
