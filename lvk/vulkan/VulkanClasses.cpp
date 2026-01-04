@@ -2342,7 +2342,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
-        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = (samples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                      : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
@@ -4908,8 +4908,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
                        compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
       .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
       .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
-      .shaderStage(taskModule ? lvk::getPipelineShaderStageCreateInfo(
-                                    VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si)
+      .shaderStage(taskModule
+                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(meshModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si)
