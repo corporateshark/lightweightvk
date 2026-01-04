@@ -852,6 +852,7 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_Sampled = 1 << 0,
   TextureUsageBits_Storage = 1 << 1,
   TextureUsageBits_Attachment = 1 << 2,
+  TextureUsageBits_InputAttachment = 1 << 3,
 };
 
 enum Swizzle : uint8_t {

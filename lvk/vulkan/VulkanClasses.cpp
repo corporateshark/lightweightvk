@@ -4124,6 +4124,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
       usageFlags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
     }
   }
+  if (desc.usage & lvk::TextureUsageBits_InputAttachment) {
+    LVK_ASSERT_MSG(desc.usage & lvk::TextureUsageBits_Attachment, "Input attachments must be TextureUsageBits_Attachment");
+    usageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+  }
 
   if (desc.storage != lvk::StorageType_Memoryless) {
     // For now, always set this flag so we can read it back
