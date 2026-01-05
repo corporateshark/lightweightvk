@@ -333,7 +333,7 @@ VULKAN_APP_MAIN {
       .color = {{.format = ctx->getSwapchainFormat()}},
       .depthFormat = app.getDepthFormat(),
       .cullMode = lvk::CullMode_Back,
-      .frontFaceWinding = lvk::WindingMode_CW,
+      .frontFace = lvk::WindingMode_CW,
       .debugName = "Pipeline: mesh",
   });
 

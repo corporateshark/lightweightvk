@@ -361,7 +361,7 @@ VULKAN_APP_MAIN {
                 {.format = ctx->getFormat(texWorldPos)},
             },
         .cullMode = lvk::CullMode_Back,
-        .frontFaceWinding = lvk::WindingMode_CW,
+        .frontFace = lvk::WindingMode_CW,
         .debugName = "Pipeline: deferred",
     });
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Compose = ctx->createRenderPipeline({

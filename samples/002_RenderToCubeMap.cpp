@@ -212,7 +212,7 @@ VULKAN_APP_MAIN {
         .smFrag = frag_,
         .color = {{.format = ctx->getSwapchainFormat()}},
         .cullMode = lvk::CullMode_Back,
-        .frontFaceWinding = lvk::WindingMode_CW,
+        .frontFace = lvk::WindingMode_CW,
         .debugName = "Pipeline: mesh",
     });
     lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Triangle_ = ctx->createRenderPipeline({

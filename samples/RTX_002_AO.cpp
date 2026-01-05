@@ -970,7 +970,7 @@ VULKAN_APP_MAIN {
       .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
       .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
       .cullMode = lvk::CullMode_Back,
-      .frontFaceWinding = lvk::WindingMode_CCW,
+      .frontFace = lvk::WindingMode_CCW,
       .samplesCount = kNumSamplesMSAA,
       .debugName = "Pipeline: mesh",
   });
@@ -989,7 +989,7 @@ VULKAN_APP_MAIN {
       .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
       .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
       .cullMode = lvk::CullMode_Back,
-      .frontFaceWinding = lvk::WindingMode_CCW,
+      .frontFace = lvk::WindingMode_CCW,
       .samplesCount = kNumSamplesMSAA,
       .debugName = "Pipeline: mesh z-prepass",
   });
