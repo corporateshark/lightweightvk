@@ -4682,7 +4682,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle) {
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->sm, desc.entryPointGeom, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .cullMode(cullModeToVkCullMode(desc.cullMode))
-      .frontFace(windingModeToVkFrontFace(desc.frontFaceWinding))
+      .frontFace(windingModeToVkFrontFace(desc.frontFace))
       .vertexInputState(ciVertexInputState)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
       .depthAttachmentFormat(formatToVkFormat(desc.depthFormat))

@@ -334,7 +334,7 @@ void initObjects() {
               },
           .depthFormat = framebuffer_.depthStencil.texture ? ctx_->getFormat(framebuffer_.depthStencil.texture) : lvk::Format_Invalid,
           .cullMode = lvk::CullMode_Back,
-          .frontFaceWinding = lvk::WindingMode_CW,
+          .frontFace = lvk::WindingMode_CW,
           .debugName = "Pipeline: mesh",
       },
       nullptr);

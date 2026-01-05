@@ -675,7 +675,7 @@ struct RenderPipelineDesc final {
   Format stencilFormat = Format_Invalid;
 
   CullMode cullMode = lvk::CullMode_None;
-  WindingMode frontFaceWinding = lvk::WindingMode_CCW;
+  WindingMode frontFace = lvk::WindingMode_CCW;
   PolygonMode polygonMode = lvk::PolygonMode_Fill;
 
   StencilState backFaceStencil = {};

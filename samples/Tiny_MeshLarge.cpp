@@ -1045,7 +1045,7 @@ void createPipelines() {
         .color = {{.format = ctx_->getFormat(fbOffscreen_.color[0].texture)}},
         .depthFormat = ctx_->getFormat(fbOffscreen_.depthStencil.texture),
         .cullMode = lvk::CullMode_Back,
-        .frontFaceWinding = lvk::WindingMode_CCW,
+        .frontFace = lvk::WindingMode_CCW,
         .samplesCount = kNumSamplesMSAA,
         .debugName = "Pipeline: mesh",
     };
@@ -1101,7 +1101,7 @@ void createPipelines() {
         }},
         .depthFormat = ctx_->getFormat(fbOffscreen_.depthStencil.texture),
         .cullMode = lvk::CullMode_Front,
-        .frontFaceWinding = lvk::WindingMode_CCW,
+        .frontFace = lvk::WindingMode_CCW,
         .samplesCount = kNumSamplesMSAA,
         .debugName = "Pipeline: skybox",
     };

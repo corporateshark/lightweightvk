@@ -150,7 +150,7 @@ void init() {
       .smFrag = frag_,
       .color = {{.format = ctx_->getSwapchainFormat()}},
       .cullMode = lvk::CullMode_Back,
-      .frontFaceWinding = lvk::WindingMode_CW,
+      .frontFace = lvk::WindingMode_CW,
       .debugName = "Pipeline: mesh",
   });
   renderPipelineState_Triangle_ = ctx_->createRenderPipeline({
