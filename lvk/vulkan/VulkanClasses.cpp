@@ -6256,6 +6256,7 @@ void lvk::VulkanContext::createInstance() {
 
   enabledInstanceExtensionNames_ = {
       VK_KHR_SURFACE_EXTENSION_NAME,
+      VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
 #if defined(_WIN32)
       VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -6295,10 +6296,6 @@ void lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
   }
 
-  if (hasExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
-    // required by the device extension VK_EXT_swapchain_maintenance1
-    enabledInstanceExtensionNames_.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-  }
   if (hasExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, allInstanceExtensions)) {
     // required by the instance extension VK_EXT_surface_maintenance1
     enabledInstanceExtensionNames_.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
@@ -6873,7 +6870,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
-      LLOGW("Unsupported mandatory extension %s", name);
+      LLOGW("Unsupported mandatory extension `%s`\n", name);
       return;
     }
     enabledDeviceExtensionNames_.push_back(name);
