@@ -68,6 +68,7 @@ namespace lvk {
 VkSemaphore createSemaphore(VkDevice device, const char* debugName);
 VkSemaphore createSemaphoreTimeline(VkDevice device, uint64_t initialValue, const char* debugName);
 VkFence createFence(VkDevice device, const char* debugName);
+VkFence createFenceSignaled(VkDevice device, const char* debugName);
 VmaAllocator createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, VkInstance instance, uint32_t apiVersion);
 uint32_t findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags);
 VkResult setDebugObjectName(VkDevice device, VkObjectType type, uint64_t handle, const char* name);

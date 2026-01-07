@@ -345,6 +345,17 @@ VkFence lvk::createFence(VkDevice device, const char* debugName) {
   return fence;
 }
 
+VkFence lvk::createFenceSignaled(VkDevice device, const char* debugName) {
+  const VkFenceCreateInfo ci = {
+      .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+      .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+  };
+  VkFence fence = VK_NULL_HANDLE;
+  VK_ASSERT(vkCreateFence(device, &ci, nullptr, &fence));
+  VK_ASSERT(lvk::setDebugObjectName(device, VK_OBJECT_TYPE_FENCE, (uint64_t)fence, debugName));
+  return fence;
+}
+
 uint32_t lvk::findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags) {
   using lvk::DeviceQueues;
 
