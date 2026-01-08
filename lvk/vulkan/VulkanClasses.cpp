@@ -1155,6 +1155,12 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   for (uint32_t i = 0; i < numSwapchainImages_; i++) {
     acquireSemaphore_[i] = lvk::createSemaphore(device_, "Semaphore: swapchain-acquire");
 
+    if (!ctx_.has_EXT_swapchain_maintenance1_) {
+      char debugNameFence[256] = {0};
+      snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
+      acquireFence_[i] = lvk::createFence(device_, debugNameFence, true);
+    }
+
     snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
     snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
     VulkanImage image = {
@@ -1199,6 +1205,10 @@ lvk::VulkanSwapchain::~VulkanSwapchain() {
     if (fence)
       vkDestroyFence(device_, fence, nullptr);
   }
+  for (VkFence fence : acquireFence_) {
+    if (fence)
+      vkDestroyFence(device_, fence, nullptr);
+  }
 }
 
 VkImage lvk::VulkanSwapchain::getCurrentVkImage() const {
@@ -1221,11 +1231,6 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
   LVK_PROFILER_FUNCTION();
 
   if (getNextImage_) {
-    if (presentFence_[currentImageIndex_]) {
-      // VK_EXT_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
-      VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
-      VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
-    }
     const VkSemaphoreWaitInfo waitInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
@@ -1233,14 +1238,38 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
         .pValues = &timelineWaitValues_[currentImageIndex_],
     };
     VK_ASSERT(vkWaitSemaphores(device_, &waitInfo, UINT64_MAX));
-    // when timeout is set to UINT64_MAX, we wait until the next image has been acquired
-    VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
-    VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, acquireSemaphore, VK_NULL_HANDLE, &currentImageIndex_);
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
-      VK_ASSERT(r);
+
+    if (ctx_.has_EXT_swapchain_maintenance1_) {
+      // VK_EXT_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
+      if (presentFence_[currentImageIndex_]) {
+        VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
+        VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
+      }
+
+      VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
+      VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
+                                         acquireSemaphore, VK_NULL_HANDLE, &currentImageIndex_);
+      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
+        VK_ASSERT(r);
+      }
+
+      getNextImage_ = false;
+      ctx_.immediate_->waitSemaphore(acquireSemaphore);
+    } else {
+      // without VK_EXT_swapchain_maintenance1: use acquire fences to synchronize semaphore reuse
+      VK_ASSERT(vkWaitForFences(device_, 1, &acquireFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
+      VK_ASSERT(vkResetFences(device_, 1, &acquireFence_[currentImageIndex_]));
+
+      VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
+      VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
+                                         acquireSemaphore, acquireFence_[currentImageIndex_], &currentImageIndex_);
+      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
+        VK_ASSERT(r);
+      }
+
+      getNextImage_ = false;
+      ctx_.immediate_->waitSemaphore(acquireSemaphore);
     }
-    getNextImage_ = false;
-    ctx_.immediate_->waitSemaphore(acquireSemaphore);
   }
 
   if (LVK_VERIFY(currentImageIndex_ < numSwapchainImages_)) {

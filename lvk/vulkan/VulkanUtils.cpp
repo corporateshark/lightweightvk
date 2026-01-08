@@ -285,10 +285,10 @@ VkSemaphore lvk::createSemaphoreTimeline(VkDevice device, uint64_t initialValue,
   return semaphore;
 }
 
-VkFence lvk::createFence(VkDevice device, const char* debugName) {
+VkFence lvk::createFence(VkDevice device, const char* debugName, bool isSignaled) {
   const VkFenceCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-      .flags = 0,
+      .flags = isSignaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0u,
   };
   VkFence fence = VK_NULL_HANDLE;
   VK_ASSERT(vkCreateFence(device, &ci, nullptr, &fence));
