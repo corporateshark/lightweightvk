@@ -1292,11 +1292,9 @@ lvk::VulkanSwapchain::~VulkanSwapchain() {
     if (fence)
       vkDestroyFence(device_, fence, nullptr);
   }
-  if (!ctx_.has_EXT_swapchain_maintenance1_) {
-    for (VkFence fence : acquireFence_) {
-      if (fence)
-        vkDestroyFence(device_, fence, nullptr);
-    }
+  for (VkFence fence : acquireFence_) {
+    if (fence)
+      vkDestroyFence(device_, fence, nullptr);
   }
 }
 
