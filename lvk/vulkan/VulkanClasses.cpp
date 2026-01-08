@@ -1235,14 +1235,17 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 
   LVK_ASSERT(numSwapchainImages_ > 0);
 
+  char debugNameFence[256] = {0};
   char debugNameImage[256] = {0};
   char debugNameImageView[256] = {0};
 
   // create images, image views and framebuffers
   for (uint32_t i = 0; i < numSwapchainImages_; i++) {
     acquireSemaphore_[i] = lvk::createSemaphore(device_, "Semaphore: swapchain-acquire");
+
     if (!ctx_.has_EXT_swapchain_maintenance1_) {
-      acquireFence_[i] = lvk::createFenceSignaled(device_, "Fence: swapchain-acquire");
+      snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
+      acquireFence_[i] = lvk::createFence(device_, debugNameFence, true);
     }
 
     snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
