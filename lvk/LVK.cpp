@@ -297,7 +297,7 @@ uint32_t lvk::VertexInput::getVertexSize() const {
 }
 
 #if LVK_WITH_GLFW
-GLFWwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable) {
+lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable) {
   if (!glfwInit()) {
     return nullptr;
   }

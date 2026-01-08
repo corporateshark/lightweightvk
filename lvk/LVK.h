@@ -1236,16 +1236,6 @@ constexpr uint32_t calcNumMipLevels(uint32_t width, uint32_t height) {
   return levels;
 }
 
-#if LVK_WITH_GLFW
-/*
- * width/height  > 0: window size in pixels
- * width/height == 0: take the whole monitor work area
- * width/height  < 0: take a percentage of the monitor work area, for example (-95, -90)
- *   The actual values in pixels are returned in parameters.
- */
-GLFWwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable = false);
-#endif // LVK_WITH_GLFW
-
 #if LVK_WITH_GLFW || defined(ANDROID)
 #if defined(ANDROID)
 using LVKwindow = ANativeWindow;
@@ -1259,5 +1249,15 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
                                                                 lvk::HWDeviceType preferredDeviceType = lvk::HWDeviceType_Discrete,
                                                                 int selectedDevice = -1);
 #endif // LVK_WITH_GLFW || defined(ANDROID)
+
+#if LVK_WITH_GLFW
+/*
+ * width/height  > 0: window size in pixels
+ * width/height == 0: take the whole monitor work area
+ * width/height  < 0: take a percentage of the monitor work area, for example (-95, -90)
+ *   The actual values in pixels are returned in parameters.
+ */
+LVKwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable = false);
+#endif // LVK_WITH_GLFW
 
 } // namespace lvk
