@@ -1326,37 +1326,30 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
     };
     VK_ASSERT(vkWaitSemaphores(device_, &waitInfo, UINT64_MAX));
 
+    VkFence acquireFence = VK_NULL_HANDLE;
+
     if (ctx_.has_EXT_swapchain_maintenance1_) {
       // VK_EXT_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
       if (presentFence_[currentImageIndex_]) {
         VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
         VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
       }
-
-      VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
-      VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
-                                         acquireSemaphore, VK_NULL_HANDLE, &currentImageIndex_);
-      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
-        VK_ASSERT(r);
-      }
-
-      getNextImage_ = false;
-      ctx_.immediate_->waitSemaphore(acquireSemaphore);
     } else {
       // without VK_EXT_swapchain_maintenance1: use acquire fences to synchronize semaphore reuse
       VK_ASSERT(vkWaitForFences(device_, 1, &acquireFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
       VK_ASSERT(vkResetFences(device_, 1, &acquireFence_[currentImageIndex_]));
 
-      VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
-      VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX,
-                                         acquireSemaphore, acquireFence_[currentImageIndex_], &currentImageIndex_);
-      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
-        VK_ASSERT(r);
-      }
-
-      getNextImage_ = false;
-      ctx_.immediate_->waitSemaphore(acquireSemaphore);
+      acquireFence = acquireFence_[currentImageIndex_];
     }
+
+    VkSemaphore acquireSemaphore = acquireSemaphore_[currentImageIndex_];
+    // when timeout is set to UINT64_MAX, we wait until the next image has been acquired
+    VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, acquireSemaphore, acquireFence, &currentImageIndex_);
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
+      VK_ASSERT(r);
+    }
+    getNextImage_ = false;
+    ctx_.immediate_->waitSemaphore(acquireSemaphore);
   }
 
   if (LVK_VERIFY(currentImageIndex_ < numSwapchainImages_)) {
