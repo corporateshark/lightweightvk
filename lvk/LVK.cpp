@@ -35,6 +35,14 @@
 #include <GLFW/glfw3native.h>
 #endif // LVK_WITH_GLFW
 
+#if LVK_WITH_SDL3
+#include <SDL3/SDL.h>
+#endif // LVK_WITH_SDL3
+
+#if defined(__APPLE__) && (LVK_WITH_GLFW || LVK_WITH_SDL3)
+void* createCocoaWindowView(void* window, void** outLayer);
+#endif
+
 #include <lvk/vulkan/VulkanClasses.h>
 
 namespace {
@@ -93,10 +101,6 @@ static constexpr TextureFormatProperties properties[] = {
 };
 
 } // namespace
-
-#if __APPLE__ && LVK_WITH_GLFW
-void* createCocoaWindowView(GLFWwindow* window, void** outLayer);
-#endif
 
 static_assert(sizeof(TextureFormatProperties) <= sizeof(uint32_t));
 static_assert(LVK_ARRAY_NUM_ELEMENTS(properties) == lvk::Format_YUV_420p + 1);
@@ -363,7 +367,81 @@ lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& out
 }
 #endif // LVK_WITH_GLFW
 
-#if LVK_WITH_GLFW || defined(ANDROID)
+#if LVK_WITH_SDL3
+lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable, bool headless) {
+  if (headless) {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+  }
+
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
+    LLOGW("Failed to initialize SDL: %s", SDL_GetError());
+    return nullptr;
+  }
+
+  const bool wantsWholeArea = outWidth <= 0 || outHeight <= 0;
+
+  int x = SDL_WINDOWPOS_CENTERED;
+  int y = SDL_WINDOWPOS_CENTERED;
+  int w = outWidth;
+  int h = outHeight;
+
+  if (wantsWholeArea) {
+    SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
+    SDL_Rect workArea;
+
+    if (SDL_GetDisplayUsableBounds(displayID, &workArea)) {
+      auto getPercent = [](int value, int percent) {
+        assert(percent > 0 && percent <= 100);
+        return static_cast<int>(static_cast<float>(value) * static_cast<float>(percent) / 100.0f);
+      };
+
+      if (outWidth < 0) {
+        w = getPercent(workArea.w, -outWidth);
+        x = workArea.x + (workArea.w - w) / 2;
+      } else {
+        w = workArea.w;
+        x = workArea.x;
+      }
+
+      if (outHeight < 0) {
+        h = getPercent(workArea.h, -outHeight);
+        y = workArea.y + (workArea.h - h) / 2;
+      } else {
+        h = workArea.h;
+        y = workArea.y;
+      }
+    } else {
+      LLOGW("Failed to get display bounds: %s", SDL_GetError());
+      // Fall back to reasonable defaults
+      w = (outWidth < 0) ? 1280 : outWidth;
+      h = (outHeight < 0) ? 720 : outHeight;
+    }
+  }
+
+  Uint32 windowFlags = SDL_WINDOW_VULKAN;
+  if (wantsWholeArea || resizable) {
+    windowFlags |= SDL_WINDOW_RESIZABLE;
+  }
+
+  SDL_Window* window = SDL_CreateWindow(windowTitle, w, h, windowFlags);
+
+  if (!window) {
+    LLOGW("Failed to create window: %s", SDL_GetError());
+    SDL_Quit();
+    return nullptr;
+  }
+
+  if (wantsWholeArea && x != SDL_WINDOWPOS_CENTERED) {
+    SDL_SetWindowPosition(window, x, y);
+  }
+
+  SDL_GetWindowSize(window, &outWidth, &outHeight);
+
+  return window;
+}
+#endif // LVK_WITH_SDL3
+
+#if LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)
 std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* window,
                                                                      uint32_t width,
                                                                      uint32_t height,
@@ -374,24 +452,66 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 
   std::unique_ptr<VulkanContext> ctx;
 
-#if defined(_WIN32)
-  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetWin32Window(window));
-#elif defined(ANDROID)
+#if defined(ANDROID)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
+#elif defined(_WIN32)
+#if LVK_WITH_GLFW
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetWin32Window(window));
+#elif LVK_WITH_SDL3
+  SDL_PropertiesID props = SDL_GetWindowProperties(window);
+  void* hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+  if (!hwnd) {
+    LVK_ASSERT_MSG(false, "Failed to get Win32 window handle");
+    return nullptr;
+  }
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)hwnd);
+#endif
 #elif defined(__linux__)
 #if defined(LVK_WITH_WAYLAND)
+#if LVK_WITH_GLFW
   wl_surface* waylandWindow = glfwGetWaylandWindow(window);
   if (!cfg.enableHeadlessSurface && !waylandWindow) {
     LVK_ASSERT_MSG(false, "Wayland window not found");
     return nullptr;
   }
   ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
+#elif LVK_WITH_SDL3
+  SDL_PropertiesID props = SDL_GetWindowProperties(window);
+  void* waylandSurface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, NULL);
+  void* waylandDisplay = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, NULL);
+  if (!cfg.enableHeadlessSurface && (!waylandSurface || !waylandDisplay)) {
+    LVK_ASSERT_MSG(false, "Failed to get Wayland window/display");
+    return nullptr;
+  }
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandSurface, (void*)waylandDisplay);
+#endif
 #else
+#if LVK_WITH_GLFW
   ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
+#elif LVK_WITH_SDL3
+  SDL_PropertiesID props = SDL_GetWindowProperties(window);
+  Sint64 x11Window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+  void* x11Display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+  if (!cfg.enableHeadlessSurface && (!x11Window || !x11Display)) {
+    LVK_ASSERT_MSG(false, "Failed to get X11 window/display");
+    return nullptr;
+  }
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)x11Window, (void*)x11Display);
+#endif
 #endif
 #elif defined(__APPLE__)
+#if LVK_WITH_GLFW
+  void* nativeWindow = (void*)glfwGetCocoaWindow(window);
+#elif LVK_WITH_SDL3
+  SDL_PropertiesID props = SDL_GetWindowProperties(window);
+  void* nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+  if (!nativeWindow) {
+    LVK_ASSERT_MSG(false, "Failed to get Cocoa window");
+    return nullptr;
+  }
+#endif
   void* layer = nullptr;
-  void* contentView = createCocoaWindowView(window, &layer);
+  void* contentView = createCocoaWindowView(nativeWindow, &layer);
   ctx = std::make_unique<VulkanContext>(cfg, contentView, layer);
 #else
 #error Unsupported OS
@@ -449,4 +569,4 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 
   return std::move(ctx);
 }
-#endif // LVK_WITH_GLFW || defined(ANDROID)
+#endif // LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)

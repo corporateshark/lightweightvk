@@ -405,6 +405,7 @@ VULKAN_APP_MAIN {
   });
 
 #if !defined(ANDROID)
+#if LVK_WITH_GLFW
   app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
     if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
       g_Gravity.x += 0.001f;
@@ -416,6 +417,19 @@ VULKAN_APP_MAIN {
       g_Pause = !g_Pause;
     }
   });
+#elif LVK_WITH_SDL3
+  app.addKeyCallback([](SDL_Window* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_1 && event->down) {
+      g_Gravity.x += 0.001f;
+    }
+    if (event->key == SDLK_2 && event->down) {
+      g_Gravity.x -= 0.001f;
+    }
+    if (event->key == SDLK_SPACE && event->down) {
+      g_Pause = !g_Pause;
+    }
+  });
+#endif
 #endif // !ANDROID
 
   std::vector<Vertex> vertices;
