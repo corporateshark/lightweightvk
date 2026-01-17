@@ -3647,7 +3647,8 @@ lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc
   }
 
   if (desc.usage & BufferUsageBits_AccelStructBuildInputReadOnly) {
-    usageFlags |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    usageFlags |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                  VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   }
 
   if (desc.usage & BufferUsageBits_AccelStructStorage) {
