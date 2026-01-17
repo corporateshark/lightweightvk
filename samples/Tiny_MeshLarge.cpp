@@ -2067,6 +2067,8 @@ double getCurrentTimestamp() {
   return glfwGetTime();
 }
 
+GLFWkeyfun g_PrevKeyCallback = nullptr;
+
 int main(int argc, char* argv[]) {
   minilog::initialize(nullptr, {.threadNames = false});
 
@@ -2148,8 +2150,8 @@ int main(int argc, char* argv[]) {
     io.MouseWheel = (float)dy;
   });
 
-  glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int, int action, int mods) {
-    const bool pressed = action != GLFW_RELEASE;
+  g_PrevKeyCallback = glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+    const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
     if (key == GLFW_KEY_ESCAPE && pressed) {
       loaderShouldExit_.store(true, std::memory_order_release);
       glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -2215,6 +2217,9 @@ int main(int argc, char* argv[]) {
       ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
       ktxTexture_Destroy(ktxTexture(texture));
     }
+    // call the previous installed callback
+    if (g_PrevKeyCallback)
+      g_PrevKeyCallback(window, key, scancode, action, mods);
   });
 
   double prevTime = getCurrentTimestamp();

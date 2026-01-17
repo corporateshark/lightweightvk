@@ -301,7 +301,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     });
     glfwSetKeyCallback(window_, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
       VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      const bool pressed = action != GLFW_RELEASE;
+      const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
       if (key == GLFW_KEY_ESCAPE && pressed)
         glfwSetWindowShouldClose(window, GLFW_TRUE);
       if (key == GLFW_KEY_W)
