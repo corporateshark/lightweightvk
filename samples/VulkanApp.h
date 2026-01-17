@@ -1,4 +1,4 @@
-﻿/*
+/*
  * LightweightVK
  *
  * This source code is licensed under the MIT license found in the
@@ -28,8 +28,10 @@
 #  include <android_native_app_glue.h>
 #  include <jni.h>
 double glfwGetTime();
-#else
+#elif LVK_WITH_GLFW
 #  include <GLFW/glfw3.h>
+#elif LVK_WITH_SDL3
+#  include <SDL3/SDL.h>
 #endif
 // clang-format on
 
@@ -50,6 +52,12 @@ double glfwGetTime();
 #  define VULKAN_APP_EXIT() return 0
 #endif
 // clang-format on
+
+#if LVK_WITH_SDL3
+double glfwGetTime(); // backporting
+using KeyCallback = std::function<void(SDL_Window*, SDL_KeyboardEvent*)>;
+using MouseButtonCallback = std::function<void(SDL_Window*, SDL_MouseButtonEvent*)>;
+#endif
 
 using glm::mat3;
 using glm::mat4;
@@ -105,11 +113,19 @@ class VulkanApp {
 
   lvk::Format getDepthFormat() const;
   lvk::TextureHandle getDepthTexture() const;
-#if !defined(ANDROID)
+
+#if LVK_WITH_GLFW
   void addMouseButtonCallback(GLFWmousebuttonfun cb) {
     callbacksMouseButton.push_back(cb);
   }
   void addKeyCallback(GLFWkeyfun cb) {
+    callbacksKey.push_back(cb);
+  }
+#elif LVK_WITH_SDL3
+  void addMouseButtonCallback(MouseButtonCallback cb) {
+    callbacksMouseButton.push_back(cb);
+  }
+  void addKeyCallback(KeyCallback cb) {
     callbacksKey.push_back(cb);
   }
 #endif // ANDROID
@@ -152,10 +168,13 @@ class VulkanApp {
   } mouseState_;
 
  protected:
-#if !defined(ANDROID)
+#if LVK_WITH_GLFW
   std::vector<GLFWmousebuttonfun> callbacksMouseButton;
   std::vector<GLFWkeyfun> callbacksKey;
-#endif // ANDROID
+#elif LVK_WITH_SDL3
+  std::vector<MouseButtonCallback> callbacksMouseButton;
+  std::vector<KeyCallback> callbacksKey;
+#endif
 
   uint64_t frameCount_ = 0;
   double simulatedTime_ = 0.0;
