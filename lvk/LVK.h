@@ -1199,9 +1199,9 @@ class IContext {
 
 } // namespace lvk
 
-#if LVK_WITH_GLFW
-typedef struct GLFWwindow GLFWwindow;
-#endif
+typedef struct SDL_Window SDL_Window;
+typedef struct SDL_KeyboardEvent SDL_KeyboardEvent;
+typedef struct SDL_MouseButtonEvent SDL_MouseButtonEvent;
 
 namespace lvk {
 
@@ -1257,11 +1257,11 @@ constexpr uint32_t calcNumMipLevels(uint32_t width, uint32_t height) {
   return levels;
 }
 
-#if LVK_WITH_GLFW || defined(ANDROID)
+#if LVK_WITH_SDL3 || defined(ANDROID)
 #if defined(ANDROID)
 using LVKwindow = ANativeWindow;
 #else
-using LVKwindow = GLFWwindow;
+using LVKwindow = SDL_Window;
 #endif
 std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* window,
                                                                 uint32_t width,
@@ -1269,9 +1269,9 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
                                                                 const lvk::ContextConfig& cfg,
                                                                 lvk::HWDeviceType preferredDeviceType = lvk::HWDeviceType_Discrete,
                                                                 int selectedDevice = -1);
-#endif // LVK_WITH_GLFW || defined(ANDROID)
+#endif // LVK_WITH_SDL3 || defined(ANDROID)
 
-#if LVK_WITH_GLFW
+#if LVK_WITH_SDL3
 /*
  * width/height  > 0: window size in pixels
  * width/height == 0: take the whole monitor work area
@@ -1279,6 +1279,6 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
  *   The actual values in pixels are returned in parameters.
  */
 LVKwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable = false, bool headless = false);
-#endif // LVK_WITH_GLFW
+#endif // LVK_WITH_SDL3
 
 } // namespace lvk

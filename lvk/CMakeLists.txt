@@ -30,8 +30,8 @@ lvk_set_folder(LVKLibrary "LVK")
 add_subdirectory(vulkan)
 
 target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
-if(LVK_WITH_GLFW)
-  target_link_libraries(LVKLibrary PUBLIC glfw)
+if(LVK_WITH_SDL3)
+  target_link_libraries(LVKLibrary PUBLIC SDL3-static)
 endif()
 
 if(APPLE)

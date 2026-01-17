@@ -786,10 +786,10 @@ Scene createSolarSystemScene(VulkanApp& app) {
   lvk::IContext* ctx = app.ctx_.get();
 
 #if !defined(ANDROID)
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
-    if (key == GLFW_KEY_X && action == GLFW_PRESS) {
+  app.addKeyCallback([](SDL_Window* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_X && event->down) {
       g_Wireframe = !g_Wireframe;
-    } else if (key == GLFW_KEY_P && action == GLFW_PRESS) {
+    } else if (event->key == SDLK_P && event->down) {
       g_Paused = !g_Paused;
     }
   });

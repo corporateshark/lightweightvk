@@ -55,7 +55,8 @@
 #include <jni.h>
 #include <time.h>
 #else
-#include <GLFW/glfw3.h>
+#include "imgui/backends/imgui_impl_sdl3.h"
+#include <SDL3/SDL.h>
 #endif
 
 #include "DEMO_002_Bistro.cpp" // temporary
@@ -2064,11 +2065,8 @@ void showTimeGPU() {
 
 #if !defined(ANDROID)
 double getCurrentTimestamp() {
-  return glfwGetTime();
+  return (double)SDL_GetTicks() * 0.001;
 }
-
-GLFWkeyfun g_PrevKeyCallback = nullptr;
-GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
 
 int main(int argc, char* argv[]) {
   minilog::initialize(nullptr, {.threadNames = false});
@@ -2111,113 +2109,106 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int width, int height) {
-    width_ = width;
-    height_ = height;
-    resize();
-  });
-
-  glfwSetCursorPosCallback(window, [](auto* window, double x, double y) {
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-    if (width && height) {
-      mousePos_ = vec2(x / width, 1.0f - y / height);
-      ImGui::GetIO().MousePos = ImVec2(x, y);
-    }
-  });
-
-  g_PrevMouseButtonCallback = glfwSetMouseButtonCallback(window, [](auto* window, int button, int action, int mods) {
-    if (!ImGui::GetIO().WantCaptureMouse) {
-      if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        mousePressed_ = (action == GLFW_PRESS);
-      }
-    } else {
-      // release the mouse
-      mousePressed_ = false;
-    }
-    // call the previous installed callback
-    if (g_PrevMouseButtonCallback)
-      g_PrevMouseButtonCallback(window, button, action, mods);
-  });
-
-  g_PrevKeyCallback = glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-    const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
-    if (key == GLFW_KEY_ESCAPE && pressed) {
-      loaderShouldExit_.store(true, std::memory_order_release);
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }
-    if (key == GLFW_KEY_N && pressed) {
-      drawNormals_ = !drawNormals_;
-    }
-    if (key == GLFW_KEY_C && pressed) {
-      enableComputePass_ = !enableComputePass_;
-    }
-    if (key == GLFW_KEY_T && pressed) {
-      enableWireframe_ = !enableWireframe_;
-    }
-    if (key == GLFW_KEY_P && pressed) {
-      showPerfStats_ = !showPerfStats_;
-    }
-    if (key == GLFW_KEY_ESCAPE && pressed)
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-    if (key == GLFW_KEY_W) {
-      positioner_.movement_.forward_ = pressed;
-    }
-    if (key == GLFW_KEY_S) {
-      positioner_.movement_.backward_ = pressed;
-    }
-    if (key == GLFW_KEY_A) {
-      positioner_.movement_.left_ = pressed;
-    }
-    if (key == GLFW_KEY_D) {
-      positioner_.movement_.right_ = pressed;
-    }
-    if (key == GLFW_KEY_1) {
-      positioner_.movement_.up_ = pressed;
-    }
-    if (key == GLFW_KEY_2) {
-      positioner_.movement_.down_ = pressed;
-    }
-    if (mods & GLFW_MOD_SHIFT) {
-      positioner_.movement_.fastSpeed_ = pressed;
-    }
-    if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT) {
-      positioner_.movement_.fastSpeed_ = pressed;
-    }
-    if (key == GLFW_KEY_SPACE) {
-      positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
-    }
-    if (key == GLFW_KEY_F9 && action == GLFW_PRESS) {
-      ktxTextureCreateInfo createInfo = {
-          .glInternalformat = GL_RGBA8,
-          .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
-          .baseWidth = static_cast<uint32_t>(width_),
-          .baseHeight = static_cast<uint32_t>(height_),
-          .baseDepth = 1u,
-          .numDimensions = 2u,
-          .numLevels = 1u,
-          .numLayers = 1u,
-          .numFaces = 1u,
-          .generateMipmaps = KTX_FALSE,
-      };
-
-      ktxTexture1* texture = nullptr;
-      (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-      ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
-      ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
-      ktxTexture_Destroy(ktxTexture(texture));
-    }
-    // call the previous installed callback
-    if (g_PrevKeyCallback)
-      g_PrevKeyCallback(window, key, scancode, action, mods);
-  });
-
   double prevTime = getCurrentTimestamp();
 
-  // Main loop
-  while (!glfwWindowShouldClose(window)) {
-    glfwPollEvents();
+  bool running = true;
+  SDL_Event event;
 
+  // Main loop
+  while (running) {
+    while (SDL_PollEvent(&event)) {
+      ImGui_ImplSDL3_ProcessEvent(&event);
+
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = false;
+        break;
+      case SDL_EVENT_WINDOW_RESIZED:
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        SDL_GetWindowSizeInPixels(window, &width_, &height_);
+        resize();
+        break;
+      case SDL_EVENT_MOUSE_MOTION:
+        mousePos_ = vec2((float)event.motion.x / width_, 1.0f - (float)event.motion.y / height_);
+        break;
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (!ImGui::GetIO().WantCaptureMouse) {
+          if (event.button.button == SDL_BUTTON_LEFT) {
+            mousePressed_ = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+          }
+        } else {
+          // release the mouse
+          mousePressed_ = false;
+        }
+        break;
+      }
+      case SDL_EVENT_KEY_DOWN:
+      case SDL_EVENT_KEY_UP: {
+        const bool pressed = (event.type == SDL_EVENT_KEY_DOWN) && !ImGui::GetIO().WantCaptureMouse;
+        SDL_Keycode key = event.key.key;
+        if (key == SDLK_ESCAPE && pressed) {
+          loaderShouldExit_.store(true, std::memory_order_release);
+          running = false;
+        }
+        if (key == SDLK_N && pressed) {
+          drawNormals_ = !drawNormals_;
+        }
+        if (key == SDLK_C && pressed) {
+          enableComputePass_ = !enableComputePass_;
+        }
+        if (key == SDLK_T && pressed) {
+          enableWireframe_ = !enableWireframe_;
+        }
+        if (key == SDLK_P && pressed) {
+          showPerfStats_ = !showPerfStats_;
+        }
+        if (key == SDLK_W) {
+          positioner_.movement_.forward_ = pressed;
+        }
+        if (key == SDLK_S) {
+          positioner_.movement_.backward_ = pressed;
+        }
+        if (key == SDLK_A) {
+          positioner_.movement_.left_ = pressed;
+        }
+        if (key == SDLK_D) {
+          positioner_.movement_.right_ = pressed;
+        }
+        if (key == SDLK_1) {
+          positioner_.movement_.up_ = pressed;
+        }
+        if (key == SDLK_2) {
+          positioner_.movement_.down_ = pressed;
+        }
+        positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
+        if (key == SDLK_SPACE) {
+          positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
+        }
+        if (key == SDLK_F9 && pressed) {
+          ktxTextureCreateInfo createInfo = {
+              .glInternalformat = GL_RGBA8,
+              .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
+              .baseWidth = static_cast<uint32_t>(width_),
+              .baseHeight = static_cast<uint32_t>(height_),
+              .baseDepth = 1u,
+              .numDimensions = 2u,
+              .numLevels = 1u,
+              .numLayers = 1u,
+              .numFaces = 1u,
+              .generateMipmaps = KTX_FALSE,
+          };
+
+          ktxTexture1* texture = nullptr;
+          (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
+          ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
+          ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
+          ktxTexture_Destroy(ktxTexture(texture));
+        }
+        break;
+      }
+      }
+    };
     const double newTime = getCurrentTimestamp();
     const double delta = newTime - prevTime;
     prevTime = newTime;
@@ -2233,8 +2224,8 @@ int main(int argc, char* argv[]) {
   // destroy all the Vulkan stuff before closing the window
   destroy();
 
-  glfwDestroyWindow(window);
-  glfwTerminate();
+  SDL_DestroyWindow(window);
+  SDL_Quit();
 
   return 0;
 }

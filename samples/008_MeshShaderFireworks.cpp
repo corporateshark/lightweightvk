@@ -401,14 +401,14 @@ VULKAN_APP_MAIN {
   });
 
 #if !defined(ANDROID)
-  app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
-    if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
+  app.addKeyCallback([](SDL_Window* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_1 && event->down) {
       g_Gravity.x += 0.001f;
     }
-    if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
+    if (event->key == SDLK_2 && event->down) {
       g_Gravity.x -= 0.001f;
     }
-    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+    if (event->key == SDLK_SPACE && event->down) {
       g_Pause = !g_Pause;
     }
   });

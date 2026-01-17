@@ -5,26 +5,14 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#if LVK_WITH_GLFW
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-
-// clang-format off
-#if __APPLE__
-#  define GLFW_EXPOSE_NATIVE_COCOA
-#else
-#  error Unsupported OS
-#endif
-// clang-format on
-
-#include <GLFW/glfw3native.h>
+#if LVK_WITH_SDL3
 
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
-void* createCocoaWindowView(GLFWwindow* window, void** outLayer) {
-  NSWindow* nswindow = glfwGetCocoaWindow(window);
+void* createCocoaWindowView(void* window, void** outLayer) {
+  NSWindow* nswindow = (NSWindow*)window;
   CAMetalLayer* layer = [CAMetalLayer layer];
   layer.device = MTLCreateSystemDefaultDevice();
   layer.opaque = YES;
@@ -39,4 +27,4 @@ void* createCocoaWindowView(GLFWwindow* window, void** outLayer) {
 
   return nswindow.contentView;
 }
-#endif // LVK_WITH_GLFW
+#endif // LVK_WITH_SDL3
