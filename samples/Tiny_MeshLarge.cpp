@@ -1209,7 +1209,7 @@ void render(double delta, uint32_t frameIndex) {
     imgui_->beginFrame(fbMain_);
     ImGui::ShowDemoWindow();
 
-    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
     ImGui::Text("W/S/A/D - camera movement");
     ImGui::Text("1/2 - camera up/down");
     ImGui::Text("Shift - fast movement");
@@ -1220,21 +1220,22 @@ void render(double delta, uint32_t frameIndex) {
     ImGui::End();
 
     if (!textures_[1].diffuse.empty()) {
-      ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+      ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
       ImGui::Image(textures_[1].diffuse.index(), ImVec2(256, 256));
       ImGui::End();
     }
 
     if (uint32_t num = remainingMaterialsToLoad_.load(std::memory_order_acquire)) {
       ImGui::SetNextWindowPos(ImVec2(0, 0));
-      ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
+      ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNavInputs);
       ImGui::ProgressBar(1.0f - float(num) / cachedMaterials_.size(), ImVec2(ImGui::GetIO().DisplaySize.x, 32));
       ImGui::End();
     }
     // a nice FPS counter
     {
       const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
-                                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+                                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoNavInputs |
+                                     ImGuiWindowFlags_NoMove;
       const ImGuiViewport* v = ImGui::GetMainViewport();
       LVK_ASSERT(v);
       ImGui::SetNextWindowPos(
