@@ -380,11 +380,19 @@ VULKAN_APP_MAIN {
   });
 
 #if !defined(ANDROID)
+#if LVK_WITH_GLFW
   app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
     if (key == GLFW_KEY_T && action == GLFW_PRESS) {
       texture1_.reset();
     }
   });
+#elif LVK_WITH_SDL3
+  app.addKeyCallback([](auto* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_T && event->down) {
+      texture1_.reset();
+    }
+  });
+#endif
 #endif // !ANDROID
 
   app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
