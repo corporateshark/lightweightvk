@@ -295,8 +295,9 @@ uint32_t lvk::VertexInput::getVertexSize() const {
 }
 
 #if LVK_WITH_GLFW
-lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable) {
+lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable, bool headless) {
   if (!glfwInit()) {
+    LVK_ASSERT_MSG(headless, "glfwInit() failed. Make sure the headless mode is enabled");
     return nullptr;
   }
 
@@ -377,7 +378,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #elif defined(__linux__)
 #if defined(LVK_WITH_WAYLAND)
   wl_surface* waylandWindow = glfwGetWaylandWindow(window);
-  if (!waylandWindow) {
+  if (!cfg.enableHeadlessSurface && !waylandWindow) {
     LVK_ASSERT_MSG(false, "Wayland window not found");
     return nullptr;
   }
