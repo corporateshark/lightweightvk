@@ -43,7 +43,7 @@ jobs:
             cmake --version
 
       - name: Prepare Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.2.8
+        uses: jakoch/install-vulkan-sdk-action@v1.4.0
         with:
             vulkan_version: 1.4.335.0
             install_runtime: true
@@ -141,7 +141,7 @@ jobs:
             sudo pip install cmake==4.0.0
 
         - name: Prepare Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.2.8
+          uses: jakoch/install-vulkan-sdk-action@v1.4.0
           with:
             vulkan_version: 1.4.335.0
             install_runtime: true
@@ -183,7 +183,7 @@ jobs:
             submodules: recursive
 
         - name: Install Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.2.8
+          uses: jakoch/install-vulkan-sdk-action@v1.4.0
           with:
             vulkan_version: 1.4.335.0
             install_runtime: true
@@ -236,7 +236,7 @@ jobs:
             vulkaninfo
 
         - name: Install Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.2.8
+          uses: jakoch/install-vulkan-sdk-action@v1.4.0
           with:
             vulkan_version: 1.4.335.0
             install_runtime: true
