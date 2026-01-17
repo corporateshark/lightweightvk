@@ -154,6 +154,10 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 }
 
 } // extern "C"
+#elif LVK_WITH_SDL3
+double glfwGetTime() {
+  return (double)SDL_GetTicks() * 0.001;
+}
 #endif // ANDROID
 
 #if defined(ANDROID)
@@ -267,7 +271,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
 #endif // ANDROID
 
-#if !defined(ANDROID)
+#if LVK_WITH_GLFW
   if (window_) {
     glfwSetWindowUserPointer(window_, this);
 
@@ -323,7 +327,7 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       }
     });
   }
-#endif // !ANDROID
+#endif // LVK_WITH_GLFW
 
   // initialize ImGUi after GLFW callbacks have been installed
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
@@ -334,10 +338,15 @@ VulkanApp::~VulkanApp() {
   imgui_ = nullptr;
   depthTexture_ = nullptr;
   ctx_ = nullptr;
-#if !defined(ANDROID)
+#if LVK_WITH_GLFW
   glfwDestroyWindow(window_);
   glfwTerminate();
-#endif // !ANDROID
+#elif LVK_WITH_SDL3
+  if (window_) {
+    SDL_DestroyWindow(window_);
+  }
+  SDL_Quit();
+#endif
 }
 
 lvk::Format VulkanApp::getDepthFormat() const {
@@ -396,10 +405,9 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       }
     }
   } while (!androidApp_->destroyRequested);
-#else
+#elif LVK_WITH_GLFW
   const float kTimeQuantum = 0.02f;
   double accTime = 0;
-
   while (cfg_.contextConfig.enableHeadlessSurface || !glfwWindowShouldClose(window_)) {
     const double newTimeStamp = glfwGetTime();
     const float deltaSeconds = cfg_.screenshotFrameNumber ? kTimeQuantum : static_cast<float>(newTimeStamp - timeStamp);
@@ -461,7 +469,160 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       break;
     }
   }
-#endif // ANDROID
+#elif LVK_WITH_SDL3
+  bool running = true;
+  SDL_Event event;
+
+  const float kTimeQuantum = 0.02f;
+  double accTime = 0;
+  while (cfg_.contextConfig.enableHeadlessSurface || running) {
+    const double newTimeStamp = glfwGetTime();
+    const float deltaSeconds = cfg_.screenshotFrameNumber ? kTimeQuantum : static_cast<float>(newTimeStamp - timeStamp);
+    timeStamp = newTimeStamp;
+
+    if (!ctx_ || !width_ || !height_)
+      continue;
+
+    // simulation: tick in fixed quanta
+    accTime += deltaSeconds;
+    while (accTime >= kTimeQuantum) {
+      accTime -= kTimeQuantum;
+      simulatedTime_ += kTimeQuantum;
+      positioner_.update(kTimeQuantum, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+    }
+    // FPS measurement: real time
+    if (fpsCounter_.tick(deltaSeconds)) {
+      LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
+    }
+
+    while (SDL_PollEvent(&event)) {
+      ImGuiIO& io = ImGui::GetIO();
+
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = false;
+        break;
+
+      case SDL_EVENT_WINDOW_RESIZED:
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+        int w, h;
+        SDL_GetWindowSizeInPixels(window_, &w, &h);
+        if (width_ != w || height_ != h) {
+          width_ = w;
+          height_ = h;
+          ctx_->recreateSwapchain(width_, height_);
+          depthTexture_.reset();
+        }
+        break;
+      }
+
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (event.button.button == SDL_BUTTON_LEFT) {
+          mouseState_.pressedLeft = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+        }
+
+        ImGuiMouseButton imguiButton = ImGuiMouseButton_Left;
+        if (event.button.button == SDL_BUTTON_RIGHT)
+          imguiButton = ImGuiMouseButton_Right;
+        else if (event.button.button == SDL_BUTTON_MIDDLE)
+          imguiButton = ImGuiMouseButton_Middle;
+
+        io.MousePos = ImVec2((float)event.button.x, (float)event.button.y);
+        io.MouseDown[imguiButton] = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+
+        for (auto& cb : callbacksMouseButton) {
+          cb(window_, &event.button);
+        }
+        break;
+      }
+
+      case SDL_EVENT_MOUSE_WHEEL:
+        io.MouseWheelH = event.wheel.x;
+        io.MouseWheel = event.wheel.y;
+        break;
+
+      case SDL_EVENT_MOUSE_MOTION:
+        io.MousePos = ImVec2((float)event.motion.x, (float)event.motion.y);
+        mouseState_.pos.x = static_cast<float>(event.motion.x / (float)width_);
+        mouseState_.pos.y = 1.0f - static_cast<float>(event.motion.y / (float)height_);
+        break;
+
+      case SDL_EVENT_KEY_DOWN:
+      case SDL_EVENT_KEY_UP: {
+        bool pressed = (event.type == SDL_EVENT_KEY_DOWN);
+        SDL_Keycode key = event.key.key;
+
+        if (key == SDLK_ESCAPE && pressed)
+          running = false;
+        if (key == SDLK_W)
+          positioner_.movement_.forward_ = pressed;
+        if (key == SDLK_S)
+          positioner_.movement_.backward_ = pressed;
+        if (key == SDLK_A)
+          positioner_.movement_.left_ = pressed;
+        if (key == SDLK_D)
+          positioner_.movement_.right_ = pressed;
+        if (key == SDLK_1)
+          positioner_.movement_.up_ = pressed;
+        if (key == SDLK_2)
+          positioner_.movement_.down_ = pressed;
+
+        positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
+
+        if (key == SDLK_SPACE && pressed) {
+          positioner_.lookAt(cfg_.initialCameraPos, cfg_.initialCameraTarget, cfg_.initialCameraUpVector);
+        }
+
+        for (auto& cb : callbacksKey) {
+          cb(window_, &event.key);
+        }
+        break;
+      }
+      }
+    }
+
+    if (!ctx_ || !width_ || !height_)
+      continue;
+
+    const float ratio = width_ / (float)height_;
+
+    positioner_.update(deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+
+    lvk::TextureHandle tex = ctx_->getCurrentSwapchainTexture();
+
+    drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
+
+    if (cfg_.screenshotFrameNumber == ++frameCount_) {
+      ctx_->wait({});
+      const lvk::Dimensions dim = ctx_->getDimensions(tex);
+      const lvk::Format format = ctx_->getFormat(tex);
+      LLOGL("Saving screenshot...%ux%u\n", dim.width, dim.height);
+      if (format != lvk::Format_BGRA_UN8 && format != lvk::Format_BGRA_SRGB8 && format != lvk::Format_RGBA_UN8 &&
+          format != lvk::Format_RGBA_SRGB8) {
+        LLOGW("Unsupported pixel format %u\n", (uint32_t)format);
+        break;
+      }
+      std::vector<uint8_t> pixelsRGBA(dim.width * dim.height * 4);
+      std::vector<uint8_t> pixelsRGB(dim.width * dim.height * 3);
+      ctx_->download(tex, {.dimensions = {dim.width, dim.height}}, pixelsRGBA.data());
+      if (format == lvk::Format_BGRA_UN8 || format == lvk::Format_BGRA_SRGB8) {
+        // swap R-B
+        for (uint32_t i = 0; i < pixelsRGBA.size(); i += 4) {
+          std::swap(pixelsRGBA[i + 0], pixelsRGBA[i + 2]);
+        }
+      }
+      // convert to RGB
+      for (uint32_t i = 0; i < pixelsRGB.size() / 3; i++) {
+        pixelsRGB[3 * i + 0] = pixelsRGBA[4 * i + 0];
+        pixelsRGB[3 * i + 1] = pixelsRGBA[4 * i + 1];
+        pixelsRGB[3 * i + 2] = pixelsRGBA[4 * i + 2];
+      }
+      stbi_write_png(cfg_.screenshotFileName, (int)dim.width, (int)dim.height, 3, pixelsRGB.data(), 0);
+      break;
+    }
+  }
+#endif // ANDROID / LVK_WITH_GLFW / LVK_WITH_SDL3
 
   LLOGD("Terminating app...");
 }
