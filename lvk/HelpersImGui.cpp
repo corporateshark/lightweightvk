@@ -20,6 +20,10 @@
 #include "imgui/backends/imgui_impl_glfw.cpp"
 #endif // LVK_WITH_GLFW
 
+#if LVK_WITH_SDL3
+#include "imgui/backends/imgui_impl_sdl3.cpp"
+#endif // LVK_WITH_SDL3
+
 #include <math.h>
 
 #include <vector>
@@ -138,6 +142,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
 #if LVK_WITH_GLFW
   ImGui_ImplGlfw_InitForOther(window, window ? true : false);
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_InitForOther(window);
+#endif // LVK_WITH_SDL3
 
   updateFont(defaultFontTTF, fontSizePixels);
 
@@ -156,6 +163,9 @@ ImGuiRenderer::~ImGuiRenderer() {
 #if LVK_WITH_GLFW
   ImGui_ImplGlfw_Shutdown();
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_Shutdown();
+#endif // LVK_WITH_SDL3
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
@@ -201,6 +211,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
   io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_NewFrame();
+#endif // LVK_WITH_SDL3
   ImGui::NewFrame();
 }
 

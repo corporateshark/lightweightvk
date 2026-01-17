@@ -54,8 +54,11 @@
 #include <android_native_app_glue.h>
 #include <jni.h>
 #include <time.h>
-#else
+#elif LVK_WITH_GLFW
 #include <GLFW/glfw3.h>
+#elif LVK_WITH_SDL3
+#include "imgui/backends/imgui_impl_sdl3.h"
+#include <SDL3/SDL.h>
 #endif
 
 #include "DEMO_002_Bistro.cpp" // temporary
@@ -2063,12 +2066,19 @@ void showTimeGPU() {
 }
 
 #if !defined(ANDROID)
-double getCurrentTimestamp() {
-  return glfwGetTime();
-}
 
+#if LVK_WITH_GLFW
 GLFWkeyfun g_PrevKeyCallback = nullptr;
 GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
+#endif
+
+double getCurrentTimestamp() {
+#if LVK_WITH_GLFW
+  return glfwGetTime();
+#elif LVK_WITH_SDL3
+  return (double)SDL_GetTicks() * 0.001;
+#endif
+}
 
 int main(int argc, char* argv[]) {
   minilog::initialize(nullptr, {.threadNames = false});
@@ -2111,6 +2121,9 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
+  double prevTime = getCurrentTimestamp();
+
+#if LVK_WITH_GLFW
   glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int width, int height) {
     width_ = width;
     height_ = height;
@@ -2212,8 +2225,6 @@ int main(int argc, char* argv[]) {
       g_PrevKeyCallback(window, key, scancode, action, mods);
   });
 
-  double prevTime = getCurrentTimestamp();
-
   // Main loop
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
@@ -2238,6 +2249,126 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+#elif LVK_WITH_SDL3
+  bool running = true;
+  SDL_Event event;
+
+  // Main loop
+  while (running) {
+    while (SDL_PollEvent(&event)) {
+      ImGui_ImplSDL3_ProcessEvent(&event);
+
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = false;
+        break;
+      case SDL_EVENT_WINDOW_RESIZED:
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        SDL_GetWindowSizeInPixels(window, &width_, &height_);
+        resize();
+        break;
+      case SDL_EVENT_MOUSE_MOTION:
+        mousePos_ = vec2((float)event.motion.x / width_, 1.0f - (float)event.motion.y / height_);
+        break;
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (!ImGui::GetIO().WantCaptureMouse) {
+          if (event.button.button == SDL_BUTTON_LEFT) {
+            mousePressed_ = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+          }
+        } else {
+          // release the mouse
+          mousePressed_ = false;
+        }
+        break;
+      }
+      case SDL_EVENT_KEY_DOWN:
+      case SDL_EVENT_KEY_UP: {
+        const bool pressed = (event.type == SDL_EVENT_KEY_DOWN) && !ImGui::GetIO().WantCaptureMouse;
+        SDL_Keycode key = event.key.key;
+        if (key == SDLK_ESCAPE && pressed) {
+          loaderShouldExit_.store(true, std::memory_order_release);
+          running = false;
+        }
+        if (key == SDLK_N && pressed) {
+          drawNormals_ = !drawNormals_;
+        }
+        if (key == SDLK_C && pressed) {
+          enableComputePass_ = !enableComputePass_;
+        }
+        if (key == SDLK_T && pressed) {
+          enableWireframe_ = !enableWireframe_;
+        }
+        if (key == SDLK_P && pressed) {
+          showPerfStats_ = !showPerfStats_;
+        }
+        if (key == SDLK_W) {
+          positioner_.movement_.forward_ = pressed;
+        }
+        if (key == SDLK_S) {
+          positioner_.movement_.backward_ = pressed;
+        }
+        if (key == SDLK_A) {
+          positioner_.movement_.left_ = pressed;
+        }
+        if (key == SDLK_D) {
+          positioner_.movement_.right_ = pressed;
+        }
+        if (key == SDLK_1) {
+          positioner_.movement_.up_ = pressed;
+        }
+        if (key == SDLK_2) {
+          positioner_.movement_.down_ = pressed;
+        }
+        positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
+        if (key == SDLK_SPACE) {
+          positioner_.setUpVector(vec3(0.0f, 1.0f, 0.0f));
+        }
+        if (key == SDLK_F9 && pressed) {
+          ktxTextureCreateInfo createInfo = {
+              .glInternalformat = GL_RGBA8,
+              .vkFormat = VK_FORMAT_B8G8R8A8_UNORM,
+              .baseWidth = static_cast<uint32_t>(width_),
+              .baseHeight = static_cast<uint32_t>(height_),
+              .baseDepth = 1u,
+              .numDimensions = 2u,
+              .numLevels = 1u,
+              .numLayers = 1u,
+              .numFaces = 1u,
+              .generateMipmaps = KTX_FALSE,
+          };
+
+          ktxTexture1* texture = nullptr;
+          (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
+          ctx_->download(ctx_->getCurrentSwapchainTexture(), {.dimensions = {(uint32_t)width_, (uint32_t)height_}}, texture->pData);
+          ktxTexture_WriteToNamedFile(ktxTexture(texture), "screenshot.ktx");
+          ktxTexture_Destroy(ktxTexture(texture));
+        }
+        break;
+      }
+      }
+    };
+    const double newTime = getCurrentTimestamp();
+    const double delta = newTime - prevTime;
+    prevTime = newTime;
+
+    if (!width_ || !height_)
+      continue;
+
+    fps_.tick(delta);
+
+    render(delta);
+  }
+
+  // destroy all the Vulkan stuff before closing the window
+  destroy();
+
+  SDL_DestroyWindow(window);
+  SDL_Quit();
+
+  return 0;
+}
+#endif // LVK_WITH_GLFW / LVK_WITH_SDL3
 #else
 double getCurrentTimestamp() {
   timespec t = {0, 0};
