@@ -734,7 +734,7 @@ VULKAN_APP_MAIN {
           };
 #if !defined(ANDROID)
           const float indentSize = 16.0f;
-          ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+          ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
           ImGui::Text("W/S/A/D - camera movement");
           ImGui::Text("1/2 - camera up/down");
           ImGui::Text("Shift - fast movement");

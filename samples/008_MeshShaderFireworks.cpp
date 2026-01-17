@@ -669,7 +669,7 @@ VULKAN_APP_MAIN {
     }
     app.imgui_->beginFrame(framebuffer);
     ImGui::SetNextWindowPos({0, 0});
-    ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
     ImGui::Text("Particles: %i", g_Points.totalParticles);
     ImGui::End();
     app.drawFPS();

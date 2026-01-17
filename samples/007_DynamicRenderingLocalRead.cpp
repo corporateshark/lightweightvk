@@ -445,7 +445,7 @@ VULKAN_APP_MAIN {
       const ImGuiViewport* v = ImGui::GetMainViewport();
       const float size = 0.175f * v->WorkSize.x;
       ImGui::SetNextWindowPos({0, 15}, ImGuiCond_Always);
-      ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+      ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs | ImGuiWindowFlags_NoMove);
       ImGui::Text("Albedo:");
       ImGui::Image(texAlbedo.index(), ImVec2(size, size / aspectRatio));
       ImGui::Text("Normals:");

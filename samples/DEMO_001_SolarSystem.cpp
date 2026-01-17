@@ -1457,7 +1457,7 @@ VULKAN_APP_MAIN {
       ImGui::EndDisabled();
     };
     const float indentSize = 16.0f;
-    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
 #if !defined(ANDROID)
     ImGui::Text("W/S/A/D - camera movement");
     ImGui::Text("1/2 - camera up/down");
