@@ -466,7 +466,7 @@ bool initModel();
 void createPipelines();
 void createOffscreenFramebuffer();
 
-bool init() {
+bool init(lvk::LVKwindow* window) {
   for (uint32_t i = 0; i != kNumBufferedFrames; i++) {
     ubPerFrame_.push_back(ctx_->createBuffer({.usage = lvk::BufferUsageBits_Uniform,
                                               .storage = lvk::StorageType_HostVisible,
@@ -513,7 +513,7 @@ bool init() {
   createPipelines();
 
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
+      *ctx_, window, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
 
   if (!initModel()) {
     return false;
@@ -1123,7 +1123,7 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (!init()) {
+  if (!init(window)) {
     return EXIT_FAILURE;
   }
 

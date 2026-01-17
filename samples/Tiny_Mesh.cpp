@@ -196,7 +196,7 @@ UniformsPerObject perObject[kNumCubes];
 void initObjects();
 std::filesystem::path getPathToContentFolder();
 
-void init() {
+void init(lvk::LVKwindow* window) {
   // Vertex buffer, Index buffer and Vertex Input. Buffers are allocated in GPU memory.
   vb0_ = ctx_->createBuffer({.usage = lvk::BufferUsageBits_Storage,
                                 .storage = lvk::StorageType_Device,
@@ -296,7 +296,7 @@ void init() {
 
   initObjects();
 
-  imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_);
+  imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_, window);
 }
 
 void destroy() {
@@ -448,7 +448,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  init();
+  init(window);
 
   glfwSetCursorPosCallback(window, [](auto* window, double x, double y) { ImGui::GetIO().MousePos = ImVec2(x, y); });
   glfwSetMouseButtonCallback(window, [](auto* window, int button, int action, int mods) {
@@ -515,7 +515,7 @@ void handle_cmd(android_app* app, int32_t cmd) {
       width_ = ANativeWindow_getWidth(app->window);
       height_ = ANativeWindow_getHeight(app->window);
       ctx_ = lvk::createVulkanContextWithSwapchain(app->window, width_, height_, {});
-      init();
+      init(nullptr);
     }
     break;
   case APP_CMD_TERM_WINDOW:

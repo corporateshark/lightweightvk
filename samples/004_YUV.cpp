@@ -127,8 +127,8 @@ void createDemo(const char* name, lvk::Format format, const char* fileName) {
   });
 }
 
-void init() {
-  res_.imgui = std::make_unique<lvk::ImGuiRenderer>(*ctx_, nullptr, float(height_) / 70.0f);
+void init(lvk::LVKwindow* window) {
+  res_.imgui = std::make_unique<lvk::ImGuiRenderer>(*ctx_, window, nullptr, float(height_) / 70.0f);
 
   res_.vert = ctx_->createShaderModule({codeVS, lvk::Stage_Vert, "Shader Module: main (vert)"});
   res_.frag = ctx_->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
   if (!ctx_) {
     return 1;
   }
-  init();
+  init(window);
 
   glfwSetFramebufferSizeCallback(window, [](GLFWwindow*, int width, int height) {
     width_ = width;
