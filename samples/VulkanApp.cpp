@@ -154,6 +154,10 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 }
 
 } // extern "C"
+#else
+double glfwGetTime() {
+  return (double)SDL_GetTicks() * 0.001;
+}
 #endif // ANDROID
 
 #if defined(ANDROID)
@@ -253,64 +257,6 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
 #endif // ANDROID
 
-#if !defined(ANDROID)
-  if (window_) {
-    glfwSetWindowUserPointer(window_, this);
-
-    glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* window, int width, int height) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      if (app->width_ == width && app->height_ == height)
-        return;
-      app->width_ = width;
-      app->height_ = height;
-      app->ctx_->recreateSwapchain(width, height);
-      app->depthTexture_.reset();
-    });
-    glfwSetMouseButtonCallback(window_, [](GLFWwindow* window, int button, int action, int mods) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        app->mouseState_.pressedLeft = action == GLFW_PRESS;
-      }
-      for (auto& cb : app->callbacksMouseButton) {
-        cb(window, button, action, mods);
-      }
-    });
-    glfwSetCursorPosCallback(window_, [](GLFWwindow* window, double x, double y) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      const ImVec2 size = ImGui::GetIO().DisplaySize;
-      app->mouseState_.pos.x = static_cast<float>(x / size.x);
-      app->mouseState_.pos.y = 1.0f - static_cast<float>(y / size.y);
-    });
-    glfwSetKeyCallback(window_, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      const bool pressed = action != GLFW_RELEASE && !ImGui::GetIO().WantCaptureKeyboard;
-      if (key == GLFW_KEY_ESCAPE && pressed)
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-      if (key == GLFW_KEY_W)
-        app->positioner_.movement_.forward_ = pressed;
-      if (key == GLFW_KEY_S)
-        app->positioner_.movement_.backward_ = pressed;
-      if (key == GLFW_KEY_A)
-        app->positioner_.movement_.left_ = pressed;
-      if (key == GLFW_KEY_D)
-        app->positioner_.movement_.right_ = pressed;
-      if (key == GLFW_KEY_1)
-        app->positioner_.movement_.up_ = pressed;
-      if (key == GLFW_KEY_2)
-        app->positioner_.movement_.down_ = pressed;
-
-      app->positioner_.movement_.fastSpeed_ = (mods & GLFW_MOD_SHIFT) != 0;
-
-      if (key == GLFW_KEY_SPACE) {
-        app->positioner_.lookAt(app->cfg_.initialCameraPos, app->cfg_.initialCameraTarget, app->cfg_.initialCameraUpVector);
-      }
-      for (auto& cb : app->callbacksKey) {
-        cb(window, key, scancode, action, mods);
-      }
-    });
-  }
-#endif // !ANDROID
-
   // initialize ImGUi after GLFW callbacks have been installed
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
       *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
@@ -321,8 +267,10 @@ VulkanApp::~VulkanApp() {
   depthTexture_ = nullptr;
   ctx_ = nullptr;
 #if !defined(ANDROID)
-  glfwDestroyWindow(window_);
-  glfwTerminate();
+  if (window_) {
+    SDL_DestroyWindow(window_);
+  }
+  SDL_Quit();
 #endif // !ANDROID
 }
 
@@ -384,7 +332,10 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     }
   } while (!androidApp_->destroyRequested);
 #else
-  while (cfg_.contextConfig.enableHeadlessSurface || !glfwWindowShouldClose(window_)) {
+  bool running = true;
+  SDL_Event event;
+
+  while (cfg_.contextConfig.enableHeadlessSurface || running) {
     const double newTimeStamp = glfwGetTime();
     deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
     if (fpsCounter_.tick(deltaSeconds)) {
@@ -392,19 +343,96 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     }
     timeStamp = newTimeStamp;
 
-    if (window_) {
-#if defined(__APPLE__)
-      // a hacky workaround for retina displays
-      glfwGetWindowSize(window_, &width_, &height_);
-#else
-      glfwGetFramebufferSize(window_, &width_, &height_);
-#endif // __APPLE__
+    while (SDL_PollEvent(&event)) {
+      ImGuiIO& io = ImGui::GetIO();
 
-      glfwPollEvents();
+      switch (event.type) {
+      case SDL_EVENT_QUIT:
+        running = false;
+        break;
+
+      case SDL_EVENT_WINDOW_RESIZED:
+      case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+        int w, h;
+        SDL_GetWindowSizeInPixels(window_, &w, &h);
+        if (width_ != w || height_ != h) {
+          width_ = w;
+          height_ = h;
+          ctx_->recreateSwapchain(width_, height_);
+          depthTexture_.reset();
+        }
+        break;
+      }
+
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (event.button.button == SDL_BUTTON_LEFT) {
+          mouseState_.pressedLeft = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+        }
+
+        ImGuiMouseButton imguiButton = ImGuiMouseButton_Left;
+        if (event.button.button == SDL_BUTTON_RIGHT)
+          imguiButton = ImGuiMouseButton_Right;
+        else if (event.button.button == SDL_BUTTON_MIDDLE)
+          imguiButton = ImGuiMouseButton_Middle;
+
+        io.MousePos = ImVec2((float)event.button.x, (float)event.button.y);
+        io.MouseDown[imguiButton] = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+
+        for (auto& cb : callbacksMouseButton) {
+          cb(window_, &event.button);
+        }
+        break;
+      }
+
+      case SDL_EVENT_MOUSE_WHEEL:
+        io.MouseWheelH = event.wheel.x;
+        io.MouseWheel = event.wheel.y;
+        break;
+
+      case SDL_EVENT_MOUSE_MOTION:
+        io.MousePos = ImVec2((float)event.motion.x, (float)event.motion.y);
+        mouseState_.pos.x = static_cast<float>(event.motion.x / (float)width_);
+        mouseState_.pos.y = 1.0f - static_cast<float>(event.motion.y / (float)height_);
+        break;
+
+      case SDL_EVENT_KEY_DOWN:
+      case SDL_EVENT_KEY_UP: {
+        bool pressed = (event.type == SDL_EVENT_KEY_DOWN);
+        SDL_Keycode key = event.key.key;
+
+        if (key == SDLK_ESCAPE && pressed)
+          running = false;
+        if (key == SDLK_W)
+          positioner_.movement_.forward_ = pressed;
+        if (key == SDLK_S)
+          positioner_.movement_.backward_ = pressed;
+        if (key == SDLK_A)
+          positioner_.movement_.left_ = pressed;
+        if (key == SDLK_D)
+          positioner_.movement_.right_ = pressed;
+        if (key == SDLK_1)
+          positioner_.movement_.up_ = pressed;
+        if (key == SDLK_2)
+          positioner_.movement_.down_ = pressed;
+
+        positioner_.movement_.fastSpeed_ = (event.key.mod & SDL_KMOD_SHIFT) != 0;
+
+        if (key == SDLK_SPACE && pressed) {
+          positioner_.lookAt(cfg_.initialCameraPos, cfg_.initialCameraTarget, cfg_.initialCameraUpVector);
+        }
+
+        for (auto& cb : callbacksKey) {
+          cb(window_, &event.key);
+        }
+        break;
+      }
+      }
     }
 
     if (!ctx_ || !width_ || !height_)
       continue;
+
     const float ratio = width_ / (float)height_;
 
     positioner_.update(deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);

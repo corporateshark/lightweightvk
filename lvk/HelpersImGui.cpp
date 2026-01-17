@@ -16,9 +16,9 @@
 #include "implot/implot_items.cpp"
 #endif // LVK_WITH_IMPLOT
 
-#if LVK_WITH_GLFW
-#include "imgui/backends/imgui_impl_glfw.cpp"
-#endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+#include "imgui/backends/imgui_impl_sdl3.cpp"
+#endif // LVK_WITH_SDL3
 
 #include <math.h>
 
@@ -134,9 +134,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
-#if LVK_WITH_GLFW
-  ImGui_ImplGlfw_InitForOther(window, window ? true : false);
-#endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_InitForOther(window);
+#endif // LVK_WITH_SDL3
 
   updateFont(defaultFontTTF, fontSizePixels);
 
@@ -152,9 +152,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
 ImGuiRenderer::~ImGuiRenderer() {
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->TexRef = ImTextureRef();
-#if LVK_WITH_GLFW
-  ImGui_ImplGlfw_Shutdown();
-#endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_Shutdown();
+#endif // LVK_WITH_SDL3
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
@@ -209,9 +209,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   if (pipeline_.empty()) {
     pipeline_ = createNewPipelineState(desc);
   }
-#if LVK_WITH_GLFW
-  ImGui_ImplGlfw_NewFrame();
-#endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  ImGui_ImplSDL3_NewFrame();
+#endif // LVK_WITH_SDL3
   ImGui::NewFrame();
 }
 
