@@ -42,13 +42,13 @@ jobs:
             which make
             cmake --version
 
-      - name: Prepare Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.4.0
-        with:
-            vulkan_version: 1.4.335.0
-            install_runtime: true
-            cache: true
-            stripdown: true
+#      - name: Prepare Vulkan SDK
+#        uses: jakoch/install-vulkan-sdk-action@v1.4.0
+#        with:
+#            vulkan_version: 1.4.335.0
+#            install_runtime: true
+#            cache: true
+#            stripdown: true
 
       - name: Generate Android projects
         shell: bash
