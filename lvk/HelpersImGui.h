@@ -16,7 +16,7 @@ namespace lvk {
 
 class ImGuiRenderer {
  public:
-  explicit ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF = nullptr, float fontSizePixels = 24.0f);
+  explicit ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF = nullptr, float fontSizePixels = 24.0f);
   ~ImGuiRenderer();
   
   void updateFont(const char* defaultFontTTF, float fontSizePixels);

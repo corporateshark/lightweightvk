@@ -104,9 +104,8 @@ class VulkanApp {
   bool imguiCapturedTouch_ = false;
   bool imguiLastPressedLeft_ = false;
   bool imguiClearMouseNextFrame_ = false;
-#else
-  GLFWwindow* window_ = nullptr;
 #endif // ANDROID
+  lvk::LVKwindow* window_ = nullptr;
   std::unique_ptr<lvk::IContext> ctx_;
   mutable lvk::Holder<lvk::TextureHandle> depthTexture_;
   FramesPerSecondCounter fpsCounter_ = FramesPerSecondCounter(0.5f);

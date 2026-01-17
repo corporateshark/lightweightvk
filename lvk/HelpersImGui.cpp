@@ -16,6 +16,10 @@
 #include "implot/implot_items.cpp"
 #endif // LVK_WITH_IMPLOT
 
+#if LVK_WITH_GLFW
+#include "imgui/backends/imgui_impl_glfw.cpp"
+#endif // LVK_WITH_GLFW
+
 #include <math.h>
 
 #include <vector>
@@ -116,8 +120,8 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
       nullptr);
 }
 
-ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, float fontSizePixels) :
-  ctx_(device), pimpl_(new ImGuiRendererImpl) {
+ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
+:  ctx_(device), pimpl_(new ImGuiRendererImpl) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
@@ -127,6 +131,12 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, 
   io.BackendRendererName = "imgui-lvk";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
   io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+
+#if LVK_WITH_GLFW
+  ImGui_ImplGlfw_InitForOther(window, window ? true : false);
+#endif // LVK_WITH_GLFW
 
   updateFont(defaultFontTTF, fontSizePixels);
 
@@ -142,6 +152,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, const char* defaultFontTTF, 
 ImGuiRenderer::~ImGuiRenderer() {
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->TexRef = ImTextureRef();
+#if LVK_WITH_GLFW
+  ImGui_ImplGlfw_Shutdown();
+#endif // LVK_WITH_GLFW
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
@@ -196,6 +209,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   if (pipeline_.empty()) {
     pipeline_ = createNewPipelineState(desc);
   }
+#if LVK_WITH_GLFW
+  ImGui_ImplGlfw_NewFrame();
+#endif // LVK_WITH_GLFW
   ImGui::NewFrame();
 }
 

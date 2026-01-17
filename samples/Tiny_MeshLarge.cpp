@@ -664,7 +664,7 @@ void createPipelines();
 void createShadowMap();
 void createOffscreenFramebuffer();
 
-bool init() {
+bool init(lvk::LVKwindow* window) {
   {
     const uint32_t pixel = 0xFFFFFFFF;
     textureDummyWhite_ = ctx_->createTexture(
@@ -744,7 +744,7 @@ bool init() {
   createPipelines();
 
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
+      *ctx_, window, (folderThirdParty + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), float(height_) / 70.0f);
 
   queryPoolTimestamps_ = ctx_->createQueryPool(GPUTimestamp_NUM_TIMESTAMPS, "queryPoolTimestamps_");
 
@@ -2068,6 +2068,7 @@ double getCurrentTimestamp() {
 }
 
 GLFWkeyfun g_PrevKeyCallback = nullptr;
+GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
 
 int main(int argc, char* argv[]) {
   minilog::initialize(nullptr, {.threadNames = false});
@@ -2106,7 +2107,7 @@ int main(int argc, char* argv[]) {
     printf("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
   }
 
-  if (!init()) {
+  if (!init(window)) {
     return EXIT_FAILURE;
   }
 
@@ -2125,7 +2126,7 @@ int main(int argc, char* argv[]) {
     }
   });
 
-  glfwSetMouseButtonCallback(window, [](auto* window, int button, int action, int mods) {
+  g_PrevMouseButtonCallback = glfwSetMouseButtonCallback(window, [](auto* window, int button, int action, int mods) {
     if (!ImGui::GetIO().WantCaptureMouse) {
       if (button == GLFW_MOUSE_BUTTON_LEFT) {
         mousePressed_ = (action == GLFW_PRESS);
@@ -2134,20 +2135,9 @@ int main(int argc, char* argv[]) {
       // release the mouse
       mousePressed_ = false;
     }
-    double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
-    const ImGuiMouseButton_ imguiButton = (button == GLFW_MOUSE_BUTTON_LEFT)
-                                              ? ImGuiMouseButton_Left
-                                              : (button == GLFW_MOUSE_BUTTON_RIGHT ? ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
-    ImGuiIO& io = ImGui::GetIO();
-    io.MousePos = ImVec2((float)xpos, (float)ypos);
-    io.MouseDown[imguiButton] = action == GLFW_PRESS;
-  });
-
-  glfwSetScrollCallback(window, [](GLFWwindow* window, double dx, double dy) {
-    ImGuiIO& io = ImGui::GetIO();
-    io.MouseWheelH = (float)dx;
-    io.MouseWheel = (float)dy;
+    // call the previous installed callback
+    if (g_PrevMouseButtonCallback)
+      g_PrevMouseButtonCallback(window, button, action, mods);
   });
 
   g_PrevKeyCallback = glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -2269,7 +2259,7 @@ void handle_cmd(android_app* app, int32_t cmd) {
                                                        .enableValidation = kEnableValidationLayers,
                                                    },
                                                    kPreferIntegratedGPU ? lvk::HWDeviceType_Integrated : lvk::HWDeviceType_Discrete);
-      if (!init()) {
+      if (!init(nullptr)) {
         LLOGW("Failed to initialize the app\n");
         std::terminate();
       }

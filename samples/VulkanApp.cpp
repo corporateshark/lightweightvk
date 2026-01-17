@@ -253,9 +253,6 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
 #endif // ANDROID
 
-  imgui_ = std::make_unique<lvk::ImGuiRenderer>(
-      *ctx_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
-
 #if !defined(ANDROID)
   if (window_) {
     glfwSetWindowUserPointer(window_, this);
@@ -274,30 +271,15 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       if (button == GLFW_MOUSE_BUTTON_LEFT) {
         app->mouseState_.pressedLeft = action == GLFW_PRESS;
       }
-      double xpos, ypos;
-      glfwGetCursorPos(window, &xpos, &ypos);
-      const ImGuiMouseButton_ imguiButton = (button == GLFW_MOUSE_BUTTON_LEFT)
-                                                ? ImGuiMouseButton_Left
-                                                : (button == GLFW_MOUSE_BUTTON_RIGHT ? ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
-      ImGuiIO& io = ImGui::GetIO();
-      io.MousePos = ImVec2((float)xpos, (float)ypos);
-      io.MouseDown[imguiButton] = action == GLFW_PRESS;
       for (auto& cb : app->callbacksMouseButton) {
         cb(window, button, action, mods);
       }
     });
-    glfwSetScrollCallback(window_, [](GLFWwindow* window, double dx, double dy) {
-      ImGuiIO& io = ImGui::GetIO();
-      io.MouseWheelH = (float)dx;
-      io.MouseWheel = (float)dy;
-    });
     glfwSetCursorPosCallback(window_, [](GLFWwindow* window, double x, double y) {
       VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
-      int width, height;
-      glfwGetFramebufferSize(window, &width, &height);
-      ImGui::GetIO().MousePos = ImVec2(x, y);
-      app->mouseState_.pos.x = static_cast<float>(x / width);
-      app->mouseState_.pos.y = 1.0f - static_cast<float>(y / height);
+      const ImVec2 size = ImGui::GetIO().DisplaySize;
+      app->mouseState_.pos.x = static_cast<float>(x / size.x);
+      app->mouseState_.pos.y = 1.0f - static_cast<float>(y / size.y);
     });
     glfwSetKeyCallback(window_, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
       VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
@@ -328,6 +310,10 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     });
   }
 #endif // !ANDROID
+
+  // initialize ImGUi after GLFW callbacks have been installed
+  imgui_ = std::make_unique<lvk::ImGuiRenderer>(
+      *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
 }
 
 VulkanApp::~VulkanApp() {
