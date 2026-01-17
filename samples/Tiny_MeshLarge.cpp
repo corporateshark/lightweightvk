@@ -2091,7 +2091,7 @@ int main(int argc, char* argv[]) {
     folderContentRoot = (dir / subdir).string();
   }
 
-  GLFWwindow* window = lvk::initWindow("Vulkan Bistro", width_, height_);
+  lvk::LVKwindow* window = lvk::initWindow("Vulkan Bistro", width_, height_);
   ctx_ = lvk::createVulkanContextWithSwapchain(window,
                                                width_,
                                                height_,
