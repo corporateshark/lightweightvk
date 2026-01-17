@@ -1257,7 +1257,7 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
  * width/height  < 0: take a percentage of the monitor work area, for example (-95, -90)
  *   The actual values in pixels are returned in parameters.
  */
-LVKwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable = false);
+LVKwindow* initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable = false, bool headless = false);
 #endif // LVK_WITH_GLFW
 
 } // namespace lvk
