@@ -105,11 +105,12 @@ class VulkanApp {
   bool imguiLastPressedLeft_ = false;
   bool imguiClearMouseNextFrame_ = false;
 #endif // ANDROID
-  lvk::LVKwindow* window_ = nullptr;
   std::unique_ptr<lvk::IContext> ctx_;
   mutable lvk::Holder<lvk::TextureHandle> depthTexture_;
   FramesPerSecondCounter fpsCounter_ = FramesPerSecondCounter(0.5f);
   std::unique_ptr<lvk::ImGuiRenderer> imgui_;
+
+  lvk::LVKwindow* window_ = nullptr; // when declared before imgui_, Vivo X200 Pro crashes...
 
   VulkanAppConfig cfg_ = {};
 
