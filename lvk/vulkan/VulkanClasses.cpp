@@ -1889,7 +1889,7 @@ void lvk::CommandBuffer::transitionToShaderReadOnly(TextureHandle handle) const 
 void lvk::CommandBuffer::cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) {
   LVK_PROFILER_FUNCTION();
 
-  if (!LVK_VERIFY(!handle.empty() && ctx_->hasRayTracingPipeline_)) {
+  if (!LVK_VERIFY(!handle.empty() && ctx_->has_KHR_ray_tracing_pipeline_)) {
     return;
   }
 
@@ -3707,7 +3707,7 @@ lvk::Holder<lvk::QueryPoolHandle> lvk::VulkanContext::createQueryPool(uint32_t n
 lvk::Holder<lvk::AccelStructHandle> lvk::VulkanContext::createAccelerationStructure(const AccelStructDesc& desc, Result* outResult) {
   LVK_PROFILER_FUNCTION();
 
-  if (!LVK_VERIFY(hasAccelerationStructure_)) {
+  if (!LVK_VERIFY(has_KHR_acceleration_structure_)) {
     Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_acceleration_structure is not enabled"));
     return {};
   }
@@ -5012,7 +5012,7 @@ lvk::Holder<lvk::RayTracingPipelineHandle> lvk::VulkanContext::createRayTracingP
                                                                                         Result* outResult) {
   LVK_PROFILER_FUNCTION();
 
-  if (!LVK_VERIFY(hasRayTracingPipeline_)) {
+  if (!LVK_VERIFY(has_KHR_ray_tracing_pipeline_)) {
     Result::setResult(outResult, Result(Result::Code::RuntimeError, "VK_KHR_ray_tracing_pipeline is not enabled"));
     return {};
   }
@@ -6274,17 +6274,17 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   };
 
 #if defined(LVK_WITH_TRACY)
-  addOptionalExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, hasCalibratedTimestamps_, nullptr);
+  addOptionalExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_KHR_calibrated_timestamps_, nullptr);
 #endif
   addOptionalExtensions(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                         VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-                        hasAccelerationStructure_,
+                        has_KHR_acceleration_structure_,
                         &accelerationStructureFeatures);
-  addOptionalExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, hasRayQuery_, &rayQueryFeatures);
-  addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, hasRayTracingPipeline_, &rayTracingFeatures);
+  addOptionalExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME, has_KHR_ray_query_, &rayQueryFeatures);
+  addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, has_KHR_ray_tracing_pipeline_, &rayTracingFeatures);
   addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_EXT_swapchain_maintenance1_, &swapchainMaintenance1Features);
-  if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has8BitIndices_, &indexTypeUint8Features)) {
-    addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has8BitIndices_, &indexTypeUint8Features);
+  if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
+    addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
   }
 
   // check extensions
@@ -6565,7 +6565,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 #if defined(LVK_WITH_TRACY_GPU)
   std::vector<VkTimeDomainEXT> timeDomains;
 
-  if (hasCalibratedTimestamps_) {
+  if (has_KHR_calibrated_timestamps_) {
     uint32_t numTimeDomains = 0;
     VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(vkPhysicalDevice_, &numTimeDomains, nullptr));
     timeDomains.resize(numTimeDomains);
@@ -6598,7 +6598,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
         .commandBufferCount = 1,
     };
     VK_ASSERT(vkAllocateCommandBuffers(vkDevice_, &aiCommandBuffer, &pimpl_->tracyCommandBuffer_));
-    if (hasCalibratedTimestamps_) {
+    if (has_KHR_calibrated_timestamps_) {
       pimpl_->tracyVkCtx_ = TracyVkContextCalibrated(vkPhysicalDevice_,
                                                      vkDevice_,
                                                      deviceQueues_.graphicsQueue,
@@ -6701,7 +6701,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
   // create default descriptor set layout which is going to be shared by graphics pipelines
   VkShaderStageFlags stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
                                   VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-  if (hasRayTracingPipeline_) {
+  if (has_KHR_ray_tracing_pipeline_) {
     stageFlags |= VK_SHADER_STAGE_RAYGEN_BIT_KHR;
   }
   const VkDescriptorSetLayoutBinding bindings[kBinding_NumBindings] = {
@@ -6723,14 +6723,14 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
   }
   const VkDescriptorSetLayoutBindingFlagsCreateInfo setLayoutBindingFlagsCI = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
-      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = uint32_t(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindingFlags = bindingFlags,
   };
   const VkDescriptorSetLayoutCreateInfo dslci = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .pNext = &setLayoutBindingFlagsCI,
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT,
-      .bindingCount = uint32_t(hasAccelerationStructure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
+      .bindingCount = uint32_t(has_KHR_acceleration_structure_ ? kBinding_NumBindings : kBinding_NumBindings - 1),
       .pBindings = bindings,
   };
   VK_ASSERT(vkCreateDescriptorSetLayout(vkDevice_, &dslci, nullptr, &vkDSL_));
@@ -6751,7 +6751,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(uint32_t maxTextures, uint32_
           pimpl_->maxCombinedImageSamplerDescriptorCount_ * maxTextures,
       };
     }
-    if (hasAccelerationStructure_) {
+    if (has_KHR_acceleration_structure_) {
       poolSizes[numPoolSizes++] = VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs};
     }
     LVK_ASSERT(numPoolSizes <= kBinding_NumBindings);
