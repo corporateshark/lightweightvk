@@ -1226,7 +1226,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   for (uint32_t i = 0; i < numSwapchainImages_; i++) {
     acquireSemaphore_[i] = lvk::createSemaphore(device_, "Semaphore: swapchain-acquire");
 
-    if (!ctx_.has_EXT_swapchain_maintenance1_) {
+    if (!ctx_.has_KHR_swapchain_maintenance1_) {
       char debugNameFence[256] = {0};
       snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
       acquireFence_[i] = lvk::createFence(device_, debugNameFence, true);
@@ -1312,14 +1312,14 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
 
     VkFence acquireFence = VK_NULL_HANDLE;
 
-    if (ctx_.has_EXT_swapchain_maintenance1_) {
-      // VK_EXT_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
+    if (ctx_.has_KHR_swapchain_maintenance1_) {
+      // VK_KHR_swapchain_maintenance1: before acquiring again, wait for the presentation operation to finish
       if (presentFence_[currentImageIndex_]) {
         VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
         VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
       }
     } else {
-      // without VK_EXT_swapchain_maintenance1: use acquire fences to synchronize semaphore reuse
+      // without VK_KHR_swapchain_maintenance1: use acquire fences to synchronize semaphore reuse
       VK_ASSERT(vkWaitForFences(device_, 1, &acquireFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
       VK_ASSERT(vkResetFences(device_, 1, &acquireFence_[currentImageIndex_]));
 
@@ -1366,14 +1366,14 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   };
   const VkPresentInfoKHR pi = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .pNext = ctx_.has_EXT_swapchain_maintenance1_ ? &fenceInfo : nullptr,
+      .pNext = ctx_.has_KHR_swapchain_maintenance1_ ? &fenceInfo : nullptr,
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &waitSemaphore,
       .swapchainCount = 1u,
       .pSwapchains = &swapchain_,
       .pImageIndices = &currentImageIndex_,
   };
-  if (ctx_.has_EXT_swapchain_maintenance1_) {
+  if (ctx_.has_KHR_swapchain_maintenance1_) {
     if (!presentFence_[currentImageIndex_]) {
       presentFence_[currentImageIndex_] = lvk::createFence(device_, "Fence: present-fence");
     }
@@ -6263,7 +6263,7 @@ void lvk::VulkanContext::createInstance() {
 
   enabledInstanceExtensionNames_ = {
       VK_KHR_SURFACE_EXTENSION_NAME,
-      VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+      VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, // remove once VK_KHR_surface_maintenance1 becomes mandatory
 #if defined(_WIN32)
       VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -6296,6 +6296,10 @@ void lvk::VulkanContext::createInstance() {
 
   if (config_.enableHeadlessSurface) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
+  }
+
+  if (hasExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
 
   if (hasExtension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME, allInstanceExtensions)) {
@@ -6849,8 +6853,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT,
       .rayTracingInvocationReorder = VK_TRUE,
   };
-  VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance1Features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT,
+  VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR swapchainMaintenance1Features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR,
       .swapchainMaintenance1 = VK_TRUE,
   };
   VkPhysicalDeviceIndexTypeUint8FeaturesEXT indexTypeUint8Features = {
@@ -6934,7 +6938,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, has_KHR_ray_tracing_pipeline_, &rayTracingFeatures);
   addOptionalExtension(
       VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, has_EXT_ray_tracing_invocation_reorder, &rayTracingInvocationReorderFeatures);
-  addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_EXT_swapchain_maintenance1_, &swapchainMaintenance1Features);
+  if (!addOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features))  {
+    addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
+  }
   addOptionalExtension(VK_EXT_HDR_METADATA_EXTENSION_NAME, has_EXT_hdr_metadata_);
   addOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, has_EXT_device_fault_, &deviceFaultFeatures);
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
