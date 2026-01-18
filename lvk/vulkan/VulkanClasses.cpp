@@ -6924,7 +6924,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     }
   }
 #if defined(LVK_WITH_TRACY)
-  addOptionalExtension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_EXT_calibrated_timestamps_, nullptr);
+  addOptionalExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_KHR_calibrated_timestamps_, nullptr);
 #endif
   addOptionalExtensions(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                         VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
@@ -7206,7 +7206,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 #if defined(LVK_WITH_TRACY_GPU)
   std::vector<VkTimeDomainEXT> timeDomains;
 
-  if (has_EXT_calibrated_timestamps_) {
+  if (has_KHR_calibrated_timestamps_) {
     uint32_t numTimeDomains = 0;
     VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(vkPhysicalDevice_, &numTimeDomains, nullptr));
     timeDomains.resize(numTimeDomains);
@@ -7239,7 +7239,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
         .commandBufferCount = 1,
     };
     VK_ASSERT(vkAllocateCommandBuffers(vkDevice_, &aiCommandBuffer, &pimpl_->tracyCommandBuffer_));
-    if (has_EXT_calibrated_timestamps_) {
+    if (has_KHR_calibrated_timestamps_) {
       pimpl_->tracyVkCtx_ = TracyVkContextCalibrated(vkPhysicalDevice_,
                                                      vkDevice_,
                                                      deviceQueues_.graphicsQueue,
