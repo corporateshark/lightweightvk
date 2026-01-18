@@ -569,18 +569,20 @@ lvk::Result validateRange(const VkExtent3D& ext, uint32_t numLevels, const lvk::
 }
 
 bool isHostVisibleSingleHeapMemory(VkPhysicalDevice physDev) {
-  VkPhysicalDeviceMemoryProperties memProperties;
+  VkPhysicalDeviceMemoryProperties2 props = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+  };
 
-  vkGetPhysicalDeviceMemoryProperties(physDev, &memProperties);
+  vkGetPhysicalDeviceMemoryProperties2(physDev, &props);
 
-  if (memProperties.memoryHeapCount != 1) {
+  if (props.memoryProperties.memoryHeapCount != 1) {
     return false;
   }
 
   const uint32_t flag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-  for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-    if ((memProperties.memoryTypes[i].propertyFlags & flag) == flag) {
+  for (uint32_t i = 0; i < props.memoryProperties.memoryTypeCount; i++) {
+    if ((props.memoryProperties.memoryTypes[i].propertyFlags & flag) == flag) {
       return true;
     }
   }
