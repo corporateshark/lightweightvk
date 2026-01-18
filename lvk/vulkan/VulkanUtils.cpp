@@ -969,11 +969,13 @@ VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderSt
 }
 
 static uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) {
-  VkPhysicalDeviceMemoryProperties memProperties;
-  vkGetPhysicalDeviceMemoryProperties(physDev, &memProperties);
+  VkPhysicalDeviceMemoryProperties2 props = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+  };
+  vkGetPhysicalDeviceMemoryProperties2(physDev, &props);
 
-  for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-    const bool hasProperties = (memProperties.memoryTypes[i].propertyFlags & flags) == flags;
+  for (uint32_t i = 0; i < props.memoryProperties.memoryTypeCount; i++) {
+    const bool hasProperties = (props.memoryProperties.memoryTypes[i].propertyFlags & flags) == flags;
     if ((memoryTypeBits & (1 << i)) && hasProperties) {
       return i;
     }
