@@ -300,16 +300,21 @@ uint32_t lvk::findQueueFamilyIndex(VkPhysicalDevice physDev, VkQueueFlags flags)
   using lvk::DeviceQueues;
 
   uint32_t queueFamilyCount = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueFamilyCount, nullptr);
+  vkGetPhysicalDeviceQueueFamilyProperties2(physDev, &queueFamilyCount, nullptr);
 
-  std::vector<VkQueueFamilyProperties> props(queueFamilyCount);
-  vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueFamilyCount, props.data());
+  std::vector<VkQueueFamilyProperties2> props(queueFamilyCount);
+  for (VkQueueFamilyProperties2& p : props) {
+    // https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#VUID-VkQueueFamilyProperties2-sType-sType
+    p.sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2;
+  }
+  vkGetPhysicalDeviceQueueFamilyProperties2(physDev, &queueFamilyCount, props.data());
 
   auto findDedicatedQueueFamilyIndex = [&props](VkQueueFlags require, VkQueueFlags avoid) -> uint32_t {
     for (uint32_t i = 0; i != props.size(); i++) {
-      const bool isSuitable = (props[i].queueFlags & require) == require;
-      const bool isDedicated = (props[i].queueFlags & avoid) == 0;
-      if (props[i].queueCount && isSuitable && isDedicated)
+      const VkQueueFamilyProperties& p = props[i].queueFamilyProperties;
+      const bool isSuitable = (p.queueFlags & require) == require;
+      const bool isDedicated = (p.queueFlags & avoid) == 0;
+      if (p.queueCount && isSuitable && isDedicated)
         return i;
     }
     return DeviceQueues::INVALID;
