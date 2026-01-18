@@ -695,7 +695,7 @@ class VulkanContext final : public IContext {
   bool has_KHR_ray_tracing_pipeline_ = false;
   bool has_8BitIndices_ = false; // VK_KHR_index_type_uint8 or VK_EXT_index_type_uint8
   bool has_KHR_calibrated_timestamps_ = false;
-  bool has_EXT_swapchain_maintenance1_ = false;
+  bool has_KHR_swapchain_maintenance1_ = false; // VK_KHR_swapchain_maintenance1 or VK_EXT_swapchain_maintenance1
 
   TextureHandle dummyTexture_;
 
