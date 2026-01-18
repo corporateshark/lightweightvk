@@ -528,9 +528,12 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
 }
 
 bool supportsFormat(VkPhysicalDevice physicalDevice, VkFormat format) {
-  VkFormatProperties properties;
-  vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &properties);
-  return properties.bufferFeatures != 0 || properties.linearTilingFeatures != 0 || properties.optimalTilingFeatures != 0;
+  VkFormatProperties2 props = {
+      .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+  };
+  vkGetPhysicalDeviceFormatProperties2(physicalDevice, format, &props);
+  return props.formatProperties.bufferFeatures != 0 || props.formatProperties.linearTilingFeatures != 0 ||
+         props.formatProperties.optimalTilingFeatures != 0;
 }
 
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
@@ -1150,8 +1153,10 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   VkSurfaceCapabilitiesKHR caps = {};
   VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps));
 
-  VkFormatProperties props = {};
-  vkGetPhysicalDeviceFormatProperties(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
+  VkFormatProperties2 props = {
+      .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+  };
+  vkGetPhysicalDeviceFormatProperties2(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
 
   // trim the image extent
   width_ = width = std::min(width, caps.maxImageExtent.width);
@@ -1170,7 +1175,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return usageFlags;
   };
 
-  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props);
+  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
   const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
   const VkSwapchainCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -4378,8 +4383,14 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
   VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_IMAGE, (uint64_t)image.vkImage_, debugNameImage));
 
-  // Get physical device's properties for the image's format
-  vkGetPhysicalDeviceFormatProperties(vkPhysicalDevice_, image.vkImageFormat_, &image.vkFormatProperties_);
+  // get physical device's properties for the image's format
+  {
+    VkFormatProperties2 props = {
+        .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+    };
+    vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, image.vkImageFormat_, &props);
+    image.vkFormatProperties_ = props.formatProperties;
+  }
 
   VkImageAspectFlags aspect = 0;
   if (image.isDepthFormat_ || image.isStencilFormat_) {
@@ -4715,11 +4726,13 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
 
   const VkFormat vkFormat = lvk::formatToVkFormat(format);
 
-  VkFormatProperties props;
-  vkGetPhysicalDeviceFormatProperties(getVkPhysicalDevice(), vkFormat, &props);
+  VkFormatProperties2 props = {
+		.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+  };
+  vkGetPhysicalDeviceFormatProperties2(getVkPhysicalDevice(), vkFormat, &props);
 
-  const bool cosited = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) != 0;
-  const bool midpoint = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) != 0;
+  const bool cosited = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) != 0;
+  const bool midpoint = (props.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) != 0;
 
   if (!LVK_VERIFY(cosited || midpoint)) {
     LVK_ASSERT_MSG(cosited || midpoint, "Unsupported Ycbcr feature");
@@ -4731,13 +4744,10 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
       .format = vkFormat,
       .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
       .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
-      .components =
-          {
-              VK_COMPONENT_SWIZZLE_IDENTITY,
-              VK_COMPONENT_SWIZZLE_IDENTITY,
-              VK_COMPONENT_SWIZZLE_IDENTITY,
-              VK_COMPONENT_SWIZZLE_IDENTITY,
-          },
+      .components = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                     VK_COMPONENT_SWIZZLE_IDENTITY,
+                     VK_COMPONENT_SWIZZLE_IDENTITY,
+                     VK_COMPONENT_SWIZZLE_IDENTITY},
       .xChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
       .yChromaOffset = midpoint ? VK_CHROMA_LOCATION_MIDPOINT : VK_CHROMA_LOCATION_COSITED_EVEN,
       .chromaFilter = VK_FILTER_LINEAR,
@@ -7827,10 +7837,12 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
   const VkFormat depthFormats[] = {
       VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM};
   for (const VkFormat& depthFormat : depthFormats) {
-    VkFormatProperties formatProps;
-    vkGetPhysicalDeviceFormatProperties(vkPhysicalDevice_, depthFormat, &formatProps);
+    VkFormatProperties2 props = {
+		  .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+    };
+    vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, depthFormat, &props);
 
-    if (formatProps.optimalTilingFeatures) {
+    if (props.formatProperties.optimalTilingFeatures) {
       deviceDepthFormats_.push_back(depthFormat);
     }
   }
