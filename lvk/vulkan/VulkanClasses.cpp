@@ -1109,8 +1109,15 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 
   const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
   const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+  const VkPresentModeKHR presentMode = chooseSwapPresentMode(ctx.devicePresentModes_);
+  const VkSwapchainPresentModesCreateInfoKHR pmci = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR,
+      .presentModeCount = 1,
+      .pPresentModes = &presentMode,
+  };
   const VkSwapchainCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .pNext = ctx.has_KHR_swapchain_maintenance1_ ? &pmci : nullptr,
       .surface = ctx.vkSurface_,
       .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_),
       .imageFormat = surfaceFormat_.format,
@@ -1127,7 +1134,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
       .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
 #endif
       .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
-      .presentMode = chooseSwapPresentMode(ctx.devicePresentModes_),
+      .presentMode = presentMode,
       .clipped = VK_TRUE,
       .oldSwapchain = VK_NULL_HANDLE,
   };
