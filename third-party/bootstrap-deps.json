@@ -40,6 +40,14 @@
     }
 },
 {
+    "name": "SDL",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/libsdl-org/SDL",
+        "revision": "release-3.2.28"
+    }
+},
+{
     "name": "stb",
     "source": {
         "type": "git",
