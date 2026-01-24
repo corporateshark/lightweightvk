@@ -3,48 +3,51 @@ plugins {
 }
 
 android {
-  namespace 'org.lvk.samples'
-  compileSdk 34
+  namespace = 'org.lvk.samples'
+  compileSdk = 34
 
   defaultConfig {
-    applicationId "org.lvk.samples.lvk_@APP_NAME@"
-    minSdk 24
-    targetSdk 34
-    versionCode 1
-    versionName "1.0"
+    applicationId = "org.lvk.samples.lvk_@APP_NAME@"
+    minSdk = 30
+    targetSdk = 34
+    versionCode = 1
+    versionName = "1.0"
     ndk {
-      abiFilters @ANDROID_ABI_FILTERS@
+      abiFilters.addAll(@ANDROID_ABI_FILTERS@)
     }
     externalNativeBuild {
       cmake {
-        targets "lvk_android_native_@APP_NAME@"
-        cppFlags "-std=c++20"
-        arguments "-DLVK_DEPLOY_DEPS=OFF", "-DLVK_WITH_GLFW=OFF", "-DLVK_WITH_SAMPLES=ON", "-DLVK_WITH_SAMPLES_ANDROID=ON", "-DLVK_WITH_TRACY=OFF", "-DLVK_WITH_VULKAN_PORTABILITY=OFF", "-DLVK_WITH_WAYLAND=OFF", "-DLVK_WITH_IMPLOT=ON", "-DLVK_WITH_OPENXR=OFF"
+        targets 'lvk_android_native_@APP_NAME@'
+        cppFlags '-std=c++20'
+        arguments '-DCMAKE_OBJECT_PATH_MAX=1024', '-DLVK_DEPLOY_DEPS=OFF', '-DLVK_WITH_GLFW=OFF', '-DLVK_WITH_SAMPLES=ON', '-DLVK_WITH_SAMPLES_ANDROID=ON', '-DLVK_WITH_TRACY=OFF', '-DLVK_WITH_VULKAN_PORTABILITY=OFF', '-DLVK_WITH_WAYLAND=OFF', '-DLVK_WITH_IMPLOT=ON', '-DLVK_WITH_OPENXR=OFF'
       }
     }
   }
 
-  aaptOptions {
-    noCompress 'png', 'ktx', 'data'
+  androidResources {
+    noCompress.addAll(['png', 'ktx', 'data'])
   }
 
   buildTypes {
     release {
-      signingConfig signingConfigs.debug
+      signingConfig = signingConfigs.debug
     }
   }
 
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
   }
-  ndkVersion "29.0.14206865"
+
+  ndkVersion = '29.0.14206865'
+
   externalNativeBuild {
     cmake {
-      path file('../../../../CMakeLists.txt')
+      path = file('../../../../CMakeLists.txt')
     }
   }
+
   buildFeatures {
-    viewBinding true
+    viewBinding = true
   }
 }
