@@ -66,6 +66,21 @@ if(APPLE)
   endif()
 endif()
 
+if(WIN32)
+  execute_process(
+    COMMAND reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" /v LongPathsEnabled
+    OUTPUT_VARIABLE LONG_PATHS_OUTPUT
+    ERROR_VARIABLE LONG_PATHS_ERROR
+    RESULT_VARIABLE LONG_PATHS_RESULT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(LONG_PATHS_RESULT EQUAL 0 AND LONG_PATHS_OUTPUT MATCHES "0x1")
+    message(STATUS "Windows long paths enabled")
+  else()
+    message(FATAL_ERROR "Windows long paths not enabled. Enable via PowerShell (admin): New-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name 'LongPathsEnabled' -Value 1 -PropertyType DWORD -Force")
+  endif()
+endif()
+
 include(cmake/CommonMacros.txt)
 
 if(NOT LVK_USE_CUSTOM_MOLTENVK AND DEFINED ENV{VULKAN_SDK})
