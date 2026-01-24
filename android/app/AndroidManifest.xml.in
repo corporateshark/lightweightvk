@@ -1,33 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:versionCode="1"
-    android:versionName="1.0"
-    android:installLocation="auto">
-    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="34" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"   android:maxSdkVersion="32" />
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"  android:maxSdkVersion="29" />
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
-    <application
-        android:allowBackup="false"
-        android:fullBackupContent="false"
-        android:label="lvk_@APP_NAME@">
-        <activity
-            android:exported="true"
-            android:name="org.lvk.samples.MainActivity"
-            android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode"
-            android:screenOrientation="landscape"
-            android:launchMode="singleTask"
-            android:label="@APP_NAME@">
-            <meta-data
-                android:name="android.app.lib_name"
-                android:value="lvk_android_native_@APP_NAME@" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
+  <application
+      android:allowBackup="false"
+      android:dataExtractionRules="@xml/data_extraction_rules"
+      android:fullBackupContent="false"
+      android:label="lvk_@APP_NAME@"
+      android:enableOnBackInvokedCallback="true">
+    <activity
+        android:exported="true"
+        android:name="org.lvk.samples.MainActivity"
+        android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
+        android:screenOrientation="landscape"
+        android:launchMode="singleTask"
+        android:label="@APP_NAME@">
+      <meta-data
+          android:name="android.app.lib_name"
+          android:value="lvk_android_native_@APP_NAME@" />
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
 </manifest>
