@@ -642,7 +642,7 @@ class VulkanContext final : public IContext {
     SubmitHandle handle_ = {}; // last use
   };
 
-  void createInstance();
+  lvk::Result createInstance();
   void createSurface(void* window, void* display);
   void createHeadlessSurface();
   void querySurfaceCapabilities();
