@@ -603,7 +603,7 @@ class VulkanContext final : public IContext {
   void bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const;
 
  private:
-  void createInstance();
+  lvk::Result createInstance();
   void createSurface(void* window, void* display);
   void createHeadlessSurface();
   void querySurfaceCapabilities();

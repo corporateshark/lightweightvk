@@ -3463,7 +3463,7 @@ lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window
 
   glslang_initialize_process();
 
-  createInstance();
+  LVK_ASSERT(createInstance().isOk());
 
   if (!surface) {
     if (config_.enableHeadlessSurface) {
@@ -5782,7 +5782,7 @@ bool lvk::VulkanContext::getQueryPoolResults(QueryPoolHandle pool,
   return true;
 }
 
-void lvk::VulkanContext::createInstance() {
+lvk::Result lvk::VulkanContext::createInstance() {
   vkInstance_ = VK_NULL_HANDLE;
 
   // check if we have validation layers in the system
@@ -5932,6 +5932,20 @@ void lvk::VulkanContext::createInstance() {
   };
 #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
 
+  // check extensions
+  {
+    std::string missingExtensions;
+    for (const char* ext : instanceExtensionNames) {
+      if (!hasExtension(ext, allInstanceExtensions))
+        missingExtensions += "\n   " + std::string(ext);
+    }
+    if (!missingExtensions.empty()) {
+      MINILOG_LOG_PROC(minilog::FatalError, "Missing Vulkan instance extensions: %s\n", missingExtensions.c_str());
+      assert(false);
+      return Result(Result::Code::RuntimeError);
+    }
+  }
+
   const VkApplicationInfo appInfo = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
       .pNext = nullptr,
@@ -5984,6 +5998,8 @@ void lvk::VulkanContext::createInstance() {
   for (const VkExtensionProperties& extension : allInstanceExtensions) {
     LLOGL("  %s\n", extension.extensionName);
   }
+
+  return Result();
 }
 
 void lvk::VulkanContext::createHeadlessSurface() {
