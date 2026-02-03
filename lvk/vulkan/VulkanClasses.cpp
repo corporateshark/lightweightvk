@@ -6285,6 +6285,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT,
       .indexTypeUint8 = VK_TRUE,
   };
+  VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+      .taskShader = VK_TRUE,
+      .meshShader = VK_TRUE,
+  };
 
   auto addOptionalExtension = [&allDeviceExtensions, &deviceExtensionNames, &createInfoNext](
                                   const char* name, bool& enabled, void* features = nullptr) mutable -> bool {
@@ -6328,6 +6333,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (!addOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features))  {
     addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
   }
+  addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader, &meshShaderFeatures);
 
   // check extensions
   {

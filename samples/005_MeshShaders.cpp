@@ -132,19 +132,7 @@ int main(int argc, char* argv[]) {
 
   GLFWwindow* window = lvk::initWindow("Vulkan Hello Mesh Shaders", width_, height_, true);
 
-  VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
-      .taskShader = VK_TRUE,
-      .meshShader = VK_TRUE,
-  };
-
-  ctx_ = lvk::createVulkanContextWithSwapchain(window,
-                                               width_,
-                                               height_,
-                                               {
-                                                   .extensionsDevice = {"VK_EXT_mesh_shader"},
-                                                   .extensionsDeviceFeatures = &meshShaderFeatures,
-                                               });
+  ctx_ = lvk::createVulkanContextWithSwapchain(window, width_, height_, {});
   if (!ctx_) {
     return 255;
   }
