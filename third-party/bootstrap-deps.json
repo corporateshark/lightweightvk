@@ -172,7 +172,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
-        "revision": "65586d13fb197279942581ba9c2eb2c6b664487c"
+        "revision": "vulkan-sdk-1.4.341.0"
     }
 },
 {
