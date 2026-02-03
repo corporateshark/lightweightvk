@@ -761,6 +761,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_hdr_metadata_ = false;
   bool has_EXT_device_fault_ = false;
   bool has_EXT_shader_tile_image = false;
+  bool has_EXT_mesh_shader = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

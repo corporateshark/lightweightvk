@@ -335,20 +335,10 @@ void generateParticleTexture(uint8_t* image, int size) {
 }
 
 VULKAN_APP_MAIN {
-  VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
-      .taskShader = VK_TRUE,
-      .meshShader = VK_TRUE,
-  };
   const VulkanAppConfig cfg{
       .width = -90,
       .height = -90,
       .resizable = true,
-      .contextConfig =
-          {
-              .extensionsDevice = {"VK_EXT_mesh_shader"},
-              .extensionsDeviceFeatures = &meshShaderFeatures,
-          },
   };
   VULKAN_APP_DECLARE(app, cfg);
 
