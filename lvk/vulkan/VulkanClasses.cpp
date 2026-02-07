@@ -5828,7 +5828,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   std::vector<const char*> instanceExtensionNames = {
       VK_KHR_SURFACE_EXTENSION_NAME,
-      VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, // remove once VK_KHR_surface_maintenance1 becomes mandatory
 #if defined(_WIN32)
       VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -5865,6 +5864,9 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   if (hasExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
     instanceExtensionNames.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+  } else if (hasExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
+    // remove once VK_KHR_surface_maintenance1 becomes mandatory
+    instanceExtensionNames.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
 
   if (hasExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, allInstanceExtensions)) {
