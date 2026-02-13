@@ -6221,7 +6221,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sampleRateShading = vkFeatures10_.features.sampleRateShading, // enable if supported
       .multiDrawIndirect = VK_TRUE,
       .drawIndirectFirstInstance = VK_TRUE,
-      .depthBiasClamp = VK_TRUE,
+      .depthBiasClamp = vkFeatures10_.features.depthBiasClamp, // enable if supported,
       .fillModeNonSolid = vkFeatures10_.features.fillModeNonSolid, // enable if supported
       .samplerAnisotropy = VK_TRUE,
       .textureCompressionBC = vkFeatures10_.features.textureCompressionBC, // enable if supported
