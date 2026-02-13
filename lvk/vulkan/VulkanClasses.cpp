@@ -141,6 +141,25 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
+VkPresentModeKHR presentModeToVkPresentMode(lvk::PresentMode mode) {
+  switch (mode) {
+  case lvk::PresentMode_Immediate:
+    return VK_PRESENT_MODE_IMMEDIATE_KHR;
+  case lvk::PresentMode_Mailbox:
+    return VK_PRESENT_MODE_MAILBOX_KHR;
+  case lvk::PresentMode_FIFO:
+    return VK_PRESENT_MODE_FIFO_KHR;
+  case lvk::PresentMode_FIFO_Relaxed:
+    return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+  case lvk::PresentMode_Shared_Demand_Refresh:
+    return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
+  case lvk::PresentMode_Shared_Continuous_Refresh:
+    return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
+  }
+  LVK_ASSERT(false);
+  return VK_PRESENT_MODE_FIFO_KHR;
+}
+
 VkIndexType indexFormatToVkIndexType(lvk::IndexFormat fmt) {
   switch (fmt) {
   case lvk::IndexFormat_UI8:
@@ -1132,20 +1151,12 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return exceeded ? caps.maxImageCount : desired;
   };
 
-  auto chooseSwapPresentMode = [](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
-#if defined(__linux__) || defined(_M_ARM64)
-    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend()) {
-      return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    }
-#endif // __linux__
-    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.cend()) {
-      return VK_PRESENT_MODE_MAILBOX_KHR;
-    }
-    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_IMMEDIATE_KHR) != modes.cend()) {
-      return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    }
-    if (std::find(modes.cbegin(), modes.cend(), VK_PRESENT_MODE_FIFO_RELAXED_KHR) != modes.cend()) {
-      return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+  auto chooseSwapPresentMode = [config = &ctx.config_](const std::vector<VkPresentModeKHR>& modes) -> VkPresentModeKHR {
+    for (lvk::PresentMode mode : config->presentModes) {
+      const VkPresentModeKHR vkMode = presentModeToVkPresentMode(mode);
+      if (std::find(modes.cbegin(), modes.cend(), vkMode) != modes.cend()) {
+        return vkMode;
+      }
     }
     return VK_PRESENT_MODE_FIFO_KHR;
   };
