@@ -188,7 +188,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/minilog",
-        "revision": "release-1.2.0"
+        "revision": "b3e9e454176aa6bd034cdaf4eee918e8e4346f6a"
     }
 },
 {
