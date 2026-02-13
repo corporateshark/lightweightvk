@@ -240,6 +240,15 @@ enum ColorSpace : uint8_t {
   ColorSpace_SRGB_NONLINEAR,
 };
 
+enum PresentMode : uint8_t {
+  PresentMode_FIFO = 0, // default mode
+  PresentMode_FIFO_Relaxed,
+  PresentMode_Immediate,
+  PresentMode_Mailbox,
+  PresentMode_Shared_Demand_Refresh,
+  PresentMode_Shared_Continuous_Refresh,
+};
+
 enum TextureType : uint8_t {
   TextureType_2D,
   TextureType_3D,
@@ -1129,6 +1138,7 @@ typedef struct GLFWwindow GLFWwindow;
 namespace lvk {
 
 constexpr uint32_t kMaxCustomExtensions = 32;
+constexpr uint32_t kMaxPresentModes = 8;
 
 struct ContextConfig {
   bool terminateOnValidationError = false; // invoke std::terminate() on any validation error
@@ -1137,6 +1147,16 @@ struct ContextConfig {
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns
   const void* pipelineCacheData = nullptr;
   size_t pipelineCacheDataSize = 0;
+  // Define preferred present modes, the first available present mode will  be used. PresentMode_FIFO is always available
+  lvk::PresentMode presentModes[kMaxPresentModes] = {
+#if defined(__linux__) || defined(_M_ARM64)
+      PresentMode_Immediate,
+#endif // __linux__
+      PresentMode_Mailbox,
+      PresentMode_Immediate,
+      PresentMode_FIFO_Relaxed,
+      PresentMode_FIFO,
+  };
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
   void* extensionsDeviceFeatures = nullptr; // inserted into VkPhysicalDeviceVulkan11Features::pNext
