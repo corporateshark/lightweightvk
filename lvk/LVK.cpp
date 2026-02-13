@@ -95,7 +95,7 @@ static constexpr TextureFormatProperties properties[] = {
 } // namespace
 
 #if __APPLE__ && LVK_WITH_GLFW
-void* createCocoaWindowView(GLFWwindow* window);
+void* createCocoaWindowView(GLFWwindow* window, void** outLayer);
 #endif
 
 static_assert(sizeof(TextureFormatProperties) <= sizeof(uint32_t));
@@ -390,7 +390,9 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetX11Window(window), (void*)glfwGetX11Display());
 #endif
 #elif defined(__APPLE__)
-  ctx = std::make_unique<VulkanContext>(cfg, createCocoaWindowView(window));
+  void* layer = nullptr;
+  void* contentView = createCocoaWindowView(window, &layer);
+  ctx = std::make_unique<VulkanContext>(cfg, contentView, layer);
 #else
 #error Unsupported OS
 #endif

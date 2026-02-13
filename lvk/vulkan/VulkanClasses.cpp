@@ -6320,6 +6320,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
   }
   if (hasExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
+    has_MVK_macos_surface = true;
     enabledInstanceExtensionNames_.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
   }
   if (hasExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
@@ -6542,13 +6543,22 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
       .surface = (wl_surface*)window,
   };
   VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
-#elif defined(VK_USE_PLATFORM_MACOS_MVK)
-  const VkMacOSSurfaceCreateInfoMVK ci = {
-      .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
-      .flags = 0,
-      .pView = window,
-  };
-  VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &vkSurface_));
+#elif defined(VK_USE_PLATFORM_MACOS_MVK) || defined(VK_USE_PLATFORM_METAL_EXT)
+  if (has_MVK_macos_surface) {
+    const VkMacOSSurfaceCreateInfoMVK ci = {
+        .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
+        .flags = 0,
+        .pView = window,
+    };
+    VK_ASSERT(vkCreateMacOSSurfaceMVK(vkInstance_, &ci, nullptr, &vkSurface_));
+  } else {
+    const VkMetalSurfaceCreateInfoEXT ci = {
+        .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+        .flags = 0,
+        .pLayer = display, // layer
+    };
+    VK_ASSERT(vkCreateMetalSurfaceEXT(vkInstance_, &ci, nullptr, &vkSurface_));
+  }
 #else
 #error Implement for other platforms
 #endif
