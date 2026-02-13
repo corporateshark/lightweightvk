@@ -18,6 +18,10 @@
 #include <glslang/Include/glslang_c_interface.h>
 #include <ldrutils/lutils/ScopeExit.h>
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+#include <vulkan/vulkan_metal.h>
+#endif // VK_USE_PLATFORM_METAL_EXT
+
 #ifndef VK_USE_PLATFORM_WIN32_KHR
 #include <unistd.h>
 #endif
@@ -6305,15 +6309,26 @@ lvk::Result lvk::VulkanContext::createInstance() {
       VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
 #else
       VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-#endif
-#elif defined(__APPLE__)
-      VK_EXT_LAYER_SETTINGS_EXTENSION_NAME,
-      VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
-#endif
-#if defined(LVK_WITH_VULKAN_PORTABILITY)
-      VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+#endif // VK_USE_PLATFORM_WAYLAND_KHR
 #endif
   };
+
+  const bool hasPortabilityEnumeration = hasExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, allInstanceExtensions);
+
+#if defined(__APPLE__)
+  if (hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
+  }
+  if (hasExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
+  }
+  if (hasExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+  }
+  if (hasPortabilityEnumeration) {
+    enabledInstanceExtensionNames_.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  }
+#endif // __APPLE__
 
   // check if we have the VK_EXT_debug_utils extension
   const bool hasDebugUtils = hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, allInstanceExtensions);
@@ -6438,10 +6453,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #endif // VK_API_VERSION_1_4
   };
 
-  VkInstanceCreateFlags flags = 0;
-#if defined(LVK_WITH_VULKAN_PORTABILITY)
-  flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-#endif
   const VkInstanceCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
@@ -6449,7 +6460,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #else
       .pNext = config_.enableValidation ? &features : nullptr,
 #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-      .flags = flags,
+      .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
       .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
       .ppEnabledLayerNames = config_.enableValidation ? kDefaultValidationLayers : nullptr,
@@ -6795,10 +6806,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   enabledDeviceExtensionNames_ = {
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#if defined(LVK_WITH_VULKAN_PORTABILITY)
-      "VK_KHR_portability_subset",
-#endif
   };
+
+  if (hasExtension("VK_KHR_portability_subset", allDeviceExtensions)) {
+    enabledDeviceExtensionNames_.push_back("VK_KHR_portability_subset");
+  }
 
   for (const char* ext : config_.extensionsDevice) {
     if (ext) {

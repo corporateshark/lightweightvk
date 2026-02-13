@@ -96,10 +96,6 @@ if(NOT LVK_USE_CUSTOM_MOLTENVK)
   find_package(Vulkan REQUIRED)
 endif()
 
-if(LVK_WITH_VULKAN_PORTABILITY)
-  add_definitions("-DLVK_WITH_VULKAN_PORTABILITY")
-endif()
-
 target_link_libraries(LVKVulkan INTERFACE LVKLibrary)
 target_link_libraries(LVKVulkan PRIVATE glslang SPIRV glslang-default-resource-limits)
 target_link_libraries(LVKVulkan PRIVATE spirv-reflect-static)
@@ -135,6 +131,7 @@ elseif(UNIX AND NOT APPLE)
 elseif(APPLE)
   if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_definitions("-DVK_USE_PLATFORM_MACOS_MVK=1")
+    add_definitions("-DVK_USE_PLATFORM_METAL_EXT=1")
   endif()
 endif()
 
