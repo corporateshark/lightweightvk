@@ -23,7 +23,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
-void* createCocoaWindowView(GLFWwindow* window) {
+void* createCocoaWindowView(GLFWwindow* window, void** outLayer) {
   NSWindow* nswindow = glfwGetCocoaWindow(window);
   CAMetalLayer* layer = [CAMetalLayer layer];
   layer.device = MTLCreateSystemDefaultDevice();
@@ -34,6 +34,8 @@ void* createCocoaWindowView(GLFWwindow* window) {
   layer.contentsScale = factor;
   nswindow.contentView.layer = layer;
   nswindow.contentView.wantsLayer = YES;
+
+  *outLayer = layer;
 
   return nswindow.contentView;
 }
