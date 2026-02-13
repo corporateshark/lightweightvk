@@ -4752,7 +4752,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
   const VkFormat vkFormat = lvk::formatToVkFormat(format);
 
   VkFormatProperties2 props = {
-		.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+      .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
   };
   vkGetPhysicalDeviceFormatProperties2(getVkPhysicalDevice(), vkFormat, &props);
 
@@ -6520,7 +6520,11 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
   VK_ASSERT(vkCreateWin32SurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
   const VkAndroidSurfaceCreateInfoKHR ci = {
-      .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR, .pNext = nullptr, .flags = 0, .window = (ANativeWindow*)window};
+      .sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+      .pNext = nullptr,
+      .flags = 0,
+      .window = (ANativeWindow*)window,
+  };
   VK_ASSERT(vkCreateAndroidSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
   const VkXlibSurfaceCreateInfoKHR ci = {
@@ -7006,7 +7010,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, has_KHR_ray_tracing_pipeline_, &rayTracingFeatures);
   addOptionalExtension(
       VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, has_EXT_ray_tracing_invocation_reorder, &rayTracingInvocationReorderFeatures);
-  if (!addOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features))  {
+  if (!addOptionalExtension(
+          VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features)) {
     addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
   }
   addOptionalExtension(VK_EXT_HDR_METADATA_EXTENSION_NAME, has_EXT_hdr_metadata_);
@@ -7895,7 +7900,7 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
       VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM};
   for (const VkFormat& depthFormat : depthFormats) {
     VkFormatProperties2 props = {
-		  .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+        .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
     };
     vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, depthFormat, &props);
 
