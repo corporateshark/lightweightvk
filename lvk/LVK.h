@@ -248,8 +248,9 @@ enum PresentMode : uint8_t {
   PresentMode_FIFO_Relaxed,
   PresentMode_Immediate,
   PresentMode_Mailbox,
-  PresentMode_Shared_Demand_Refresh,
-  PresentMode_Shared_Continuous_Refresh,
+  PresentMode_Shared_Demand_Refresh, // VK_KHR_shared_presentable_image
+  PresentMode_Shared_Continuous_Refresh, // VK_KHR_shared_presentable_image
+  PresentMode_FIFO_Latest_Ready, // VK_KHR_present_mode_fifo_latest_ready
 };
 
 enum TextureType : uint8_t {
