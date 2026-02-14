@@ -277,6 +277,8 @@ if(LVK_WITH_SAMPLES)
   add_subdirectory(third-party/deps/src/ldrutils)
   lvk_set_folder(LUtils "third-party")
   add_subdirectory(third-party/deps/src/ktx-software/lib)
+  # patch LIBKTX: this file interferes with normal Vulkan headers
+  list(REMOVE_ITEM LIBKTX_MAIN_SRC "../external/dfdutils/vulkan/vulkan_core.h")
   lvk_set_folder(ktx "third-party/ktx-software")
   lvk_set_folder(ktx_version "third-party/ktx-software")
   lvk_set_folder(basisu_encoder "third-party/ktx-software")
