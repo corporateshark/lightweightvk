@@ -1179,8 +1179,7 @@ class IContext {
   virtual ColorSpace getSwapchainColorSpace() const = 0;
   virtual uint32_t getSwapchainCurrentImageIndex() const = 0;
   virtual uint32_t getNumSwapchainImages() const = 0;
-  virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
-  virtual void recreateSwapchain(int newWidth, int newHeight, PresentMode newPresentMode) = 0;
+  virtual void recreateSwapchain(int newWidth, int newHeight, PresentMode) = 0;
 
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
