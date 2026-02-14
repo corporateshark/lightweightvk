@@ -6383,6 +6383,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
   }
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
+  addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
 
   // check extensions
   {

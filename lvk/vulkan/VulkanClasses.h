@@ -698,6 +698,7 @@ class VulkanContext final : public IContext {
   bool has_KHR_swapchain_maintenance1_ = false; // VK_KHR_swapchain_maintenance1 or VK_EXT_swapchain_maintenance1
   bool has_EXT_mesh_shader_ = false;
   bool has_MVK_macos_surface_ = false;
+  bool has_KHR_shared_presentable_image_ = false;
 
   TextureHandle dummyTexture_;
 
