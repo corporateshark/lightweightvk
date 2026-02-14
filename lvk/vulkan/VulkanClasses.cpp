@@ -2554,6 +2554,8 @@ void lvk::CommandBuffer::cmdDrawMeshTasks(const Dimensions& threadgroupCount) {
   LVK_PROFILER_FUNCTION();
   LVK_PROFILER_GPU_ZONE("cmdDrawMeshTasks()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DRAW);
 
+  LVK_ASSERT_MSG(ctx_->has_EXT_mesh_shader_, "Mesh shaders not supported\n");
+
   vkCmdDrawMeshTasksEXT(wrapper_->cmdBuf_, threadgroupCount.width, threadgroupCount.height, threadgroupCount.depth);
 }
 
@@ -2563,6 +2565,8 @@ void lvk::CommandBuffer::cmdDrawMeshTasksIndirect(BufferHandle indirectBuffer,
                                                   uint32_t stride) {
   LVK_PROFILER_FUNCTION();
   LVK_PROFILER_GPU_ZONE("cmdDrawMeshTasksIndirect()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DRAW);
+
+  LVK_ASSERT_MSG(ctx_->has_EXT_mesh_shader_, "Mesh shaders not supported\n");
 
   lvk::VulkanBuffer* bufIndirect = ctx_->buffersPool_.get(indirectBuffer);
 
@@ -2583,6 +2587,8 @@ void lvk::CommandBuffer::cmdDrawMeshTasksIndirectCount(BufferHandle indirectBuff
                                                        uint32_t stride) {
   LVK_PROFILER_FUNCTION();
   LVK_PROFILER_GPU_ZONE("cmdDrawMeshTasksIndirectCount()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DRAW);
+
+  LVK_ASSERT_MSG(ctx_->has_EXT_mesh_shader_, "Mesh shaders not supported\n");
 
   lvk::VulkanBuffer* bufIndirect = ctx_->buffersPool_.get(indirectBuffer);
   lvk::VulkanBuffer* bufCount = ctx_->buffersPool_.get(countBuffer);
@@ -6072,7 +6078,7 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
   };
   VK_ASSERT(vkCreateWaylandSurfaceKHR(vkInstance_, &ci, nullptr, &vkSurface_));
 #elif defined(VK_USE_PLATFORM_MACOS_MVK) || defined(VK_USE_PLATFORM_METAL_EXT)
-  if (has_MVK_macos_surface) {
+  if (has_MVK_macos_surface_) {
     const VkMacOSSurfaceCreateInfoMVK ci = {
         .sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
         .flags = 0,
@@ -6376,7 +6382,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
           VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features)) {
     addOptionalExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, has_KHR_swapchain_maintenance1_, &swapchainMaintenance1Features);
   }
-  addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader, &meshShaderFeatures);
+  addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
 
   // check extensions
   {
