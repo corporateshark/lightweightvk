@@ -27,6 +27,7 @@ option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
 option(LVK_WITH_OPENXR             "Enable OpenXR"                           OFF)
 option(LVK_WITH_ANDROID_VALIDATION "Enable validation layers on Android"     ON)
 option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
+option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
 
 set(LVK_ANDROID_ABI "arm64-v8a" CACHE STRING "Enabled ABI on Android")
 set(LVK_CUSTOM_MOLTENVK_PATH "" CACHE STRING "Path to custom MoltenVK")
@@ -61,7 +62,7 @@ if(APPLE)
   endif()
 endif()
 
-if(WIN32)
+if(LVK_ENABLE_LONG_PATHS_WIN32 AND WIN32)
   execute_process(
     COMMAND reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem" /v LongPathsEnabled
     OUTPUT_VARIABLE LONG_PATHS_OUTPUT
