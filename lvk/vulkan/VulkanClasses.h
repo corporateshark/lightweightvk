@@ -763,6 +763,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_shader_tile_image = false;
   bool has_EXT_mesh_shader_ = false;
   bool has_MVK_macos_surface_ = false;
+  bool has_KHR_shared_presentable_image_ = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 
