@@ -6203,9 +6203,12 @@ uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
   return hasSwapchain() ? swapchain_->getSwapchainCurrentImageIndex() : 0;
 }
 
-void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight, PresentMode newPresentMode) {
-  config_.presentModes[0] = newPresentMode;
+void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
   initSwapchain(newWidth, newHeight);
+}
+
+void lvk::VulkanContext::setPresentMode(PresentMode newPresentMode) {
+  config_.presentModes[0] = newPresentMode;
 }
 
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
