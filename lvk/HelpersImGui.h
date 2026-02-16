@@ -7,7 +7,9 @@
 
 #pragma once
 
+#if !defined(IMGUI_DEFINE_MATH_OPERATORS)
 #define IMGUI_DEFINE_MATH_OPERATORS
+#endif // !defined(IMGUI_DEFINE_MATH_OPERATORS)
 
 #include <lvk/LVK.h>
 #include <imgui/imgui.h>
