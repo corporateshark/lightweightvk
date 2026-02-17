@@ -20,7 +20,7 @@ python3 deploy_deps.py
 **Windows:**
 ```bash
 cd build
-cmake .. -G "Visual Studio 17 2022"
+cmake .. -G "Visual Studio 18 2026"
 ```
 
 **Linux:**
@@ -33,7 +33,7 @@ cmake .. -G "Unix Makefiles"
 For Wayland: `cmake .. -G "Unix Makefiles" -DLVK_WITH_WAYLAND=ON`
 
 **macOS:**
-Requires VulkanSDK 1.4.321+
+Requires VulkanSDK 1.4.341+
 ```bash
 cd build
 cmake .. -G "Xcode"
@@ -70,7 +70,7 @@ For Android devices: `python3 deploy_content_android.py`
 1. **Bindless-only**: Utilizes Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address
 2. **Minimal API surface**: No STL containers in public API
 3. **Ray tracing integration**: Fully integrated with bindless design
-4. **Cross-platform**: Windows, Linux, macOS (via MoltenVK), Android
+4. **Cross-platform**: Windows, Linux, macOS (via KosmicKrisp), Android
 
 ### Sample Applications
 Located in `samples/`, includes:
