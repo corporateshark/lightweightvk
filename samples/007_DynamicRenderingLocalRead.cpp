@@ -18,10 +18,14 @@
 // Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
 
 const char* codeSlangDeferred = R"(
-struct PushConstants {
+struct PerFrame {
   float4x4 mvp;
   float4x4 model;
   uint texture0;
+};
+
+struct PushConstants {
+  PerFrame* perFrame;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -71,11 +75,11 @@ DeferredVSOutput vertexMain(uint vertexId : SV_VertexID) {
   
   float3 pos = positions[vertexId];
   
-  out.pos = pc.mvp * float4(pos, 1.0);
+  out.pos = pc.perFrame->mvp * float4(pos, 1.0);
   out.uv  = uvs[vertexId];
-  out.normal    = toFloat3x3(pc.model) * normals[vertexId];
-  out.worldPos  = (pc.model * float4(pos, 1.0)).xyz;
-  out.textureId = pc.texture0;
+  out.normal    = toFloat3x3(pc.perFrame->model) * normals[vertexId];
+  out.worldPos  = (pc.perFrame->model * float4(pos, 1.0)).xyz;
+  out.textureId = pc.perFrame->texture0;
   
   return out;
 }
@@ -168,11 +172,15 @@ const vec2 uvs[24] = vec2[24](
   vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(1.0, 0.0), vec2(0.0, 0.0)  // -Y
 );
 
-layout(push_constant) uniform constants {
+layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 mvp;
   mat4 model;
   uint texture0;
-} pc;
+};
+
+layout(push_constant) uniform constants {
+  PerFrame pc;
+};
 
 void main() {
   vec3 pos = positions[gl_VertexIndex];
@@ -324,8 +332,6 @@ VULKAN_APP_MAIN {
       });
     }
 
-    
-
 #if defined(LVK_DEMO_WITH_SLANG)
     const bool has_EXT_shader_tile_image = false; // not implemented in Slang
     lvk::Holder<lvk::ShaderModuleHandle> vertDeferred =
@@ -377,6 +383,19 @@ VULKAN_APP_MAIN {
         .debugName = "Pipeline: compose",
     });
 
+    struct PerFrame {
+      mat4 mvp;
+      mat4 model;
+      uint32_t texture;
+    };
+
+    lvk::Holder<lvk::BufferHandle> perFrameBuffer = ctx->createBuffer({
+        .usage = lvk::BufferUsageBits_Uniform,
+        .storage = lvk::StorageType_Device,
+        .size = sizeof(PerFrame),
+        .debugName = "Buffer: perFrame",
+    });
+
     // main loop
     app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
       LVK_PROFILER_FUNCTION();
@@ -385,7 +404,11 @@ VULKAN_APP_MAIN {
       const mat4 proj = glm::perspectiveLH(fov, aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
       const mat4 model = glm::rotate(mat4(1.0f), (float)glfwGetTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
-
+      const PerFrame bindingsDeferred = {
+          .mvp = proj * view * model,
+          .model = model,
+          .texture = texture.index(),
+      };
       const lvk::Framebuffer framebuffer = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()},
                     {.texture = texAlbedo},
@@ -395,6 +418,7 @@ VULKAN_APP_MAIN {
 
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
+      buffer.cmdUpdateBuffer(perFrameBuffer, 0, sizeof(bindingsDeferred), &bindingsDeferred);
       buffer.cmdBeginRendering(
           {.color =
                {
@@ -407,16 +431,7 @@ VULKAN_APP_MAIN {
           {.inputAttachments = {lvk::TextureHandle(texAlbedo), lvk::TextureHandle(texNormal), lvk::TextureHandle(texWorldPos)}});
       buffer.cmdPushDebugGroupLabel("Render deferred", 0xff0000ff);
       buffer.cmdBindRenderPipeline(renderPipelineState_Deferred);
-      struct {
-        mat4 mvp;
-        mat4 model;
-        uint32_t texture;
-      } bindingsDeferred = {
-          .mvp = proj * view * model,
-          .model = model,
-          .texture = texture.index(),
-      };
-      buffer.cmdPushConstants(bindingsDeferred);
+      buffer.cmdPushConstants(ctx->gpuAddress(perFrameBuffer));
       buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);
       buffer.cmdDrawIndexed(36);
       buffer.cmdPopDebugGroupLabel();
@@ -433,7 +448,7 @@ VULKAN_APP_MAIN {
 
 #if ENABLE_IMGUI_DEBUG_OVERLAY
       // ImGui textures do not use input attachments
-      buffer.cmdEndRendering();      
+      buffer.cmdEndRendering();
       const lvk::Framebuffer framebufferGUI = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
       };
@@ -452,10 +467,10 @@ VULKAN_APP_MAIN {
       ImGui::Image(texNormal.index(), ImVec2(size, size / aspectRatio));
       ImGui::Text("World positions:");
       ImGui::Image(texWorldPos.index(), ImVec2(size, size / aspectRatio));
-      ImGui::End();      
+      ImGui::End();
 #else
       app.imgui_->beginFrame(framebuffer);
-#endif // ENABLE_IMGUI_DEBUG_OVERLAY      
+#endif // ENABLE_IMGUI_DEBUG_OVERLAY
       app.drawFPS();
       app.imgui_->endFrame(buffer);
       buffer.cmdEndRendering();
