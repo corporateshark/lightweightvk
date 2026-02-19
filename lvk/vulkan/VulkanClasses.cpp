@@ -6207,6 +6207,10 @@ void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
   initSwapchain(newWidth, newHeight);
 }
 
+void lvk::VulkanContext::setPresentMode(PresentMode newPresentMode) {
+  config_.presentModes[0] = newPresentMode;
+}
+
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
   const VkPhysicalDeviceLimits& limits = getVkPhysicalDeviceProperties().limits;
   return limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;

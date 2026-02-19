@@ -568,6 +568,7 @@ class VulkanContext final : public IContext {
   uint32_t getSwapchainCurrentImageIndex() const override;
   uint32_t getNumSwapchainImages() const override;
   void recreateSwapchain(int newWidth, int newHeight) override;
+  void setPresentMode(PresentMode newPresentMode) override;
 
   uint32_t getFramebufferMSAABitMask() const override;
   bool isExtensionEnabled(const char* ext) const override;
