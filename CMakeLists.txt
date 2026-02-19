@@ -165,7 +165,7 @@ if(LVK_WITH_WAYLAND)
 endif()
 
 if(LVK_WITH_TRACY)
-  add_definitions("-DTRACY_ENABLE=1")
+  set(TRACY_ENABLE ON CACHE BOOL "")
   add_subdirectory(third-party/deps/src/tracy)
   lvk_set_folder(TracyClient "third-party")
 endif()
