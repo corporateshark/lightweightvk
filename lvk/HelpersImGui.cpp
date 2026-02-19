@@ -167,7 +167,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels)
   ImGuiIO& io = ImGui::GetIO();
 
   ImFontConfig cfg = ImFontConfig();
-  cfg.FontDataOwnedByAtlas = false;
+  cfg.FontDataOwnedByAtlas = true;
   cfg.RasterizerMultiply = 1.5f;
   cfg.SizePixels = ceilf(fontSizePixels);
   cfg.PixelSnapH = true;
