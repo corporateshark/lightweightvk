@@ -5096,7 +5096,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // create pipeline layout
   {
 #define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                       \
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {              \
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(sm); ++i) {              \
     if (sm[i] && sm[i]->pushConstantsSize) {                                     \
       pushConstantsSize = std::max(pushConstantsSize, sm[i]->pushConstantsSize); \
       rtps->shaderStageFlags_ |= bit;                                            \
@@ -5167,7 +5167,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   uint32_t numCallableGroups = 0;
 
   // ray generation groups
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleRGen); ++i) {
     if (moduleRGen[i]) {
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
@@ -5180,7 +5180,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
   // miss groups
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleMiss); ++i) {
     if (moduleMiss[i]) {
       if (!numMissGroups)
         idxMiss = numShaderGroups;
@@ -5212,7 +5212,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
   // callable groups
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleCall); ++i) {
     if (moduleCall[i]) {
       if (!numCallableGroups)
         idxCallable = numShaderGroups;
