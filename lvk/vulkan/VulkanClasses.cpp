@@ -5064,31 +5064,30 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // build a new Vulkan ray tracing pipeline
   const RayTracingPipelineDesc& desc = rtps->desc_;
 
-  const lvk::ShaderModuleState* moduleRGen[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  const lvk::ShaderModuleState* moduleAHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  const lvk::ShaderModuleState* moduleCHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  const lvk::ShaderModuleState* moduleMiss[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  const lvk::ShaderModuleState* moduleIntr[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  const lvk::ShaderModuleState* moduleCall[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
-    if (desc.smRayGen[i]) {
+  using RayTracingPipelineDesc::LVK_MAX_RAY_TRACING_SHADERS;
+  using RayTracingPipelineDesc::LVK_MAX_RAY_TRACING_HIT_GROUPS;
+
+  const lvk::ShaderModuleState* moduleRGen[LVK_MAX_RAY_TRACING_SHADERS] = {};
+  const lvk::ShaderModuleState* moduleMiss[LVK_MAX_RAY_TRACING_SHADERS] = {};
+  const lvk::ShaderModuleState* moduleCall[LVK_MAX_RAY_TRACING_SHADERS] = {};
+  const lvk::ShaderModuleState* moduleAHit[LVK_MAX_RAY_TRACING_HIT_GROUPS] = {};
+  const lvk::ShaderModuleState* moduleCHit[LVK_MAX_RAY_TRACING_HIT_GROUPS] = {};
+  const lvk::ShaderModuleState* moduleIntr[LVK_MAX_RAY_TRACING_HIT_GROUPS] = {};
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADERS; ++i) {
+    if (desc.smRayGen[i])
       moduleRGen[i] = shaderModulesPool_.get(desc.smRayGen[i]);
-    }
-    if (desc.smAnyHit[i]) {
-      moduleAHit[i] = shaderModulesPool_.get(desc.smAnyHit[i]);
-    }
-    if (desc.smClosestHit[i]) {
-      moduleCHit[i] = shaderModulesPool_.get(desc.smClosestHit[i]);
-    }
-    if (desc.smMiss[i]) {
+    if (desc.smMiss[i])
       moduleMiss[i] = shaderModulesPool_.get(desc.smMiss[i]);
-    }
-    if (desc.smIntersection[i]) {
-      moduleIntr[i] = shaderModulesPool_.get(desc.smIntersection[i]);
-    }
-    if (desc.smCallable[i]) {
+    if (desc.smCallable[i])
       moduleCall[i] = shaderModulesPool_.get(desc.smCallable[i]);
-    }
+  }
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(desc.hitGroups); ++i) {
+    if (desc.hitGroups[i].smAnyHit)
+      moduleAHit[i] = shaderModulesPool_.get(desc.hitGroups[i].smAnyHit);
+    if (desc.hitGroups[i].smClosestHit)
+      moduleCHit[i] = shaderModulesPool_.get(desc.hitGroups[i].smClosestHit);
+    if (desc.hitGroups[i].smIntersection)
+      moduleIntr[i] = shaderModulesPool_.get(desc.hitGroups[i].smIntersection);
   }
 
   LVK_ASSERT(moduleRGen);
@@ -5096,7 +5095,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   // create pipeline layout
   {
 #define UPDATE_PUSH_CONSTANT_SIZE(sm, bit)                                       \
-  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(sm); ++i) {              \
+  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(sm); ++i) {                         \
     if (sm[i] && sm[i]->pushConstantsSize) {                                     \
       pushConstantsSize = std::max(pushConstantsSize, sm[i]->pushConstantsSize); \
       rtps->shaderStageFlags_ |= bit;                                            \
@@ -5145,7 +5144,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
 
   const VkSpecializationInfo siComp = lvk::getPipelineShaderStageSpecializationInfo(rtps->desc_.specInfo, entries);
 
-  const uint32_t kMaxRayTracingShaderStages = 6 * LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE;
+  const uint32_t kMaxRayTracingShaderStages = 6 * LVK_MAX_RAY_TRACING_HIT_GROUPS;
   VkPipelineShaderStageCreateInfo ciShaderStages[kMaxRayTracingShaderStages];
   uint32_t numShaderStages = 0;
 
@@ -5155,8 +5154,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     return numShaderStages++;
   };
 
-  // raygen + miss + hit + callable, each up to LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE
-  const uint32_t kMaxShaderGroups = 4 * LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE;
+  // raygen + miss + hit + callable, each up to LVK_MAX_RAY_TRACING_HIT_GROUPS
+  const uint32_t kMaxShaderGroups = 4 * LVK_MAX_RAY_TRACING_HIT_GROUPS;
   VkRayTracingShaderGroupCreateInfoKHR shaderGroups[kMaxShaderGroups];
   uint32_t numShaderGroups = 0;
   uint32_t idxMiss = 0;
@@ -5196,7 +5195,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
   // hit groups: add chit/ahit/intr stages per-group so indices are correct for each pairing
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
+  for (int i = 0; i < LVK_MAX_RAY_TRACING_HIT_GROUPS; ++i) {
     if (moduleAHit[i] || moduleCHit[i] || moduleIntr[i]) {
       if (!numHitGroups)
         idxHit = numShaderGroups;

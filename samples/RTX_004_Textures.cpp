@@ -487,12 +487,12 @@ VULKAN_APP_MAIN {
 
   res.pipeline = ctx_->createRayTracingPipeline(lvk::RayTracingPipelineDesc{
       .smRayGen = {lvk::ShaderModuleHandle(res.raygen_)},
-      .smClosestHit =
-          {
-              lvk::ShaderModuleHandle(res.hit0_),
-              lvk::ShaderModuleHandle(res.hit1_),
-          },
       .smMiss = {lvk::ShaderModuleHandle(res.miss_)},
+      .hitGroups =
+          {
+              {.smClosestHit = res.hit0_},
+              {.smClosestHit = res.hit1_},
+          },
   });
 
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {

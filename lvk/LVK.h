@@ -219,7 +219,6 @@ namespace lvk {
 
 enum { LVK_MAX_COLOR_ATTACHMENTS = 8 };
 enum { LVK_MAX_MIP_LEVELS = 16 };
-enum { LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE = 4 };
 
 enum IndexFormat : uint8_t {
   IndexFormat_UI8,
@@ -739,34 +738,36 @@ struct ComputePipelineDesc final {
   const char* debugName = "";
 };
 
+// a single hit group - one "material" worth of shaders
+struct RayTracingHitGroupDesc final {
+  ShaderModuleHandle smClosestHit = {};
+  ShaderModuleHandle smAnyHit = {};
+  ShaderModuleHandle smIntersection = {};
+};
+
 struct RayTracingPipelineDesc final {
-  ShaderModuleHandle smRayGen[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  ShaderModuleHandle smAnyHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  ShaderModuleHandle smClosestHit[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  ShaderModuleHandle smMiss[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  ShaderModuleHandle smIntersection[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
-  ShaderModuleHandle smCallable[LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE] = {};
+  enum { LVK_MAX_RAY_TRACING_SHADERS = 4 };
+  enum { LVK_MAX_RAY_TRACING_HIT_GROUPS = 8 };
+  ShaderModuleHandle smRayGen[LVK_MAX_RAY_TRACING_SHADERS] = {}; // typically just one, but spec allows more
+  ShaderModuleHandle smMiss[LVK_MAX_RAY_TRACING_SHADERS] = {}; // index 0 for primary rays, 1 for shadow rays, etc
+  ShaderModuleHandle smCallable[LVK_MAX_RAY_TRACING_SHADERS] = {};
+  RayTracingHitGroupDesc hitGroups[LVK_MAX_RAY_TRACING_HIT_GROUPS] = {}; // hit groups - one per material
   SpecializationConstantDesc specInfo = {};
-  const char* entryPoint = "main";
   const char* debugName = "";
-
   // clang-format off
-#define GET_SHADER_GROUP_SIZE(name, module) \
-  [[nodiscard]] uint32_t getShaderGroupSize##name() const { \
-    uint32_t n = 0; \
-    while (n < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE && module[n]) n++; \
-    return n; \
-  }
+#define GET_SHADER_GROUP_SIZE(name, sm) \
+  [[nodiscard]] uint32_t getNum##name##Shaders() const { uint32_t n = 0; while (n < LVK_ARRAY_NUM_ELEMENTS(sm) && sm[n]) n++; return n; }
   // clang-format on
-
   GET_SHADER_GROUP_SIZE(RayGen, smRayGen)
-  GET_SHADER_GROUP_SIZE(AnyHit, smAnyHit)
-  GET_SHADER_GROUP_SIZE(ClosestHit, smClosestHit)
-  GET_SHADER_GROUP_SIZE(RayMiss, smMiss)
-  GET_SHADER_GROUP_SIZE(Intersection, smIntersection)
+  GET_SHADER_GROUP_SIZE(Miss, smMiss)
   GET_SHADER_GROUP_SIZE(Callable, smCallable)
-
 #undef GET_SHADER_GROUP_SIZE
+  [[nodiscard]] uint32_t getNumHitGroups() const {
+    uint32_t n = 0;
+    while (n < LVK_ARRAY_NUM_ELEMENTS(hitGroups) && (hitGroups[n].smAnyHit || hitGroups[n].smClosestHit || hitGroups[n].smIntersection))
+      n++;
+    return n;
+  }
 };
 
 struct RenderPass final {
