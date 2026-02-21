@@ -95,8 +95,9 @@ float4 triplanar(uint tex, float3 worldPos, float3 normal) {
   return cXY * weights.z + cZY * weights.x + cXZ * weights.y;
 }
 
+// 1st hit group (index 0)
 [shader("closesthit")]
-void closestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attribs) {
+void closestHitMain0(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attribs) {
   float3 pos0 = HitTriangleVertexPosition(0);
   float3 pos1 = HitTriangleVertexPosition(1);
   float3 pos2 = HitTriangleVertexPosition(2);
@@ -108,6 +109,17 @@ void closestHitMain(inout RayPayload payload, in BuiltInTriangleIntersectionAttr
 
   // triplanar mapping in object-space; for our icosahedron, object-space position and normal vectors are the same
   payload.color = triplanar(pc.texObject, pos, normalize(pos)).rgb;
+}
+
+// 2nd hit group (index 1)
+[shader("closesthit")]
+void closestHitMain1(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attribs) {
+  float3 baryCoords = float3(
+    1.0f - attribs.barycentrics.x - attribs.barycentrics.y,
+    attribs.barycentrics.x,
+    attribs.barycentrics.y
+  );
+  payload.color = baryCoords;
 }
 )";
 
@@ -185,7 +197,7 @@ void main() {
   payload = textureBindless2D(texBackground, 0, uv).rgb;
 })";
 
-const char* codeClosestHit = R"(
+const char* codeClosestHit0 = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_nonuniform_qualifier : require
@@ -241,6 +253,19 @@ void main() {
 }
 )";
 
+const char* codeClosestHit1 = R"(
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+layout(location = 0) rayPayloadInEXT vec3 payload;
+hitAttributeEXT vec2 attribs;
+
+void main() {
+  const vec3 baryCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+  payload = baryCoords;
+}
+)";
+
 lvk::IContext* ctx_ = nullptr;
 
 struct Resources {
@@ -257,7 +282,8 @@ struct Resources {
 
   lvk::Holder<lvk::ShaderModuleHandle> raygen_;
   lvk::Holder<lvk::ShaderModuleHandle> miss_;
-  lvk::Holder<lvk::ShaderModuleHandle> hit_;
+  lvk::Holder<lvk::ShaderModuleHandle> hit0_;
+  lvk::Holder<lvk::ShaderModuleHandle> hit1_;
 
   lvk::Holder<lvk::BufferHandle> ubo;
 
@@ -325,25 +351,39 @@ void createBottomLevelAccelerationStructure() {
 }
 
 void createTopLevelAccelerationStructure() {
-  const lvk::AccelStructInstance instance{
-      // clang-format off
-      .transform = {.matrix = {1.0f, 0.0f, 0.0f, 0.0f,
-                               0.0f, 1.0f, 0.0f, 0.0f,
-                               0.0f, 0.0f, 1.0f, 0.0f}},
-      // clang-format on
-      .instanceCustomIndex = 0,
-      .mask = 0xff,
-      .instanceShaderBindingTableRecordOffset = 0,
-      .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
-      .accelerationStructureReference = ctx_->gpuAddress(res.BLAS),
+  const lvk::AccelStructInstance instances[2] = {
+      {
+          // clang-format off
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, -2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
+          // clang-format on
+          .instanceCustomIndex = 0,
+          .mask = 0xff,
+          .instanceShaderBindingTableRecordOffset = 0, // hit group 0
+          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .accelerationStructureReference = ctx_->gpuAddress(res.BLAS),
+      },
+      {
+          // clang-format off
+          .transform = {.matrix = {1.0f, 0.0f, 0.0f, +2.0f,
+                                   0.0f, 1.0f, 0.0f,  0.0f,
+                                   0.0f, 0.0f, 1.0f,  0.0f}},
+          // clang-format on
+          .instanceCustomIndex = 0,
+          .mask = 0xff,
+          .instanceShaderBindingTableRecordOffset = 1, // hit group 1
+          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .accelerationStructureReference = ctx_->gpuAddress(res.BLAS),
+      },
   };
 
   // Buffer for instance data
   res.instancesBuffer = ctx_->createBuffer(lvk::BufferDesc{
       .usage = lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
       .storage = lvk::StorageType_Device,
-      .size = sizeof(lvk::AccelStructInstance),
-      .data = &instance,
+      .size = sizeof(instances),
+      .data = &instances,
       .debugName = "instanceBuffer",
   });
 
@@ -351,7 +391,7 @@ void createTopLevelAccelerationStructure() {
       .type = lvk::AccelStructType_TLAS,
       .geometryType = lvk::AccelStructGeomType_Instances,
       .instancesBuffer = res.instancesBuffer,
-      .buildRange = {.primitiveCount = 1},
+      .buildRange = {.primitiveCount = 2},
       .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace | lvk::AccelStructBuildFlagBits_AllowUpdate,
   });
 }
@@ -407,8 +447,8 @@ VULKAN_APP_MAIN {
     glm::mat4 viewInverse;
     glm::mat4 projInverse;
   } uniformData = {
-      .viewInverse = glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -5.0f))),
-      .projInverse = glm::inverse(glm::perspective(glm::radians(60.0f), (float)app.width_ / (float)app.height_, 0.1f, 1000.0f)),
+      .viewInverse = glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -8.0f))),
+      .projInverse = glm::inverse(glm::perspective(glm::radians(40.0f), (float)app.width_ / (float)app.height_, 0.1f, 1000.0f)),
   };
 
   res.ubo = ctx_->createBuffer(lvk::BufferDesc{
@@ -436,16 +476,22 @@ VULKAN_APP_MAIN {
 #if defined(LVK_DEMO_WITH_SLANG)
   res.raygen_ = ctx_->createShaderModule({codeSlang, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
   res.miss_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Miss, "Shader Module: main (miss)"});
-  res.hit_ = ctx_->createShaderModule({codeSlang, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.hit0_ = ctx_->createShaderModule({codeSlang, "closestHitMain0", lvk::Stage_ClosestHit, "Shader Module: main (closesthit0)"});
+  res.hit1_ = ctx_->createShaderModule({codeSlang, "closestHitMain1", lvk::Stage_ClosestHit, "Shader Module: main (closesthit1)"});
 #else
   res.raygen_ = ctx_->createShaderModule({codeRayGen, lvk::Stage_RayGen, "Shader Module: main (raygen)"});
   res.miss_ = ctx_->createShaderModule({codeMiss, lvk::Stage_Miss, "Shader Module: main (miss)"});
-  res.hit_ = ctx_->createShaderModule({codeClosestHit, lvk::Stage_ClosestHit, "Shader Module: main (closesthit)"});
+  res.hit0_ = ctx_->createShaderModule({codeClosestHit0, lvk::Stage_ClosestHit, "Shader Module: main (closesthit0)"});
+  res.hit1_ = ctx_->createShaderModule({codeClosestHit1, lvk::Stage_ClosestHit, "Shader Module: main (closesthit1)"});
 #endif // defined(LVK_DEMO_WITH_SLANG)
 
   res.pipeline = ctx_->createRayTracingPipeline(lvk::RayTracingPipelineDesc{
       .smRayGen = {lvk::ShaderModuleHandle(res.raygen_)},
-      .smClosestHit = {lvk::ShaderModuleHandle(res.hit_)},
+      .smClosestHit =
+          {
+              lvk::ShaderModuleHandle(res.hit0_),
+              lvk::ShaderModuleHandle(res.hit1_),
+          },
       .smMiss = {lvk::ShaderModuleHandle(res.miss_)},
   });
 
@@ -454,7 +500,19 @@ VULKAN_APP_MAIN {
 
     const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime(), glm::vec3(1, 1, 1));
 
-    buffer.cmdUpdateBuffer(res.instancesBuffer, offsetof(lvk::AccelStructInstance, transform), sizeof(transformMatrix), &transformMatrix);
+    glm::mat3x4 transforms[2] = {
+        glm::rotate(glm::mat4(1.0f), +(float)glfwGetTime(), glm::vec3(1, 1, 1)),
+        glm::rotate(glm::mat4(1.0f), -(float)glfwGetTime(), glm::vec3(1, 1, 1)),
+    };
+    // set translation directly in the 3x4 matrices
+    transforms[0][0][3] = -2.0f;
+    transforms[1][0][3] = +2.0f;
+    for (int i = 0; i != 2; i++) {
+      buffer.cmdUpdateBuffer(res.instancesBuffer,
+                             i * sizeof(lvk::AccelStructInstance) + offsetof(lvk::AccelStructInstance, transform),
+                             sizeof(glm::mat3x4),
+                             &transforms[i]);
+    }
 
     struct {
       uint64_t camBuffer;
