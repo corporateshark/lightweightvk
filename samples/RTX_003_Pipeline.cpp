@@ -192,7 +192,7 @@ void closestHitMain(
       0xff,       // instance mask
       0,          // ray contribution to hit group index
       0,          // multiplier for geometry contribution
-      2,          // miss shader index (shadow miss)
+      1,          // miss shader index (shadow miss, index 1 in the miss SBT region)
       shadowRay,
       shadowPayload
     );
@@ -400,7 +400,7 @@ void main() {
       0xff,             // cull mask
       0,                // sbtRecordOffset
       0,                // sbtRecordStride
-      2,                // missIndex
+      1,                // missIndex (shadow miss, index 1 in the miss SBT region)
       hitPoint,         // ray origin
       tmin,
       pc.lightDir.xyz,  // ray direction

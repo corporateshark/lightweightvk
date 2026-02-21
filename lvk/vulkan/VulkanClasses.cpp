@@ -5148,78 +5148,79 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   const uint32_t kMaxRayTracingShaderStages = 6 * LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE;
   VkPipelineShaderStageCreateInfo ciShaderStages[kMaxRayTracingShaderStages];
   uint32_t numShaderStages = 0;
-#define ADD_STAGE(shaderModule, vkStageFlag)                                                                                        \
-  for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {                                                                 \
-    if (shaderModule[i])                                                                                                            \
-      ciShaderStages[numShaderStages++] = lvk::getPipelineShaderStageCreateInfo(vkStageFlag, shaderModule[i]->ci, "main", &siComp); \
-  }
-  ADD_STAGE(moduleRGen, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-  ADD_STAGE(moduleMiss, VK_SHADER_STAGE_MISS_BIT_KHR);
-  ADD_STAGE(moduleCHit, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-  ADD_STAGE(moduleAHit, VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
-  ADD_STAGE(moduleIntr, VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
-  ADD_STAGE(moduleCall, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
-#undef ADD_STAGE
 
-  const uint32_t kMaxShaderGroups = 4;
+  // append a shader stage entry and return its index into ciShaderStages[]
+  auto addStage = [&](VkShaderStageFlagBits flag, const VkShaderModuleCreateInfo& ci) -> uint32_t {
+    ciShaderStages[numShaderStages] = lvk::getPipelineShaderStageCreateInfo(flag, ci, "main", &siComp);
+    return numShaderStages++;
+  };
+
+  // raygen + miss + hit + callable, each up to LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE
+  const uint32_t kMaxShaderGroups = 4 * LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE;
   VkRayTracingShaderGroupCreateInfoKHR shaderGroups[kMaxShaderGroups];
   uint32_t numShaderGroups = 0;
-  uint32_t numShaders = 0;
   uint32_t idxMiss = 0;
+  uint32_t numMissGroups = 0;
   uint32_t idxHit = 0;
+  uint32_t numHitGroups = 0;
   uint32_t idxCallable = 0;
+  uint32_t numCallableGroups = 0;
+
+  // ray generation groups
   for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
     if (moduleRGen[i]) {
-      // ray generation group
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = numShaders++,
+          .generalShader = addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, moduleRGen[i]->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
       };
     }
   }
+  // miss groups
   for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
     if (moduleMiss[i]) {
-      // miss group
-      if (i == 0)
-        idxMiss = numShaders;
+      if (!numMissGroups)
+        idxMiss = numShaderGroups;
+      numMissGroups++;
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = numShaders++,
+          .generalShader = addStage(VK_SHADER_STAGE_MISS_BIT_KHR, moduleMiss[i]->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
       };
     }
   }
-  // hit group
+  // hit groups: add chit/ahit/intr stages per-group so indices are correct for each pairing
   for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
     if (moduleAHit[i] || moduleCHit[i] || moduleIntr[i]) {
-      if (i == 0)
-        idxHit = numShaders;
+      if (!numHitGroups)
+        idxHit = numShaderGroups;
+      numHitGroups++;
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
           .generalShader = VK_SHADER_UNUSED_KHR,
-          .closestHitShader = moduleCHit[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
-          .anyHitShader = moduleAHit[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
-          .intersectionShader = moduleIntr[i] ? numShaders++ : VK_SHADER_UNUSED_KHR,
+          .closestHitShader = moduleCHit[i] ? addStage(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, moduleCHit[i]->ci) : VK_SHADER_UNUSED_KHR,
+          .anyHitShader = moduleAHit[i] ? addStage(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, moduleAHit[i]->ci) : VK_SHADER_UNUSED_KHR,
+          .intersectionShader = moduleIntr[i] ? addStage(VK_SHADER_STAGE_INTERSECTION_BIT_KHR, moduleIntr[i]->ci) : VK_SHADER_UNUSED_KHR,
       };
     }
   }
-  // callable group
+  // callable groups
   for (int i = 0; i < LVK_MAX_RAY_TRACING_SHADER_GROUP_SIZE; ++i) {
     if (moduleCall[i]) {
-      if (i == 0)
-        idxCallable = numShaders;
+      if (!numCallableGroups)
+        idxCallable = numShaderGroups;
+      numCallableGroups++;
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = numShaders++,
+          .generalShader = addStage(VK_SHADER_STAGE_CALLABLE_BIT_KHR, moduleCall[i]->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
@@ -5270,26 +5271,27 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   const uint64_t baseAddress = getAlignedAddress(gpuAddress(rtps->sbt), props.shaderGroupBaseAlignment);
   const uint64_t offset = baseAddress - gpuAddress(rtps->sbt);
   upload(rtps->sbt, sbtStorage.data(), sbtBufferSize, offset);
-  // generate SBT entries
+  // generate SBT entries; stride must be sbtEntrySizeAligned (respects shaderGroupBaseAlignment),
+  // and size must cover all records in each group so the hardware can index into them correctly
   rtps->sbtEntryRayGen = {
       .deviceAddress = baseAddress,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .stride = sbtEntrySizeAligned,
+      .size = sbtEntrySizeAligned, // ray gen: size == stride (exactly one record used at a time)
   };
   rtps->sbtEntryMiss = {
-      .deviceAddress = idxMiss ? baseAddress + idxMiss * sbtEntrySizeAligned : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .deviceAddress = numMissGroups ? baseAddress + idxMiss * sbtEntrySizeAligned : 0,
+      .stride = sbtEntrySizeAligned,
+      .size = numMissGroups * sbtEntrySizeAligned,
   };
   rtps->sbtEntryHit = {
-      .deviceAddress = idxHit ? baseAddress + idxHit * sbtEntrySizeAligned : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .deviceAddress = numHitGroups ? baseAddress + idxHit * sbtEntrySizeAligned : 0,
+      .stride = sbtEntrySizeAligned,
+      .size = numHitGroups * sbtEntrySizeAligned,
   };
   rtps->sbtEntryCallable = {
-      .deviceAddress = idxCallable ? baseAddress + idxCallable * sbtEntrySizeAligned : 0,
-      .stride = handleSizeAligned,
-      .size = handleSizeAligned,
+      .deviceAddress = numCallableGroups ? baseAddress + idxCallable * sbtEntrySizeAligned : 0,
+      .stride = sbtEntrySizeAligned,
+      .size = numCallableGroups * sbtEntrySizeAligned,
   };
 
   return rtps->pipeline_;
