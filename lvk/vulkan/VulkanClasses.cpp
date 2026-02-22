@@ -1390,6 +1390,9 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   LVK_PROFILER_FUNCTION();
 
   LVK_PROFILER_ZONE("vkQueuePresent()", LVK_PROFILER_COLOR_PRESENT);
+  if (ctx_.has_KHR_swapchain_maintenance1_ && !presentFence_[currentImageIndex_]) {
+    presentFence_[currentImageIndex_] = lvk::createFence(device_, "Fence: present-fence");
+  }
   const VkSwapchainPresentFenceInfoEXT fenceInfo = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT,
       .swapchainCount = 1,
@@ -1404,11 +1407,6 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
       .pSwapchains = &swapchain_,
       .pImageIndices = &currentImageIndex_,
   };
-  if (ctx_.has_KHR_swapchain_maintenance1_) {
-    if (!presentFence_[currentImageIndex_]) {
-      presentFence_[currentImageIndex_] = lvk::createFence(device_, "Fence: present-fence");
-    }
-  }
   VkResult r = vkQueuePresentKHR(graphicsQueue_, &pi);
   if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR && r != VK_ERROR_OUT_OF_DATE_KHR) {
     VK_ASSERT(r);
