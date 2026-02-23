@@ -149,6 +149,17 @@ class VulkanSwapchain final {
   VkPresentModeKHR currentPresentMode_ = VK_PRESENT_MODE_FIFO_KHR; // rewritten at swapchain creation
   VkPresentModeKHR registeredPresentModes_[kMaxPresentModes] = {};
   uint32_t numRegisteredPresentModes_ = 0;
+  const VkSwapchainPresentModeInfoKHR presentModeInfo_ = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_KHR,
+      .swapchainCount = 1,
+      .pPresentModes = &currentPresentMode_, // allows runtime present mode switching without swapchain recreation
+  };
+  VkSwapchainPresentFenceInfoKHR presentFenceInfo_ = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,
+      .pNext = &presentModeInfo_,
+      .swapchainCount = 1,
+      .pFences = nullptr, // we set `pFences` in present() to the current image's present fence
+  };
   TextureHandle swapchainTextures_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   VkSemaphore acquireSemaphore_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   VkFence presentFence_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
@@ -573,6 +584,7 @@ class VulkanContext final : public IContext {
   uint32_t getSwapchainCurrentImageIndex() const override;
   uint32_t getNumSwapchainImages() const override;
   void recreateSwapchain(int newWidth, int newHeight) override;
+  bool setCurrentPresentMode(PresentMode mode) override;
 
   uint32_t getFramebufferMSAABitMask() const override;
   bool isExtensionEnabled(const char* ext) const override;

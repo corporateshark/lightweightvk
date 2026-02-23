@@ -1430,6 +1430,7 @@ bool lvk::VulkanSwapchain::setCurrentPresentMode(VkPresentModeKHR mode) {
   for (uint32_t i = 0; i != numRegisteredPresentModes_; i++) {
     if (registeredPresentModes_[i] == mode) {
       currentPresentMode_ = mode;
+      presentFenceInfo_.pNext = &presentModeInfo_; // switch to the new present mode in the next present() call
       return true;
     }
   }
@@ -1443,21 +1444,10 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   if (ctx_.has_KHR_swapchain_maintenance1_ && !presentFence_[currentImageIndex_]) {
     presentFence_[currentImageIndex_] = lvk::createFence(device_, "Fence: present-fence");
   }
-  const VkSwapchainPresentFenceInfoEXT fenceInfo = {
-      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT,
-      .swapchainCount = 1,
-      .pFences = &presentFence_[currentImageIndex_],
-  };
-  // allows runtime present mode switching without swapchain recreation
-  const VkSwapchainPresentModeInfoEXT modeInfo = {
-      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT,
-      .pNext = &fenceInfo,
-      .swapchainCount = 1,
-      .pPresentModes = &currentPresentMode_,
-  };
+  presentFenceInfo_.pFences = &presentFence_[currentImageIndex_];
   const VkPresentInfoKHR pi = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .pNext = ctx_.has_KHR_swapchain_maintenance1_ ? &modeInfo : nullptr,
+      .pNext = ctx_.has_KHR_swapchain_maintenance1_ ? &presentFenceInfo_ : nullptr,
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &waitSemaphore,
       .swapchainCount = 1u,
@@ -1470,7 +1460,10 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   }
   LVK_PROFILER_ZONE_END();
 
-  // Ready to call acquireNextImage() on the next getCurrentVulkanTexture();
+  // drop the previous present mode so we don't set it again in the next `present()` call if the present mode is not switched at runtime
+  presentFenceInfo_.pNext = nullptr;
+
+  // ready to call `acquireNextImage()` on the next `getCurrentVulkanTexture()`
   getNextImage_ = true;
   currentFrameIndex_++;
 
@@ -6261,6 +6254,14 @@ uint32_t lvk::VulkanContext::getSwapchainCurrentImageIndex() const {
 
 void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
   initSwapchain(newWidth, newHeight);
+}
+
+bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
+  if (!hasSwapchain()) {
+    return false;
+  }
+
+  return swapchain_->setCurrentPresentMode(presentModeToVkPresentMode(mode));
 }
 
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
