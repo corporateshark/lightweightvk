@@ -1192,13 +1192,53 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return usageFlags;
   };
 
+  currentPresentMode_ = chooseSwapPresentMode(ctx.devicePresentModes_);
+
+  // query modes compatible with presentMode
+  std::vector<VkPresentModeKHR> compatiblePresentModes;
+  if (ctx.has_KHR_swapchain_maintenance1_) {
+    const VkSurfacePresentModeKHR surfacePresentMode = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_KHR,
+        .presentMode = currentPresentMode_,
+    };
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .pNext = &surfacePresentMode,
+        .surface = ctx.vkSurface_,
+    };
+    VkSurfacePresentModeCompatibilityKHR compatibility = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_KHR,
+    };
+    VkSurfaceCapabilities2KHR caps2 = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+        .pNext = &compatibility,
+    };
+    vkGetPhysicalDeviceSurfaceCapabilities2KHR(ctx.getVkPhysicalDevice(), &surfaceInfo, &caps2);
+    compatiblePresentModes.resize(compatibility.presentModeCount);
+    compatibility.pPresentModes = compatiblePresentModes.data();
+    vkGetPhysicalDeviceSurfaceCapabilities2KHR(ctx.getVkPhysicalDevice(), &surfaceInfo, &caps2);
+  }
+
+  registeredPresentModes_[numRegisteredPresentModes_++] = currentPresentMode_;
+  // keep every compatible entry from ContextConfig::presentModes[]
+  for (const lvk::PresentMode m : ctx.config_.presentModes) {
+    const VkPresentModeKHR vk = presentModeToVkPresentMode(m);
+    if (!std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), vk)) {
+      continue; // not compatible with the chosen presentMode
+    }
+    if (std::count(std::cbegin(registeredPresentModes_), std::cbegin(registeredPresentModes_) + numRegisteredPresentModes_, vk)) {
+      continue; // already registered
+    }
+    registeredPresentModes_[numRegisteredPresentModes_++] = vk;
+  }
+
   const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
   const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
-  const VkPresentModeKHR presentMode = chooseSwapPresentMode(ctx.devicePresentModes_);
+
   const VkSwapchainPresentModesCreateInfoKHR pmci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR,
-      .presentModeCount = 1,
-      .pPresentModes = &presentMode,
+      .presentModeCount = numRegisteredPresentModes_,
+      .pPresentModes = registeredPresentModes_,
   };
   const VkSwapchainCreateInfoKHR ci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -1219,7 +1259,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
       .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
 #endif
       .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
-      .presentMode = presentMode,
+      .presentMode = currentPresentMode_,
       .clipped = VK_TRUE,
       .oldSwapchain = VK_NULL_HANDLE,
   };

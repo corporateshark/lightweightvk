@@ -144,6 +144,9 @@ class VulkanSwapchain final {
   bool getNextImage_ = true;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
   VkSurfaceFormatKHR surfaceFormat_ = {.format = VK_FORMAT_UNDEFINED};
+  VkPresentModeKHR currentPresentMode_ = VK_PRESENT_MODE_FIFO_KHR; // rewritten at swapchain creation
+  VkPresentModeKHR registeredPresentModes_[kMaxPresentModes] = {};
+  uint32_t numRegisteredPresentModes_ = 0;
   TextureHandle swapchainTextures_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   VkSemaphore acquireSemaphore_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
   VkFence presentFence_[LVK_MAX_SWAPCHAIN_IMAGES] = {};
