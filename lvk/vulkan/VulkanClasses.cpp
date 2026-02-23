@@ -1426,6 +1426,16 @@ uint32_t lvk::VulkanSwapchain::getSwapchainCurrentImageIndex() const {
   return currentImageIndex_;
 }
 
+bool lvk::VulkanSwapchain::setCurrentPresentMode(VkPresentModeKHR mode) {
+  for (uint32_t i = 0; i != numRegisteredPresentModes_; i++) {
+    if (registeredPresentModes_[i] == mode) {
+      currentPresentMode_ = mode;
+      return true;
+    }
+  }
+  return false;
+}
+
 lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
   LVK_PROFILER_FUNCTION();
 
@@ -1438,9 +1448,16 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
       .swapchainCount = 1,
       .pFences = &presentFence_[currentImageIndex_],
   };
+  // allows runtime present mode switching without swapchain recreation
+  const VkSwapchainPresentModeInfoEXT modeInfo = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT,
+      .pNext = &fenceInfo,
+      .swapchainCount = 1,
+      .pPresentModes = &currentPresentMode_,
+  };
   const VkPresentInfoKHR pi = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .pNext = ctx_.has_KHR_swapchain_maintenance1_ ? &fenceInfo : nullptr,
+      .pNext = ctx_.has_KHR_swapchain_maintenance1_ ? &modeInfo : nullptr,
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &waitSemaphore,
       .swapchainCount = 1u,

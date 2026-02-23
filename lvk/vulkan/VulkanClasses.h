@@ -131,6 +131,8 @@ class VulkanSwapchain final {
   const VkSurfaceFormatKHR& getSurfaceFormat() const;
   uint32_t getSwapchainCurrentImageIndex() const;
   uint32_t getNumSwapchainImages() const;
+  // runtime present mode switching without swapchain recreation (VK_KHR_swapchain_maintenance1), returns `false` if the mode cannot be set
+  [[nodiscard]] bool setCurrentPresentMode(VkPresentModeKHR mode);
 
  public:
   VulkanContext& ctx_;
