@@ -5937,7 +5937,10 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   if (hasExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
     instanceExtensionNames.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-  } else if (hasExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
+  }
+  // Lavapipe 25.3.3 supports both `VK_KHR_surface_maintenance` and `VK_EXT_surface_maintenance`,
+  // but only supports `VK_EXT_swapchain_maintenance1`, which in turn requires `VK_EXT_surface_maintenance1`
+  if (hasExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, allInstanceExtensions)) {
     // remove once VK_KHR_surface_maintenance1 becomes mandatory
     instanceExtensionNames.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
