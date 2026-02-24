@@ -103,6 +103,55 @@ void lvk::setResultFrom(Result* outResult, VkResult result) {
   }
 }
 
+lvk::PresentMode lvk::vkPresentModeToPresentMode(VkPresentModeKHR mode) {
+  switch (mode) {
+  case VK_PRESENT_MODE_IMMEDIATE_KHR:
+    return lvk::PresentMode_Immediate;
+  case VK_PRESENT_MODE_MAILBOX_KHR:
+    return lvk::PresentMode_Mailbox;
+  case VK_PRESENT_MODE_FIFO_KHR:
+    return lvk::PresentMode_FIFO;
+  case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+    return lvk::PresentMode_FIFO_Relaxed;
+  case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+    return lvk::PresentMode_Shared_Demand_Refresh;
+  case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+    return lvk::PresentMode_Shared_Continuous_Refresh;
+  case VK_PRESENT_MODE_FIFO_LATEST_READY_KHR:
+    return lvk::PresentMode_FIFO_Latest_Ready;
+  case VK_PRESENT_MODE_MAX_ENUM_KHR:
+    LVK_ASSERT(false);
+    return lvk::PresentMode_FIFO;
+  }
+#if defined(_MSC_VER) || defined(__GNUC__)
+  LVK_ASSERT(false);
+  return lvk::PresentMode_FIFO;
+#endif // _MSC_VER
+}
+
+VkPresentModeKHR lvk::presentModeToVkPresentMode(lvk::PresentMode mode) {
+  switch (mode) {
+  case lvk::PresentMode_Immediate:
+    return VK_PRESENT_MODE_IMMEDIATE_KHR;
+  case lvk::PresentMode_Mailbox:
+    return VK_PRESENT_MODE_MAILBOX_KHR;
+  case lvk::PresentMode_FIFO:
+    return VK_PRESENT_MODE_FIFO_KHR;
+  case lvk::PresentMode_FIFO_Relaxed:
+    return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+  case lvk::PresentMode_Shared_Demand_Refresh:
+    return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
+  case lvk::PresentMode_Shared_Continuous_Refresh:
+    return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
+  case lvk::PresentMode_FIFO_Latest_Ready:
+    return VK_PRESENT_MODE_FIFO_LATEST_READY_KHR;
+  }
+#if defined(_MSC_VER) || defined(__GNUC__)
+  LVK_ASSERT(false);
+  return VK_PRESENT_MODE_FIFO_KHR;
+#endif // _MSC_VER
+}
+
 lvk::Result lvk::getResultFromVkResult(VkResult result) {
   if (result == VK_SUCCESS) {
     return Result();

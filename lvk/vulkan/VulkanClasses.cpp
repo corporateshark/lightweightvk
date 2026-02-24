@@ -139,48 +139,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-lvk::PresentMode vkPresentModeToPresentMode(VkPresentModeKHR mode) {
-  switch (mode) {
-  case VK_PRESENT_MODE_IMMEDIATE_KHR:
-    return lvk::PresentMode_Immediate;
-  case VK_PRESENT_MODE_MAILBOX_KHR:
-    return lvk::PresentMode_Mailbox;
-  case VK_PRESENT_MODE_FIFO_KHR:
-    return lvk::PresentMode_FIFO;
-  case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
-    return lvk::PresentMode_FIFO_Relaxed;
-  case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
-    return lvk::PresentMode_Shared_Demand_Refresh;
-  case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
-    return lvk::PresentMode_Shared_Continuous_Refresh;
-  case VK_PRESENT_MODE_FIFO_LATEST_READY_KHR:
-    return lvk::PresentMode_FIFO_Latest_Ready;
-  }
-  LVK_ASSERT(false);
-  return lvk::PresentMode_FIFO;
-}
-
-VkPresentModeKHR presentModeToVkPresentMode(lvk::PresentMode mode) {
-  switch (mode) {
-  case lvk::PresentMode_Immediate:
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
-  case lvk::PresentMode_Mailbox:
-    return VK_PRESENT_MODE_MAILBOX_KHR;
-  case lvk::PresentMode_FIFO:
-    return VK_PRESENT_MODE_FIFO_KHR;
-  case lvk::PresentMode_FIFO_Relaxed:
-    return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
-  case lvk::PresentMode_Shared_Demand_Refresh:
-    return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
-  case lvk::PresentMode_Shared_Continuous_Refresh:
-    return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
-  case lvk::PresentMode_FIFO_Latest_Ready:
-    return VK_PRESENT_MODE_FIFO_LATEST_READY_KHR;
-  }
-  LVK_ASSERT(false);
-  return VK_PRESENT_MODE_FIFO_KHR;
-}
-
 VkIndexType indexFormatToVkIndexType(lvk::IndexFormat fmt) {
   switch (fmt) {
   case lvk::IndexFormat_UI8:
