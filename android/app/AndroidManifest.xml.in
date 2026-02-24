@@ -20,6 +20,7 @@
         android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
         android:screenOrientation="landscape"
         android:launchMode="singleTask"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
         android:label="@APP_NAME@">
       <meta-data
           android:name="android.app.lib_name"

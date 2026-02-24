@@ -7,6 +7,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 public class MainActivity extends android.app.NativeActivity {
   private static final String PERMISSION_READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE";
@@ -17,9 +19,19 @@ public class MainActivity extends android.app.NativeActivity {
     System.loadLibrary("lvk_android_native_@APP_NAME@");
   }
 
+  private void hideSystemBars() {
+    getWindow().setDecorFitsSystemWindows(false);
+    final WindowInsetsController controller = getWindow().getInsetsController();
+    if (controller != null) {
+      controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+      controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+    }
+  }
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    hideSystemBars();
     if (checkSelfPermission(PERMISSION_READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
         checkSelfPermission(PERMISSION_WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
       requestPermissions(new String[] {PERMISSION_READ_EXTERNAL_STORAGE, 
@@ -32,6 +44,14 @@ public class MainActivity extends android.app.NativeActivity {
         intent.setData(uri);
         startActivity(intent);
       }
+    }
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus) {
+      hideSystemBars();
     }
   }
 
