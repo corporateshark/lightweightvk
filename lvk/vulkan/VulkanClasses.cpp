@@ -145,6 +145,27 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
+lvk::PresentMode vkPresentModeToPresentMode(VkPresentModeKHR mode) {
+  switch (mode) {
+  case VK_PRESENT_MODE_IMMEDIATE_KHR:
+    return lvk::PresentMode_Immediate;
+  case VK_PRESENT_MODE_MAILBOX_KHR:
+    return lvk::PresentMode_Mailbox;
+  case VK_PRESENT_MODE_FIFO_KHR:
+    return lvk::PresentMode_FIFO;
+  case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+    return lvk::PresentMode_FIFO_Relaxed;
+  case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
+    return lvk::PresentMode_Shared_Demand_Refresh;
+  case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
+    return lvk::PresentMode_Shared_Continuous_Refresh;
+  case VK_PRESENT_MODE_FIFO_LATEST_READY_KHR:
+    return lvk::PresentMode_FIFO_Latest_Ready;
+  }
+  LVK_ASSERT(false);
+  return lvk::PresentMode_FIFO;
+}
+
 VkPresentModeKHR presentModeToVkPresentMode(lvk::PresentMode mode) {
   switch (mode) {
   case lvk::PresentMode_Immediate:
@@ -6262,6 +6283,10 @@ bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
   }
 
   return swapchain_->setCurrentPresentMode(presentModeToVkPresentMode(mode));
+}
+
+[[nodiscard]] lvk::PresentMode lvk::VulkanContext::getCurrentPresentMode() const {
+  return swapchain_ ? vkPresentModeToPresentMode(swapchain_->currentPresentMode_) : PresentMode_FIFO;
 }
 
 uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
