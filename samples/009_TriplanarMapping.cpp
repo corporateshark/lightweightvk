@@ -7,6 +7,8 @@
 
 #include "VulkanApp.h"
 
+#include "lvk/vulkan/VulkanClasses.h"
+
 #include <filesystem>
 
 #include <ldrutils/lutils/ScopeExit.h>
@@ -204,6 +206,18 @@ VULKAN_APP_MAIN {
       .width = 1280,
       .height = 1024,
       .resizable = true,
+      // register present modes at swapchain creation so all supported modes can be runtime-switched via setCurrentPresentMode()
+      .contextConfig =
+          {
+              .presentModes =
+                  {
+                      lvk::PresentMode_Mailbox,
+                      lvk::PresentMode_Immediate,
+                      lvk::PresentMode_FIFO_Relaxed,
+                      lvk::PresentMode_FIFO_Latest_Ready,
+                      lvk::PresentMode_FIFO,
+                  },
+          },
   };
   VULKAN_APP_DECLARE(app, cfg);
 
@@ -319,6 +333,34 @@ VULKAN_APP_MAIN {
     v = glm::sphericalRand(1.0f);
   }
 
+  auto presentModeToString = [](lvk::PresentMode mode) {
+    switch (mode) {
+    case lvk::PresentMode_FIFO:
+      return "FIFO (V-Sync)";
+    case lvk::PresentMode_FIFO_Relaxed:
+      return "FIFO Relaxed";
+    case lvk::PresentMode_FIFO_Latest_Ready:
+      return "FIFO Latest Ready";
+    case lvk::PresentMode_Mailbox:
+      return "Mailbox";
+    case lvk::PresentMode_Immediate:
+      return "Immediate (No V-Sync)";
+    default:
+      return "Unknown";
+    }
+  };
+
+  // get available present modes
+  std::vector<lvk::PresentMode> availableModes;
+  lvk::VulkanContext& vulkanContext = static_cast<lvk::VulkanContext&>(*ctx);
+  for (uint32_t i = 0; i != vulkanContext.swapchain_->numRegisteredPresentModes_; i++) {
+    availableModes.push_back(lvk::vkPresentModeToPresentMode(vulkanContext.swapchain_->registeredPresentModes_[i]));
+  };
+  int currentPresentModeIdx = 0;
+  if (!availableModes.empty()) {
+    (void)ctx->setCurrentPresentMode(availableModes[0]);
+  }
+
 #if defined(LVK_DEMO_WITH_SLANG)
   lvk::Holder<lvk::ShaderModuleHandle> vert_ = ctx->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
   lvk::Holder<lvk::ShaderModuleHandle> frag_ = ctx->createShaderModule({codeSlang, lvk::Stage_Frag, "Shader Module: main (frag)"});
@@ -409,6 +451,19 @@ VULKAN_APP_MAIN {
     ImGui::Image(texture1_.index(), ImVec2(512, 512));
     if (texture1_.valid())
       ImGui::Text("Press T to unload texture");
+    ImGui::End();
+    ImGui::SetNextWindowPos({0, 30}, ImGuiCond_Once);
+    ImGui::Begin("Present Mode", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
+    if (availableModes.size() > 1) {
+      for (int i = 0; i != (int)availableModes.size(); i++) {
+        if (ImGui::RadioButton(presentModeToString(availableModes[i]), &currentPresentModeIdx, i)) {
+          (void)ctx->setCurrentPresentMode(availableModes[i]);
+        }
+      }
+    } else {
+      ImGui::TextDisabled("Runtime switching unavailable");
+      ImGui::Text("%s", presentModeToString(ctx->getCurrentPresentMode()));
+    }
     ImGui::End();
     app.drawFPS();
     app.imgui_->endFrame(buffer);
