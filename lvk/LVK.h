@@ -1116,6 +1116,7 @@ class IContext {
   virtual uint32_t getNumSwapchainImages() const = 0;
   virtual void recreateSwapchain(int newWidth, int newHeight) = 0;
   [[nodiscard]] virtual bool setCurrentPresentMode(PresentMode mode) = 0; // VK_KHR_swapchain_maintenance1
+  [[nodiscard]] virtual PresentMode getCurrentPresentMode() const = 0;
 
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
