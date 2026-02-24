@@ -5834,7 +5834,7 @@ void lvk::VulkanContext::recreateSwapchain(int newWidth, int newHeight) {
 }
 
 bool lvk::VulkanContext::setCurrentPresentMode(PresentMode mode) {
-  if (!hasSwapchain()) {
+  if (!hasSwapchain() || !has_KHR_swapchain_maintenance1_) {
     return false;
   }
 
