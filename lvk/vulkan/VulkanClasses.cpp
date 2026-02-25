@@ -1133,14 +1133,21 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   registeredPresentModes_[numRegisteredPresentModes_++] = currentPresentMode_;
   // keep every compatible entry from ContextConfig::presentModes[]
   for (const lvk::PresentMode m : ctx.config_.presentModes) {
-    const VkPresentModeKHR vk = presentModeToVkPresentMode(m);
-    if (!std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), vk)) {
+    const VkPresentModeKHR mode = presentModeToVkPresentMode(m);
+    if (!std::count(compatiblePresentModes.cbegin(), compatiblePresentModes.cend(), mode)) {
       continue; // not compatible with the chosen presentMode
     }
-    if (std::count(std::cbegin(registeredPresentModes_), std::cbegin(registeredPresentModes_) + numRegisteredPresentModes_, vk)) {
+    if (std::count(std::cbegin(registeredPresentModes_), std::cbegin(registeredPresentModes_) + numRegisteredPresentModes_, mode)) {
       continue; // already registered
     }
-    registeredPresentModes_[numRegisteredPresentModes_++] = vk;
+    if (!ctx.has_KHR_present_mode_fifo_latest_ready_ && (mode == VK_PRESENT_MODE_FIFO_LATEST_READY_KHR)) {
+      continue; // not supported
+    }
+    if (!ctx.has_KHR_shared_presentable_image_ &&
+        (mode == VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR || mode == VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR)) {
+      continue; // not supported
+    }
+    registeredPresentModes_[numRegisteredPresentModes_++] = mode;
   }
 
   const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
