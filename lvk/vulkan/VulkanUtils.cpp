@@ -866,9 +866,19 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
       .compilerOptionEntryCount = LVK_ARRAY_NUM_ELEMENTS(compilerOptions),
   };
 
+  // Descriptor aliasing (multiple variables sharing the same binding) is valid SPIR-V and Vulkan with PARTIALLY_BOUND.
+  // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#interfaces-resources-descset
+  // Slang has to remove this warning completely: https://github.com/shader-slang/slang/issues/3330
+  slang::CompilerOptionEntry sessionOptions[] = { // const-correctness https://github.com/shader-slang/slang/pull/10282
+      {.name = slang::CompilerOptionName::DisableWarnings,
+       .value = {.kind = slang::CompilerOptionValueKind::String, .stringValue0 = "39001"}},
+  };
+
   const slang::SessionDesc sessionDesc = {
       .targets = &targetDesc,
       .targetCount = 1,
+      .compilerOptionEntries = sessionOptions,
+      .compilerOptionEntryCount = LVK_ARRAY_NUM_ELEMENTS(sessionOptions),
   };
 
   Slang::ComPtr<slang::ISession> session;

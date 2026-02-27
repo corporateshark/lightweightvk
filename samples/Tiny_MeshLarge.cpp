@@ -100,31 +100,6 @@ uint64_t pipelineTimestamps[GPUTimestamp_NUM_TIMESTAMPS] = {};
 double timestampBeginRendering = 0;
 double timestampEndRendering = 0;
 
-// https://github.com/KhronosGroup/MoltenVK/issues/2106
-// TODO: After fix, use the only shader with binding = 2 to be compatible with Vulkan image layout on other platforms.
-#ifdef __APPLE__
-const char* kCodeComputeTest = R"(
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-layout (set = 0, binding = 0, rgba8) uniform image2D kTextures2DInOut[];
-
-layout(push_constant) uniform constants {
-   uint tex;
-   uint width;
-   uint height;
-} pc;
-
-void main() {
-   ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
-
-   if (pos.x < pc.width && pos.y < pc.height) {
-     vec4 pixel = imageLoad(kTextures2DInOut[pc.tex], pos);
-     float luminance = dot(pixel, vec4(0.299, 0.587, 0.114, 0.0)); // https://www.w3.org/TR/AERT/#color-contrast
-     imageStore(kTextures2DInOut[pc.tex], pos, vec4(vec3(luminance), 1.0));
-   }
-}
-)";
-#else
 const char* kCodeComputeTest = R"(
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -146,7 +121,7 @@ void main() {
    }
 }
 )";
-#endif
+
 
 const char* kCodeFullscreenVS = R"(
 layout (location=0) out vec2 uv;
