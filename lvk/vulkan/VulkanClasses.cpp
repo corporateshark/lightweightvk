@@ -67,7 +67,7 @@ enum Bindings {
   kBinding_NumBindings = 5,
 };
 
-const uint32_t kDescriptorSet_InputAttachments = 4; // for VkDescriptorSetLayout in getVkPipeline()
+const uint32_t kDescriptorSet_InputAttachments = 1; // for VkDescriptorSetLayout in getVkPipeline()
 
 VkDeviceSize getAlignedSize(uint64_t value, uint64_t alignment) {
   return (value + alignment - 1) & ~(alignment - 1);
@@ -5047,14 +5047,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       LLOGW("Push constants size exceeded %u (max %u bytes)", pushConstantsSize, limits.maxPushConstantsSize);
     }
 
-    // duplicate for MoltenVK
-    const VkDescriptorSetLayout dsls[kDescriptorSet_InputAttachments + 1] = {
-        dset.vkDSL,
-        dset.vkDSL,
-        dset.vkDSL,
-        dset.vkDSL,
-        dslInputAttachments_,
-    };
+    const VkDescriptorSetLayout dsls[] = {dset.vkDSL, dslInputAttachments_};
     const VkPushConstantRange range = {
         .stageFlags = rps->shaderStageFlags_,
         .offset = 0,
@@ -5217,7 +5210,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
       LLOGW("Push constants size exceeded %u (max %u bytes)", pushConstantsSize, limits.maxPushConstantsSize);
     }
 
-    const VkDescriptorSetLayout dsls[] = {dset.vkDSL, dset.vkDSL, dset.vkDSL, dset.vkDSL};
     const VkPushConstantRange range = {
         .stageFlags = rtps->shaderStageFlags_,
         .size = (uint32_t)getAlignedSize(pushConstantsSize, 16),
@@ -5225,8 +5217,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
 
     const VkPipelineLayoutCreateInfo ciPipelineLayout = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = LVK_ARRAY_NUM_ELEMENTS(dsls),
-        .pSetLayouts = dsls,
+        .setLayoutCount = 1,
+        .pSetLayouts = &dset.vkDSL,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &range,
     };
@@ -5426,8 +5418,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
 
     // create pipeline layout
     {
-      // duplicate for MoltenVK
-      const VkDescriptorSetLayout dsls[] = {dset.vkDSL, dset.vkDSL, dset.vkDSL, dset.vkDSL};
       const VkPushConstantRange range = {
           .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
           .offset = 0,
@@ -5435,8 +5425,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
       };
       const VkPipelineLayoutCreateInfo ci = {
           .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-          .setLayoutCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(dsls),
-          .pSetLayouts = dsls,
+          .setLayoutCount = 1,
+          .pSetLayouts = &dset.vkDSL,
           .pushConstantRangeCount = 1,
           .pPushConstantRanges = &range,
       };
@@ -6130,11 +6120,11 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
               "layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];\n");
       sourcePatched +=
           "layout (set = 0, binding = 0) uniform texture2D   kTextures2D[];\n"
-          "layout (set = 1, binding = 0) uniform texture3D   kTextures3D[];\n"
-          "layout (set = 2, binding = 0) uniform textureCube kTexturesCube[];\n"
-          "layout (set = 3, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
+          "layout (set = 0, binding = 0) uniform texture3D   kTextures3D[];\n"
+          "layout (set = 0, binding = 0) uniform textureCube kTexturesCube[];\n"
+          "layout (set = 0, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
           "layout (set = 0, binding = 1) uniform sampler       kSamplers[];\n"
-          "layout (set = 3, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
+          "layout (set = 0, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
           "layout (set = 0, binding = 3) uniform sampler2D     kSamplersYUV[];\n";
       addCode("textureBindless2D(",
               "vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {\n"
@@ -6218,11 +6208,11 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   // bindless texture and sampler arrays
   sourcePatched +=
       "[[vk::binding(0, 0)]] Texture2D    kTextures2D[];\n"
-      "[[vk::binding(0, 1)]] Texture3D    kTextures3D[];\n"
-      "[[vk::binding(0, 2)]] TextureCube  kTexturesCube[];\n"
-      "[[vk::binding(0, 3)]] Texture2D    kTextures2DShadow[];\n"
+      "[[vk::binding(0, 0)]] Texture3D    kTextures3D[];\n"
+      "[[vk::binding(0, 0)]] TextureCube  kTexturesCube[];\n"
+      "[[vk::binding(0, 0)]] Texture2D    kTextures2DShadow[];\n"
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
-      "[[vk::binding(1, 3)]] SamplerComparisonState kSamplersShadow[];\n"
+      "[[vk::binding(1, 0)]] SamplerComparisonState kSamplersShadow[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
   // cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
   addCode("kTLAS[", "[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];\n");
@@ -6518,15 +6508,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
   };
 #endif // ANDROID
 
-#if defined(__APPLE__)
-  // Shader validation doesn't work in MoltenVK for SPIR-V 1.6 under Vulkan 1.3:
-  // "Invalid SPIR-V binary version 1.6 for target environment SPIR-V 1.5 (under Vulkan 1.2 semantics)."
-  const VkValidationFeatureDisableEXT validationFeaturesDisabled[] = {
-      VK_VALIDATION_FEATURE_DISABLE_SHADERS_EXT,
-      VK_VALIDATION_FEATURE_DISABLE_SHADER_VALIDATION_CACHE_EXT,
-  };
-#endif // __APPLE__
-
   const VkValidationFeaturesEXT features = {
       .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
       .pNext = nullptr,
@@ -6534,15 +6515,9 @@ lvk::Result lvk::VulkanContext::createInstance() {
       .enabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesEnabled) : 0u,
       .pEnabledValidationFeatures = config_.enableValidation ? validationFeaturesEnabled : nullptr,
 #endif
-#if defined(__APPLE__)
-      .disabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesDisabled) : 0u,
-      .pDisabledValidationFeatures = config_.enableValidation ? validationFeaturesDisabled : nullptr,
-#endif
   };
 
 #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
-  // https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md
-  const int useMetalArgumentBuffers = 1;
   const VkBool32 gpuav_descriptor_checks = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8688
   const VkBool32 gpuav_indirect_draws_buffers = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/8579
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
@@ -6555,7 +6530,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
       LAYER_SETTINGS_BOOL32("gpuav_descriptor_checks", &gpuav_descriptor_checks),
       LAYER_SETTINGS_BOOL32("gpuav_indirect_draws_buffers", &gpuav_indirect_draws_buffers),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
-      {"MoltenVK", "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", VK_LAYER_SETTING_TYPE_INT32_EXT, 1, &useMetalArgumentBuffers},
   };
 #undef LAYER_SETTINGS_BOOL32
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
@@ -7342,7 +7316,6 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 #endif
           "Missing Vulkan features: %s\n",
           missingFeatures.c_str());
-      // Do not exit here in case of MoltenVK, some 1.3 features are available via extensions.
 #ifndef __APPLE__
       assert(false);
       return Result(Result::Code::RuntimeError);
@@ -7812,8 +7785,7 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 void lvk::VulkanContext::bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const {
   LVK_PROFILER_FUNCTION();
   const VkDescriptorSet dset = DSets_[lastUpdatedDSet_].vkDSet;
-  const VkDescriptorSet dsets[4] = {dset, dset, dset, dset};
-  vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, (uint32_t)LVK_ARRAY_NUM_ELEMENTS(dsets), dsets, 0, nullptr);
+  vkCmdBindDescriptorSets(cmdBuf, bindPoint, layout, 0, 1, &dset, 0, nullptr);
 }
 
 void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
