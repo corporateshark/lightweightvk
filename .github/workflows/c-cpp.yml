@@ -21,6 +21,7 @@ jobs:
           submodules: recursive
 
       - name: Set up NDK
+        id: setup-ndk
         uses: nttld/setup-ndk@v1.5.0
         with:
           ndk-version: r27c
@@ -55,6 +56,7 @@ jobs:
         env:
           CC: "clang-16"
           CXX: "clang++-16"
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cmake -G "Unix Makefiles" -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
 
