@@ -955,22 +955,26 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
       // 2: Blit the image from the prev mip-level (i-1) (VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) to the current mip-level (i)
       // (VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 #if LVK_VULKAN_PRINT_COMMANDS
-      LLOGL("%p vkCmdBlitImage()\n", commandBuffer);
+      LLOGL("%p vkCmdBlitImage2()\n", commandBuffer);
 #endif // LVK_VULKAN_PRINT_COMMANDS
-      const VkImageBlit blit = {
+      const VkImageBlit2 blit = {
+          .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
           .srcSubresource = VkImageSubresourceLayers{imageAspectFlags, i - 1, layer, 1},
           .srcOffsets = {srcOffsets[0], srcOffsets[1]},
           .dstSubresource = VkImageSubresourceLayers{imageAspectFlags, i, layer, 1},
           .dstOffsets = {dstOffsets[0], dstOffsets[1]},
       };
-      vkCmdBlitImage(commandBuffer,
-                     vkImage_,
-                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                     vkImage_,
-                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                     1,
-                     &blit,
-                     blitFilter);
+      const VkBlitImageInfo2 blitInfo = {
+          .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+          .srcImage = vkImage_,
+          .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+          .dstImage = vkImage_,
+          .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .regionCount = 1,
+          .pRegions = &blit,
+          .filter = blitFilter,
+      };
+      vkCmdBlitImage2(commandBuffer, &blitInfo);
       // 3: Transition i-th level to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL as it will be read from in the next iteration
       lvk::imageMemoryBarrier2(commandBuffer,
                                vkImage_,
