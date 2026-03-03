@@ -3679,7 +3679,8 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
       range);
 
   // 2.  Copy the pixel data from the image into the staging buffer
-  const VkBufferImageCopy copy = {
+  const VkBufferImageCopy2 copy = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
       .bufferOffset = desc.offset_,
       .bufferRowLength = 0,
       .bufferImageHeight = extent.height,
@@ -3693,7 +3694,15 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
       .imageOffset = offset,
       .imageExtent = extent,
   };
-  vkCmdCopyImageToBuffer(wrapper1.cmdBuf_, image.vkImage_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, stagingBuffer->vkBuffer_, 1, &copy);
+  const VkCopyImageToBufferInfo2 copyInfo = {
+      .sType = VK_STRUCTURE_TYPE_COPY_IMAGE_TO_BUFFER_INFO_2,
+      .srcImage = image.vkImage_,
+      .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+      .dstBuffer = stagingBuffer->vkBuffer_,
+      .regionCount = 1,
+      .pRegions = &copy,
+  };
+  vkCmdCopyImageToBuffer2(wrapper1.cmdBuf_, &copyInfo);
 
   desc.handle_ = ctx_.immediate_->submit(wrapper1);
   regions_.push_back(desc);
