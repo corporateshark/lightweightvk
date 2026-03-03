@@ -3500,7 +3500,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
 
 #if LVK_VULKAN_PRINT_COMMANDS
-      LLOGL("%p vkCmdCopyBufferToImage()\n", wrapper.cmdBuf_);
+      LLOGL("%p vkCmdCopyBufferToImage2()\n", wrapper.cmdBuf_);
 #endif // LVK_VULKAN_PRINT_COMMANDS
       // 2. Copy the pixel data from the staging buffer into the image
       uint32_t planeOffset = 0;
@@ -3516,7 +3516,8 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .offset = {.x = imageRegion.offset.x >> mipLevel, .y = imageRegion.offset.y >> mipLevel},
             .extent = extent,
         };
-        const VkBufferImageCopy copy = {
+        const VkBufferImageCopy2 copy = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
             // the offset for this level is at the start of all mip-levels plus the size of all previous mip-levels being uploaded
             .bufferOffset = desc.offset_ + offset + planeOffset,
             .bufferRowLength = bufferRowLength,
@@ -3526,7 +3527,15 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .imageOffset = {.x = region.offset.x, .y = region.offset.y, .z = 0},
             .imageExtent = {.width = region.extent.width, .height = region.extent.height, .depth = 1u},
         };
-        vkCmdCopyBufferToImage(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, image.vkImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        const VkCopyBufferToImageInfo2 copyInfo = {
+            .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+            .srcBuffer = stagingBuffer->vkBuffer_,
+            .dstImage = image.vkImage_,
+            .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .regionCount = 1,
+            .pRegions = &copy,
+        };
+        vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
         planeOffset += lvk::getTextureBytesPerPlane(imageRegion.extent.width, imageRegion.extent.height, vkFormatToFormat(format), plane);
       }
 
