@@ -3602,7 +3602,8 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
                            VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
 
   // 2. Copy the pixel data from the staging buffer into the image
-  const VkBufferImageCopy copy = {
+  const VkBufferImageCopy2 copy = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
       .bufferOffset = desc.offset_,
       .bufferRowLength = 0,
       .bufferImageHeight = 0,
@@ -3610,7 +3611,15 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
       .imageOffset = offset,
       .imageExtent = extent,
   };
-  vkCmdCopyBufferToImage(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, image.vkImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+  const VkCopyBufferToImageInfo2 copyInfo = {
+      .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+      .srcBuffer = stagingBuffer->vkBuffer_,
+      .dstImage = image.vkImage_,
+      .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      .regionCount = 1,
+      .pRegions = &copy,
+  };
+  vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
 
   // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
   lvk::imageMemoryBarrier2(
