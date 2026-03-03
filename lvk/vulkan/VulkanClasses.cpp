@@ -3111,7 +3111,8 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
       rangeDst);
 
-  const VkImageCopy regionCopy = {
+  const VkImageCopy2 regionCopy = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_COPY_2,
       .srcSubresource =
           {
               .aspectMask = imgSrc->getImageAspectFlags(),
@@ -3130,7 +3131,8 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
       .dstOffset = {.x = dstOffset.x, .y = dstOffset.y, .z = dstOffset.z},
       .extent = {.width = extent.width, .height = extent.height, .depth = extent.depth},
   };
-  const VkImageBlit regionBlit = {
+  const VkImageBlit2 regionBlit = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
       .srcSubresource = regionCopy.srcSubresource,
       .srcOffsets = {{},
                      {.x = int32_t(srcOffset.x + imgSrc->vkExtent_.width),
@@ -3145,21 +3147,27 @@ void lvk::CommandBuffer::cmdCopyImage(TextureHandle src,
 
   const bool isCompatible = getBytesPerPixel(imgSrc->vkImageFormat_) == getBytesPerPixel(imgDst->vkImageFormat_);
 
-  isCompatible ? vkCmdCopyImage(wrapper_->cmdBuf_,
-                                imgSrc->vkImage_,
-                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                imgDst->vkImage_,
-                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                1,
-                                &regionCopy)
-               : vkCmdBlitImage(wrapper_->cmdBuf_,
-                                imgSrc->vkImage_,
-                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                imgDst->vkImage_,
-                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                1,
-                                &regionBlit,
-                                VK_FILTER_LINEAR);
+  isCompatible ? vkCmdCopyImage2(wrapper_->cmdBuf_,
+                                 &(const VkCopyImageInfo2&)VkCopyImageInfo2{
+                                     .sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2,
+                                     .srcImage = imgSrc->vkImage_,
+                                     .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                     .dstImage = imgDst->vkImage_,
+                                     .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                     .regionCount = 1,
+                                     .pRegions = &regionCopy,
+                                 })
+               : vkCmdBlitImage2(wrapper_->cmdBuf_,
+                                 &(const VkBlitImageInfo2&)VkBlitImageInfo2{
+                                     .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+                                     .srcImage = imgSrc->vkImage_,
+                                     .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                     .dstImage = imgDst->vkImage_,
+                                     .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                     .regionCount = 1,
+                                     .pRegions = &regionBlit,
+                                     .filter = VK_FILTER_LINEAR,
+                                 });
 
   lvk::imageMemoryBarrier2(
       wrapper_->cmdBuf_,
