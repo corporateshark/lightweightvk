@@ -6135,6 +6135,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
               "vec4 textureBindlessCubeLod(uint textureid, uint samplerid, vec3 uvw, float lod) {\n"
               "  return textureLod(nonuniformEXT(samplerCube(kTexturesCube[textureid], kSamplers[samplerid])), uvw, lod);\n"
               "}\n");
+      addCode("textureBindless3D(",
+              "vec4 textureBindless3D(uint textureid, uint samplerid, vec3 uvw) {\n"
+              "  return texture(nonuniformEXT(sampler3D(kTextures3D[textureid], kSamplers[samplerid])), uvw);\n"
+              "}\n");
+      addCode("textureBindless3DLod(",
+              "vec4 textureBindless3DLod(uint textureid, uint samplerid, vec3 uvw, float lod) {\n"
+              "  return textureLod(nonuniformEXT(sampler3D(kTextures3D[textureid], kSamplers[samplerid])), uvw, lod);\n"
+              "}\n");
       addCode("textureBindlessQueryLevels2D(",
               "int textureBindlessQueryLevels2D(uint textureid) {\n"
               "  return textureQueryLevels(nonuniformEXT(kTextures2D[textureid]));\n"
@@ -6218,6 +6226,16 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
           "float textureBindless2DShadow(uint textureid, uint samplerid, float3 uvw) {\n"
           "  return kTextures2DShadow[NonUniformResourceIndex(textureid)].SampleCmpLevelZero(\n"
           "    kSamplersShadow[NonUniformResourceIndex(samplerid)], uvw.xy, uvw.z);\n"
+          "}\n");
+  addCode("textureBindless3D(",
+          "float4 textureBindless3D(uint textureid, uint samplerid, float3 uvw) {\n"
+          "  return kTextures3D[NonUniformResourceIndex(textureid)].Sample(\n"
+          "    kSamplers[NonUniformResourceIndex(samplerid)], uvw);\n"
+          "}\n");
+  addCode("textureBindless3DLod(",
+          "float4 textureBindless3DLod(uint textureid, uint samplerid, float3 uvw, float lod) {\n"
+          "  return kTextures3D[NonUniformResourceIndex(textureid)].SampleLevel(\n"
+          "    kSamplers[NonUniformResourceIndex(samplerid)], uvw, lod);\n"
           "}\n");
 
   sourcePatched += source;
