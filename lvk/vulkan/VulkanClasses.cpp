@@ -3255,75 +3255,87 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
                                            const void* data) {
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT_MSG(image.numLevels_ == 1, "Can handle only 3D images with exactly 1 mip-level");
-  LVK_ASSERT_MSG((offset.x == 0) && (offset.y == 0) && (offset.z == 0), "Can upload only full-size 3D images");
-  const uint32_t storageSize = extent.width * extent.height * extent.depth * getBytesPerPixel(format);
 
-  ensureStagingBufferSize(storageSize);
+  const uint64_t sliceBytes64 = (uint64_t)extent.width * extent.height * getBytesPerPixel(format);
+  LVK_ASSERT_MSG(sliceBytes64 <= UINT32_MAX, "Single depth slice exceeds 4 GB");
+  const uint32_t sliceBytes = (uint32_t)sliceBytes64;
 
-  LVK_ASSERT_MSG(storageSize <= stagingBufferSize_, "No support for copying image in multiple smaller chunk sizes");
+  const uint32_t maxSlicesPerBatch = std::max(1u, (uint32_t)(maxBufferSize_ / sliceBytes));
 
-  // get next staging buffer free offset
-  MemoryRegionDesc desc = getNextFreeOffset(storageSize);
+  ensureStagingBufferSize(sliceBytes * maxSlicesPerBatch);
 
-  // No support for copying image in multiple smaller chunk sizes.
-  // If we get smaller buffer size than storageSize, we will wait for GPU idle and get a bigger chunk.
-  if (desc.size_ < storageSize) {
-    waitAndReset();
-    desc = getNextFreeOffset(storageSize);
-  }
-
-  LVK_ASSERT(desc.size_ >= storageSize);
+  const uint8_t* srcPtr = static_cast<const uint8_t*>(data);
+  uint32_t remainingSlices = extent.depth;
+  uint32_t currentZ = offset.z;
 
   lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
 
-  // 1. Copy the pixel data into the host visible staging buffer
-  stagingBuffer->bufferSubData(ctx_, desc.offset_, storageSize, data);
+  while (remainingSlices) {
+    const uint32_t batchSlices = std::min(remainingSlices, maxSlicesPerBatch);
+    const uint32_t batchBytes = batchSlices * sliceBytes;
 
-  const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
+    MemoryRegionDesc desc = getNextFreeOffset(batchBytes);
+    if (desc.size_ < batchBytes) {
+      waitAndReset();
+      desc = getNextFreeOffset(batchBytes);
+    }
+    LVK_ASSERT(desc.size_ >= batchBytes);
 
-  // 1. Transition initial image layout into TRANSFER_DST_OPTIMAL
-  lvk::imageMemoryBarrier2(wrapper.cmdBuf_,
-                           image.vkImage_,
-                           StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_NONE},
-                           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
-                           VK_IMAGE_LAYOUT_UNDEFINED,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+    stagingBuffer->bufferSubData(ctx_, desc.offset_, batchBytes, srcPtr);
 
-  // 2. Copy the pixel data from the staging buffer into the image
-  const VkBufferImageCopy2 copy = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
-      .bufferOffset = desc.offset_,
-      .bufferRowLength = 0,
-      .bufferImageHeight = 0,
-      .imageSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-      .imageOffset = offset,
-      .imageExtent = extent,
-  };
-  const VkCopyBufferToImageInfo2 copyInfo = {
-      .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
-      .srcBuffer = stagingBuffer->vkBuffer_,
-      .dstImage = image.vkImage_,
-      .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      .regionCount = 1,
-      .pRegions = &copy,
-  };
-  vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+    const auto& wrapper = ctx_.immediate_->acquire();
 
-  // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
-  lvk::imageMemoryBarrier2(
-      wrapper.cmdBuf_,
-      image.vkImage_,
-      StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
-      StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-      VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+    // first batch: transition the whole image UNDEFINED -> TRANSFER_DST_OPTIMAL
+    if (remainingSlices == extent.depth) {
+      lvk::imageMemoryBarrier2(wrapper.cmdBuf_,
+                               image.vkImage_,
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, .access = VK_ACCESS_2_NONE},
+                               StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+                               VK_IMAGE_LAYOUT_UNDEFINED,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+    }
+
+    const VkBufferImageCopy2 copy = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2,
+        .bufferOffset = desc.offset_,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+        .imageOffset = {offset.x, offset.y, (int32_t)currentZ},
+        .imageExtent = {extent.width, extent.height, batchSlices},
+    };
+    const VkCopyBufferToImageInfo2 copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2,
+        .srcBuffer = stagingBuffer->vkBuffer_,
+        .dstImage = image.vkImage_,
+        .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .regionCount = 1,
+        .pRegions = &copy,
+    };
+    vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
+
+    // last batch: transition the whole image TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+    if (remainingSlices == batchSlices) {
+      lvk::imageMemoryBarrier2(
+          wrapper.cmdBuf_,
+          image.vkImage_,
+          StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
+          StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
+          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
+    }
+
+    desc.handle_ = ctx_.immediate_->submit(wrapper);
+    regions_.push_back(desc);
+
+    srcPtr += batchBytes;
+    currentZ += batchSlices;
+    remainingSlices -= batchSlices;
+  }
 
   image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-  desc.handle_ = ctx_.immediate_->submit(wrapper);
-  regions_.push_back(desc);
 }
 
 void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
