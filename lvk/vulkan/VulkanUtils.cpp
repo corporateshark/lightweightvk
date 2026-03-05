@@ -1131,6 +1131,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   switch (format) {
   case VK_FORMAT_R8_UNORM:
     return 1;
+  case VK_FORMAT_R16_UNORM:
   case VK_FORMAT_R16_SFLOAT:
     return 2;
   case VK_FORMAT_R8G8B8_UNORM:
