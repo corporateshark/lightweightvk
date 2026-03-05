@@ -83,8 +83,8 @@
     "name": "3D-Graphics-Rendering-Cookbook/shared",
     "source": {
         "type": "sourcefile",
-        "url": "https://raw.githubusercontent.com/PacktPublishing/3D-Graphics-Rendering-Cookbook/e8bf80a2f4f2f9fafc49860f4d5b201101d42af8/shared/UtilsMath.h",
-        "sha1": "e50eb2ecfe9342ad66423493cd127ff00c1053b2"
+        "url": "https://raw.githubusercontent.com/PacktPublishing/3D-Graphics-Rendering-Cookbook/bafe5bc1bd7bedccfc238906e860f6db44300e60/shared/UtilsMath.h",
+        "sha1": "de0bc00d4825d25b6a6f890145ec421282ffff9a"
     }
 },
 {
