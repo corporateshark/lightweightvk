@@ -125,6 +125,10 @@
         "type": "git",
         "url": "https://github.com/KhronosGroup/OpenXR-SDK.git",
         "sha1": "release-1.1.54"
+    },
+    "postprocess": {
+       "type": "script",
+       "file": "openxr-sdk.py"
     }
 },
 {
