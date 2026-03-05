@@ -29,8 +29,7 @@ void* createCocoaWindowView(GLFWwindow* window, void** outLayer) {
   layer.device = MTLCreateSystemDefaultDevice();
   layer.opaque = YES;
   layer.displaySyncEnabled = YES;
-  NSScreen* screen = [NSScreen mainScreen];
-  CGFloat factor = [screen backingScaleFactor];
+  CGFloat factor = nswindow.backingScaleFactor;
   layer.contentsScale = factor;
   nswindow.contentView.layer = layer;
   nswindow.contentView.wantsLayer = YES;
