@@ -37,7 +37,7 @@ jobs:
         run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-13 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
             which make
@@ -54,8 +54,8 @@ jobs:
       - name: Generate Android projects
         shell: bash
         env:
-          CC: "clang-16"
-          CXX: "clang++-16"
+          CC: "clang-18"
+          CXX: "clang++-18"
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cmake -G "Unix Makefiles" -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
@@ -105,16 +105,16 @@ jobs:
               name: "Ubuntu - Clang",
               os: ubuntu-latest,
               build_type: "Debug",
-              cc: "clang-16",
-              cxx: "clang++-16",
+              cc: "clang-18",
+              cxx: "clang++-18",
               generators: "Unix Makefiles",
             }
           - {
               name: "Ubuntu - Clang (Wayland)",
               os: ubuntu-latest,
               build_type: "Debug",
-              cc: "clang-16",
-              cxx: "clang++-16",
+              cc: "clang-18",
+              cxx: "clang++-18",
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_WAYLAND=ON"
             }
@@ -122,8 +122,8 @@ jobs:
 #              name: "Ubuntu - GCC",
 #              os: ubuntu-latest,
 #              build_type: "Debug",
-#              cc: "gcc-13",
-#              cxx: "g++-13",
+#              cc: "gcc-14",
+#              cxx: "g++-14",
 #              generators: "Unix Makefiles"
 #            }
       runs-on: ${{ matrix.config.os }}
@@ -138,7 +138,7 @@ jobs:
           run: |
             sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
-            sudo apt-get install -y gcc-13 clang-16 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-12-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
+            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
             sudo pip install cmake==4.0.0
 
