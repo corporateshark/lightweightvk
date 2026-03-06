@@ -330,7 +330,17 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   for (const ImDrawList* cmdList : dd->CmdLists) {
     for (int cmd_i = 0; cmd_i < cmdList->CmdBuffer.Size; cmd_i++) {
       const ImDrawCmd cmd = cmdList->CmdBuffer[cmd_i];
-      LVK_ASSERT(cmd.UserCallback == nullptr);
+
+      if (cmd.UserCallback) {
+        if (cmd.UserCallback == ImDrawCallback_ResetRenderState) {
+          cmdBuffer.cmdBindViewport({.x = 0.0f, .y = 0.0f, .width = fb_width, .height = fb_height});
+          cmdBuffer.cmdBindIndexBuffer(drawableData.ib_, lvk::IndexFormat_UI16);
+          cmdBuffer.cmdBindRenderPipeline(pipeline_);
+        } else {
+          cmd.UserCallback(cmdList, &cmd);
+        }
+        continue;
+      }
 
       ImVec2 clipMin((cmd.ClipRect.x - clip_off.x) * clip_scale.x, (cmd.ClipRect.y - clip_off.y) * clip_scale.y);
       ImVec2 clipMax((cmd.ClipRect.z - clip_off.x) * clip_scale.x, (cmd.ClipRect.w - clip_off.y) * clip_scale.y);
