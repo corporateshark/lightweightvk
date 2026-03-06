@@ -347,7 +347,7 @@ lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& out
     glfwSetWindowPos(window, x, y);
   }
 
-  glfwGetWindowSize(window, &outWidth, &outHeight);
+  glfwGetFramebufferSize(window, &outWidth, &outHeight);
 
   glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int, int action, int) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
