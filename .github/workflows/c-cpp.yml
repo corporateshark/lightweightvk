@@ -67,23 +67,19 @@ jobs:
         run: |
           cmake -G Ninja -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
 
-      - name: Assemble 009_TriplanarMapping APK
+      - name: Assemble APKs
         run: |
-          cd build/android/009_TriplanarMapping
-          chmod +x ./gradlew
-          ./gradlew assembleDebug  
-
-      - name: Assemble Tiny_MeshLarge APK
-        run: |
-          cd build/android/Tiny_MeshLarge
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
-
-      - name: Assemble 003_RenderToCubeMapSinglePass APK
-        run: |
-          cd build/android/003_RenderToCubeMapSinglePass
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+          samples=(
+            009_TriplanarMapping
+            Tiny_MeshLarge
+            003_RenderToCubeMapSinglePass
+          )
+          for dir in "${samples[@]}"; do
+            cd build/android/$dir
+            chmod +x ./gradlew
+            ./gradlew assembleDebug
+            cd ${{ github.workspace }}
+          done
 
   cmake-build:
       strategy:
