@@ -30,13 +30,15 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1.5.0
         with:
-          ndk-version: r27c
+          ndk-version: r29
+          local-cache: true
 
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
           java-version: 19
           distribution: 'oracle'
+          cache: 'gradle'
 
       - name: Install Ubuntu packages
         shell: bash
@@ -63,7 +65,7 @@ jobs:
           CXX: "clang++-18"
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          cmake -G "Unix Makefiles" -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
+          cmake -G Ninja -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
 
       - name: Assemble Tiny_Mesh APK
         run: |
