@@ -28,7 +28,7 @@ jobs:
 
       - name: Set up NDK
         id: setup-ndk
-        uses: nttld/setup-ndk@v1.5.0
+        uses: nttld/setup-ndk@v1.6.0
         with:
           ndk-version: r29
           local-cache: true
