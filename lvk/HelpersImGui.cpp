@@ -183,20 +183,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels)
 
   io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
 
-  // init fonts
   io.FontDefault = font;
-  if ((io.BackendFlags & ImGuiBackendFlags_RendererHasTextures) == 0) {
-    unsigned char* pixels;
-    int width, height;
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    fontTexture_ = ctx_.createTexture({.type = lvk::TextureType_2D,
-                                       .format = lvk::Format_RGBA_UN8,
-                                       .dimensions = {(uint32_t)width, (uint32_t)height},
-                                       .usage = lvk::TextureUsageBits_Sampled,
-                                       .data = pixels},
-                                      "ImGuiRenderer::fontTexture_");
-    io.Fonts->TexID = fontTexture_.index();
-  }
 }
 
 void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
