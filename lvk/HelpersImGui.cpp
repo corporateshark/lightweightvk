@@ -183,11 +183,7 @@ void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels)
 }
 
 void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
-  const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
-
   ImGuiIO& io = ImGui::GetIO();
-  io.DisplaySize = ImVec2(dim.width / displayScale_, dim.height / displayScale_);
-  io.DisplayFramebufferScale = ImVec2(displayScale_, displayScale_);
   io.IniFilename = nullptr;
 
   if (pipeline_.empty()) {
@@ -195,6 +191,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   }
 #if LVK_WITH_GLFW
   ImGui_ImplGlfw_NewFrame();
+#else
+  const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
+  io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
 #endif // LVK_WITH_GLFW
   ImGui::NewFrame();
 }
@@ -309,10 +308,6 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
   }
 
   cmdBuffer.cmdPopDebugGroupLabel();
-}
-
-void ImGuiRenderer::setDisplayScale(float displayScale) {
-  displayScale_ = displayScale;
 }
 
 } // namespace lvk

@@ -26,8 +26,6 @@ class ImGuiRenderer {
   void beginFrame(const lvk::Framebuffer& desc);
   void endFrame(lvk::ICommandBuffer& cmdBuffer);
   
-  void setDisplayScale(float displayScale);
-
  private:
   lvk::Holder<lvk::RenderPipelineHandle> createNewPipelineState(const lvk::Framebuffer& desc);
 
@@ -38,7 +36,6 @@ class ImGuiRenderer {
   lvk::Holder<lvk::RenderPipelineHandle> pipeline_;
   lvk::Holder<lvk::TextureHandle> fontTexture_;
   lvk::Holder<lvk::SamplerHandle> samplerClamp_;
-  float displayScale_ = 1.0f;
 
   uint32_t frameIndex_ = 0;
 
