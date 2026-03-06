@@ -393,12 +393,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     timeStamp = newTimeStamp;
 
     if (window_) {
-#if defined(__APPLE__)
-      // a hacky workaround for retina displays
-      glfwGetWindowSize(window_, &width_, &height_);
-#else
       glfwGetFramebufferSize(window_, &width_, &height_);
-#endif // __APPLE__
 
       glfwPollEvents();
     }
