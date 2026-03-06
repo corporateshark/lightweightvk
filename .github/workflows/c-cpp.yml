@@ -44,7 +44,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
-            sudo pip install cmake==4.0.0
+            sudo pip install --break-system-packages cmake==4.0.0
             which make
             cmake --version
 
@@ -150,7 +150,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
-            sudo pip install cmake==4.0.0
+            sudo pip install --break-system-packages cmake==4.0.0
 
         - name: Prepare Vulkan SDK
           uses: jakoch/install-vulkan-sdk-action@v1.4.0
@@ -256,7 +256,7 @@ jobs:
             sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-validationlayers
             sudo apt remove cmake -y
-            sudo pip install cmake==4.0.0
+            sudo pip install --break-system-packages cmake==4.0.0
             which make
             cmake --version
             vulkaninfo
