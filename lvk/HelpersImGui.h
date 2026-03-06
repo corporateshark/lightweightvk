@@ -34,6 +34,7 @@ class ImGuiRenderer {
   lvk::Holder<lvk::ShaderModuleHandle> vert_;
   lvk::Holder<lvk::ShaderModuleHandle> frag_;
   lvk::Holder<lvk::RenderPipelineHandle> pipeline_;
+  lvk::Format pipelineColorFormat_ = lvk::Format_Invalid;
   lvk::Holder<lvk::SamplerHandle> samplerClamp_;
   struct ImGuiRendererImpl* pimpl_ = nullptr;
 

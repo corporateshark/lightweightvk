@@ -190,8 +190,10 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   ImGuiIO& io = ImGui::GetIO();
   io.IniFilename = nullptr;
 
-  if (pipeline_.empty()) {
+  const lvk::Format colorFormat = ctx_.getFormat(desc.color[0].texture);
+  if (pipeline_.empty() || pipelineColorFormat_ != colorFormat) {
     pipeline_ = createNewPipelineState(desc);
+    pipelineColorFormat_ = colorFormat;
   }
 #if LVK_WITH_GLFW
   ImGui_ImplGlfw_NewFrame();
