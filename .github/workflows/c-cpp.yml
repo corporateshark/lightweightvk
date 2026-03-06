@@ -41,7 +41,6 @@ jobs:
       - name: Install Ubuntu packages
         shell: bash
         run: |
-            sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
             sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
@@ -148,7 +147,6 @@ jobs:
         - if: startsWith(matrix.config.os, 'ubuntu')
           name: Install Ubuntu packages
           run: |
-            sudo sed -i 's/azure\.//' /etc/apt/sources.list
             sudo apt-get update
             sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
