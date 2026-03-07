@@ -24,7 +24,7 @@ There are no plans to keep this fork in sync with the upstream.
 
  * Linux
  * Windows
- * MacOS (via MoltenVK)
+ * MacOS (via MoltenVK or KosmicKrisp)
  * Android
 
 ## API Support
@@ -37,7 +37,7 @@ There are no plans to keep this fork in sync with the upstream.
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
 
-On MacOS, `MoltenVK 1.3+` and `VulkanSDK 1.4.321+` are required.
+On MacOS, `KosmicKrisp` or `MoltenVK 1.4+`, and `VulkanSDK 1.4.341+` are required.
 
 ## Build
 
