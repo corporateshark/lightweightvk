@@ -32,7 +32,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 
  * Linux
  * Windows
- * MacOS (via MoltenVK)
+ * MacOS (via MoltenVK or KosmicKrisp)
  * Android
 
 ## API Support
@@ -45,7 +45,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
 
-On MacOS, `MoltenVK 1.4+` and `VulkanSDK 1.4.341+` are required.
+On MacOS, `KosmicKrisp` or `MoltenVK 1.4+`, and `VulkanSDK 1.4.341+` are required.
 
 ## Build
 
