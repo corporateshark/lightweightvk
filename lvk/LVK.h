@@ -623,10 +623,6 @@ struct VertexInput final {
   // clang-format on
 
   uint32_t getVertexSize() const;
-
-  bool operator==(const VertexInput& other) const {
-    return memcmp(this, &other, sizeof(VertexInput)) == 0;
-  }
 };
 
 struct ColorAttachment {
