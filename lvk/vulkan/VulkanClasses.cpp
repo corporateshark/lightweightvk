@@ -6773,21 +6773,21 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   if (has_KHR_calibrated_timestamps_) {
     uint32_t numTimeDomains = 0;
-    VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(vkPhysicalDevice_, &numTimeDomains, nullptr));
+    VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(vkPhysicalDevice_, &numTimeDomains, nullptr));
     timeDomains.resize(numTimeDomains);
-    VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(vkPhysicalDevice_, &numTimeDomains, timeDomains.data()));
+    VK_ASSERT(vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(vkPhysicalDevice_, &numTimeDomains, timeDomains.data()));
   }
 
   const bool hasHostQuery = vkFeatures12_.hostQueryReset && [&timeDomains]() -> bool {
     for (VkTimeDomainEXT domain : timeDomains)
-      if (domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT || domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT)
+      if (domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR || domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR)
         return true;
     return false;
   }();
 
   if (hasHostQuery) {
     pimpl_->tracyVkCtx_ = TracyVkContextHostCalibrated(
-        vkPhysicalDevice_, vkDevice_, vkResetQueryPool, vkGetPhysicalDeviceCalibrateableTimeDomainsEXT, vkGetCalibratedTimestampsEXT);
+        vkPhysicalDevice_, vkDevice_, vkResetQueryPool, vkGetPhysicalDeviceCalibrateableTimeDomainsKHR, vkGetCalibratedTimestampsKHR);
   } else {
     const VkCommandPoolCreateInfo ciCommandPool = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -6809,8 +6809,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
                                                      vkDevice_,
                                                      deviceQueues_.graphicsQueue,
                                                      pimpl_->tracyCommandBuffer_,
-                                                     vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
-                                                     vkGetCalibratedTimestampsEXT);
+                                                     vkGetPhysicalDeviceCalibrateableTimeDomainsKHR,
+                                                     vkGetCalibratedTimestampsKHR);
     } else {
       pimpl_->tracyVkCtx_ = TracyVkContext(vkPhysicalDevice_, vkDevice_, deviceQueues_.graphicsQueue, pimpl_->tracyCommandBuffer_);
     };
