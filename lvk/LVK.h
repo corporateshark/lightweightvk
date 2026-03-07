@@ -440,7 +440,7 @@ enum PolygonMode : uint8_t {
   PolygonMode_Point = 2,
 };
 
-enum class VertexFormat {
+enum class VertexFormat : uint8_t {
   Invalid = 0,
 
   Float1,
