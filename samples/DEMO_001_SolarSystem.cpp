@@ -394,7 +394,7 @@ V2F vertexMain(
   out.position = pc.bufPerFrame.proj[gl_ViewIndex] *
                  pc.bufPerFrame.view[gl_ViewIndex] *
                  pc.bufModelMatrices[idx] * input.in_Vertex;
-  out.v_TexCoord = input.in_TexCoord;
+  out.v_TexCoord = input.in_TexCoord + 0.05 * input.in_Normal.xz;
   out.v_Time     = pc.bufPerFrame.u_Time;
   out.v_Texture0 = pc.bufMaterials[idx].texEmissive;
   out.v_Texture1 = pc.bufMaterials[idx].texDiffuse;
@@ -625,14 +625,16 @@ layout (location=2) flat out uint v_Texture0;
 layout (location=3) flat out uint v_Texture1;
 
 void main() {
+  uint idx = bufDrawData.dd[gl_InstanceIndex].idMatrix;
+
   gl_Position = bufPerFrame.proj[gl_ViewIndex] *
                 bufPerFrame.view[gl_ViewIndex] *
-                bufModelMatrices.m[bufDrawData.dd[gl_InstanceIndex].idMatrix] * in_Vertex;
+                bufModelMatrices.m[idx] * in_Vertex;
 
-  v_TexCoord = in_TexCoord;
+  v_TexCoord = in_TexCoord + 0.05 * in_Normal.xz;
   v_Time     = bufPerFrame.u_Time;
-  v_Texture0 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idMatrix].texEmissive;
-  v_Texture1 = bufMaterials.m[bufDrawData.dd[gl_InstanceIndex].idMatrix].texDiffuse;
+  v_Texture0 = bufMaterials.m[idx].texEmissive;
+  v_Texture1 = bufMaterials.m[idx].texDiffuse;
 }
 )";
 
