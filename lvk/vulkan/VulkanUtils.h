@@ -56,6 +56,11 @@
     }                                                              \
   }
 
+// forward declarations
+namespace slang {
+struct IGlobalSession;
+};
+
 typedef struct glslang_resource_s glslang_resource_t;
 
 struct StageAccess {
@@ -82,7 +87,12 @@ Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
                             const glslang_resource_t* glslLangResource = nullptr);
-Result compileShaderSlang(lvk::ShaderStage stage, const char* code, const char* entryPointName, std::vector<uint8_t>* outSPIRV);
+Result compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
+                          lvk::ShaderStage stage,
+                          const char* code,
+                          const char* entryPointName,
+                          std::vector<uint8_t>* outSPIRV);
+void destroySlangGlobalSession(slang::IGlobalSession* slangGlobalSession);
 
 VkSamplerCreateInfo samplerStateDescToVkSamplerCreateInfo(const lvk::SamplerStateDesc& desc, const VkPhysicalDeviceLimits& limits);
 VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,

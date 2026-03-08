@@ -820,7 +820,8 @@ lvk::Result lvk::compileShaderGlslang(lvk::ShaderStage stage,
   return Result();
 }
 
-lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
+lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
+                                    lvk::ShaderStage stage,
                                     const char* code,
                                     const char* entryPointName,
                                     std::vector<uint8_t>* outSPIRV) {
@@ -831,9 +832,12 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
   }
 
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
-  Slang::ComPtr<slang::IGlobalSession> slangGlobalSession;
-  if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession.writeRef()))) {
-    return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
+  if (!slangGlobalSession) {
+    Slang::ComPtr<slang::IGlobalSession> globalSession;
+    if (SLANG_FAILED(slang::createGlobalSession(globalSession.writeRef()))) {
+      return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
+    }
+    slangGlobalSession = globalSession.detach();
   }
 
   const slang::CompilerOptionEntry compilerOptions[] = {
@@ -961,6 +965,14 @@ lvk::Result lvk::compileShaderSlang(lvk::ShaderStage stage,
 #else
   LVK_ASSERT_MSG(false, "No Slang support available");
   return Result(Result::Code::RuntimeError, "No Slang support available");
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+}
+
+void lvk::destroySlangGlobalSession(slang::IGlobalSession* slangGlobalSession) {
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+  if (slangGlobalSession) {
+    slangGlobalSession->release();
+  }
 #endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
 }
 

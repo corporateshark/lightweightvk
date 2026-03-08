@@ -752,6 +752,8 @@ struct VulkanContextImpl final {
   // max of all used values of VkSamplerYcbcrConversionImageFormatProperties::combinedImageSamplerDescriptorCount
   uint32_t maxCombinedImageSamplerDescriptorCount_ = 1;
 
+  slang::IGlobalSession* slangGlobalSession_ = nullptr;
+
 #if defined(LVK_WITH_TRACY_GPU)
   TracyVkCtx tracyVkCtx_ = nullptr;
   VkCommandPool tracyCommandPool_ = VK_NULL_HANDLE;
@@ -3984,6 +3986,10 @@ lvk::VulkanContext::~VulkanContext() {
 
   vkDestroyInstance(vkInstance_, nullptr);
 
+#if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+  destroySlangGlobalSession(pimpl_->slangGlobalSession_);
+#endif // defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
+
   glslang_finalize_process();
 
   LLOGL("Vulkan graphics pipelines created: %u\n", VulkanPipelineBuilder::getNumPipelinesCreated());
@@ -6254,7 +6260,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   source = sourcePatched.c_str();
 
   std::vector<uint8_t> spirv;
-  lvk::Result::setResult(outResult, lvk::compileShaderSlang(stage, source, entryPointName, &spirv));
+  lvk::Result::setResult(outResult, lvk::compileShaderSlang(pimpl_->slangGlobalSession_, stage, source, entryPointName, &spirv));
 
   return createShaderModuleFromSPIRV(spirv.data(), spirv.size(), debugName, outResult);
 }
