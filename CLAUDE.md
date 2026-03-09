@@ -65,6 +65,9 @@ No unit test framework. Verify changes by building and running samples headless:
 ./build/samples/001_HelloTriangle --headless --screenshot-frame 1 --screenshot-file out.png
 ```
 
+### Screenshot Tests
+CI runs screenshot comparison tests (enabled by default via `LVK_DEPLOY_SCREENSHOT_TESTS`). Reference images, frame numbers, and the comparison script are in a [separate repository](https://github.com/corporateshark/lightweightvk_screenshot_tests) — see its [README](https://github.com/corporateshark/lightweightvk_screenshot_tests/blob/master/README.md) for details.
+
 ### CMake Configuration Options
 - `LVK_DEPLOY_DEPS`: Deploy dependencies via CMake (default: ON)
 - `LVK_WITH_GLFW`: Enable GLFW (default: ON)
@@ -77,6 +80,7 @@ No unit test framework. Verify changes by building and running samples headless:
 - `LVK_WITH_OPENXR`: Enable OpenXR (default: OFF)
 - `LVK_WITH_ANDROID_VALIDATION`: Enable validation layers on Android (default: ON)
 - `LVK_WITH_SLANG`: Enable Slang compiler (default: OFF)
+- `LVK_DEPLOY_SCREENSHOT_TESTS`: Deploy screenshot tests (default: ON)
 
 ## Coding Style
 

@@ -65,7 +65,7 @@ jobs:
           CXX: "clang++-18"
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          cmake -G Ninja -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON
+          cmake -G Ninja -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF
 
       - name: Assemble APKs
         run: |
@@ -93,7 +93,7 @@ jobs:
               cc: "cl",
               cxx: "cl",
               generators: "Visual Studio 17 2022",
-              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON"
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
 #          - {
 #              name: "Windows - MSVC 2022 (Slang)",
@@ -111,6 +111,7 @@ jobs:
               cc: "clang-18",
               cxx: "clang++-18",
               generators: "Unix Makefiles",
+              cmake_args: "-DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
           - {
               name: "Ubuntu - Clang (Wayland)",
@@ -119,7 +120,7 @@ jobs:
               cc: "clang-18",
               cxx: "clang++-18",
               generators: "Unix Makefiles",
-              cmake_args: "-DLVK_WITH_WAYLAND=ON"
+              cmake_args: "-DLVK_WITH_WAYLAND=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
 #          - {
 #              name: "Ubuntu - GCC",
@@ -184,7 +185,7 @@ jobs:
               cc: "clang",
               cxx: "clang++",
               generators: "Xcode",
-              cmake_args: "-DLVK_WITH_TRACY=OFF"
+              cmake_args: "-DLVK_WITH_TRACY=OFF -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
       runs-on: ${{ matrix.config.os }}
 
@@ -277,25 +278,41 @@ jobs:
             CC:  ${{ matrix.config.cc }}
             CXX: ${{ matrix.config.cxx }}
           run: |
-            cmake ${{ env.CMAKE_GENERATOR }} -S "${{ github.workspace }}" -B build ${{ matrix.config.cmake_args }} -DCMAKE_BUILD_TYPE=Debug
+            cmake ${{ env.CMAKE_GENERATOR }} -S "${{ github.workspace }}" -B build ${{ matrix.config.cmake_args }} -DCMAKE_BUILD_TYPE=Debug -DLVK_DEPLOY_SCREENSHOT_TESTS=ON
             cd build
             cmake --build . --parallel ${{ steps.cpu-cores.outputs.count }}
 
         - name: Run tests
           run: |
+            mkdir -p screenshots
             ls build/samples
-            ./build/samples/001_HelloTriangle    --headless --screenshot-frame 1 --screenshot-file 001_HelloTriangle.png    --log-file 001_HelloTriangle.txt
-            ./build/samples/005_MeshShaders      --headless --screenshot-frame 1 --screenshot-file 005_MeshShaders.png      --log-file 005_MeshShaders.txt
+            ARGS="--headless --width 1280 --height 720"
+            ./build/samples/001_HelloTriangle                $ARGS --screenshot-frame 1    --screenshot-file screenshots/001_HelloTriangle.png               --log-file 001_HelloTriangle.txt
+            ./build/samples/002_RenderToCubeMap              $ARGS --screenshot-frame 42   --screenshot-file screenshots/002_RenderToCubeMap.png             --log-file 002_RenderToCubeMap.txt
+            ./build/samples/003_RenderToCubeMapSinglePass    $ARGS --screenshot-frame 83   --screenshot-file screenshots/003_RenderToCubeMapSinglePass.png   --log-file 003_RenderToCubeMapSinglePass.txt
+            ./build/samples/004_YUV                          $ARGS --screenshot-frame 1    --screenshot-file screenshots/004_YUV.png                         --log-file 004_YUV.txt
+            ./build/samples/005_MeshShaders                  $ARGS --screenshot-frame 1    --screenshot-file screenshots/005_MeshShaders.png                 --log-file 005_MeshShaders.txt
+            # 007_DynamicRenderingLocalRead: requires Bistro textures from deploy_content.py
+            #./build/samples/007_DynamicRenderingLocalRead    $ARGS --screenshot-frame 1    --screenshot-file screenshots/007_DynamicRenderingLocalRead.png   --log-file 007_DynamicRenderingLocalRead.txt
+            ./build/samples/008_MeshShaderFireworks           $ARGS --screenshot-frame 1930 --screenshot-file screenshots/008_MeshShaderFireworks.png        --log-file 008_MeshShaderFireworks.txt
+            # 009_TriplanarMapping: requires Bistro textures from deploy_content.py
+            #./build/samples/009_TriplanarMapping             $ARGS --screenshot-frame 1    --screenshot-file screenshots/009_TriplanarMapping.png            --log-file 009_TriplanarMapping.txt
+            ./build/samples/010_OmniShadows                  $ARGS --screenshot-frame 42   --screenshot-file screenshots/010_OmniShadows.png                 --log-file 010_OmniShadows.txt
+            ./build/samples/RTX_001_Hello                    $ARGS --screenshot-frame 83   --screenshot-file screenshots/RTX_001_Hello.png                   --log-file RTX_001_Hello.txt
+
+        - name: Compare screenshots
+          run: |
+            python3 third-party/deps/src/screenshot_tests/scripts/compare_screenshots.py screenshots third-party/deps/src/screenshot_tests/references --threshold 1.0 --diff-dir diffs
 
         - name: Upload artifacts
+          if: always()
           uses: actions/upload-artifact@v6
           with:
             name: LogsAndScreenshots
             path: |
-              001_HelloTriangle.png
-              001_HelloTriangle.txt
-              005_MeshShaders.png
-              005_MeshShaders.txt
-            if-no-files-found: error
+              screenshots/
+              diffs/
+              *.txt
+            if-no-files-found: warn
             retention-days: 3
             overwrite: true

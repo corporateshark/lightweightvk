@@ -17,6 +17,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # cmake-format: off
 option(LVK_DEPLOY_DEPS             "Deploy dependencies via CMake"           ON)
+option(LVK_DEPLOY_SCREENSHOT_TESTS "Deploy screenshot tests"                 ON)
 option(LVK_WITH_GLFW               "Enable GLFW"                             ON)
 option(LVK_WITH_SAMPLES            "Enable sample demo apps"                 ON)
 option(LVK_WITH_SAMPLES_ANDROID    "Generate Android projects for demo apps" OFF)
@@ -97,6 +98,7 @@ endfunction()
 
 # cmake-format: off
 message(STATUS "LVK_DEPLOY_DEPS             = ${LVK_DEPLOY_DEPS}")
+message(STATUS "LVK_DEPLOY_SCREENSHOT_TESTS = ${LVK_DEPLOY_SCREENSHOT_TESTS}")
 message(STATUS "LVK_WITH_GLFW               = ${LVK_WITH_GLFW}")
 message(STATUS "LVK_WITH_SAMPLES            = ${LVK_WITH_SAMPLES}")
 message(STATUS "LVK_WITH_SAMPLES_ANDROID    = ${LVK_WITH_SAMPLES_ANDROID}")
@@ -133,6 +135,12 @@ message(STATUS "LVK_ROOT_DIR = " ${LVK_ROOT_DIR})
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
 
 if(LVK_DEPLOY_DEPS)
+  # pass CMake options to Bootstrap predicates via env variables
+  if(LVK_DEPLOY_SCREENSHOT_TESTS)
+    set(ENV{LVK_DEPLOY_SCREENSHOT_TESTS} "ON")
+  else()
+    set(ENV{LVK_DEPLOY_SCREENSHOT_TESTS} "OFF")
+  endif()
   # deploy dependencies during configuration
   execute_process(COMMAND ${Python3_EXECUTABLE} deploy_deps.py WORKING_DIRECTORY ${LVK_ROOT_DIR} COMMAND_ERROR_IS_FATAL ANY)
 
