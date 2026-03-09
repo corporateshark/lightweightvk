@@ -183,6 +183,18 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       } else {
         LLOGW("Specify a file name for `--screenshot-file <filename>`");
       }
+    } else if (!strcmp(argv[i], "--width")) {
+      if (i + 1 < argc) {
+        cfg_.width = (int)strtol(argv[++i], nullptr, 10);
+      } else {
+        LLOGW("Specify a value for `--width <pixels>`");
+      }
+    } else if (!strcmp(argv[i], "--height")) {
+      if (i + 1 < argc) {
+        cfg_.height = (int)strtol(argv[++i], nullptr, 10);
+      } else {
+        LLOGW("Specify a value for `--height <pixels>`");
+      }
     }
   }
 #endif // ANDROID
