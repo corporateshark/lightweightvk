@@ -408,7 +408,7 @@ VULKAN_APP_MAIN {
       const uint32_t cubesInLine = (uint32_t)sqrt(kNumObjects);
       const vec3 offset =
           vec3(-1.5f * sqrt(kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrt(kNumObjects) + 4.0f * (i / cubesInLine), 0);
-      modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), float(direction * glfwGetTime()), axis_[i]);
+      modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), float(direction * app.getSimulatedTime()), axis_[i]);
     }
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();

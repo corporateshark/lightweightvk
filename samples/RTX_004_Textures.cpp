@@ -498,11 +498,11 @@ VULKAN_APP_MAIN {
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime(), glm::vec3(1, 1, 1));
+    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)app.getSimulatedTime(), glm::vec3(1, 1, 1));
 
     glm::mat3x4 transforms[2] = {
-        glm::rotate(glm::mat4(1.0f), +(float)glfwGetTime(), glm::vec3(1, 1, 1)),
-        glm::rotate(glm::mat4(1.0f), -(float)glfwGetTime(), glm::vec3(1, 1, 1)),
+        glm::rotate(glm::mat4(1.0f), +(float)app.getSimulatedTime(), glm::vec3(1, 1, 1)),
+        glm::rotate(glm::mat4(1.0f), -(float)app.getSimulatedTime(), glm::vec3(1, 1, 1)),
     };
     // set translation directly in the 3x4 matrices
     transforms[0][0][3] = -2.0f;
@@ -529,7 +529,7 @@ VULKAN_APP_MAIN {
         .texBackground = res.texBackground.index(),
         .texObject = res.texObject.index(),
         .tlas = res.TLAS.index(),
-        .time = (float)glfwGetTime(),
+        .time = (float)app.getSimulatedTime(),
     };
 
     buffer.cmdUpdateTLAS(res.TLAS, res.instancesBuffer);

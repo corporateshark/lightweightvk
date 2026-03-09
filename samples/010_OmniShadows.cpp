@@ -529,7 +529,7 @@ VULKAN_APP_MAIN {
 
     const float fov = glm::radians(45.0f);
     const float fovShadow = glm::radians(90.0f);
-    const vec3 lightPos = vec3(4.5f * cosf(glfwGetTime()), 4.5f * sinf(glfwGetTime()), 5.0f);
+    const vec3 lightPos = vec3(4.5f * cosf(app.getSimulatedTime()), 4.5f * sinf(app.getSimulatedTime()), 5.0f);
     const PerLight perLight = {
         .lightPos = vec4(lightPos, 1.0f),
         .shadowNear = 0.1f,

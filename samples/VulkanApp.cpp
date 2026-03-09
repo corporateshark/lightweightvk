@@ -358,14 +358,13 @@ lvk::TextureHandle VulkanApp::getDepthTexture() const {
 
 void VulkanApp::run(DrawFrameFunc drawFrame) {
   double timeStamp = glfwGetTime();
-  float deltaSeconds = 0.0f;
 
 #if defined(ANDROID)
   int events = 0;
   android_poll_source* source = nullptr;
   do {
     const double newTimeStamp = glfwGetTime();
-    deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
+    const float deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
     if (fpsCounter_.tick(deltaSeconds)) {
       LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
     }
@@ -396,12 +395,12 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
     }
   } while (!androidApp_->destroyRequested);
 #else
+  const float kTimeQuantum = 0.02f;
+  double accTime = 0;
+
   while (cfg_.contextConfig.enableHeadlessSurface || !glfwWindowShouldClose(window_)) {
     const double newTimeStamp = glfwGetTime();
-    deltaSeconds = static_cast<float>(newTimeStamp - timeStamp);
-    if (fpsCounter_.tick(deltaSeconds)) {
-      LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
-    }
+    const float deltaSeconds = cfg_.screenshotFrameNumber ? kTimeQuantum : static_cast<float>(newTimeStamp - timeStamp);
     timeStamp = newTimeStamp;
 
     if (window_) {
@@ -412,9 +411,20 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
     if (!ctx_ || !width_ || !height_)
       continue;
-    const float ratio = width_ / (float)height_;
 
-    positioner_.update(deltaSeconds, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+    // simulation: tick in fixed quanta
+    accTime += deltaSeconds;
+    while (accTime >= kTimeQuantum) {
+      accTime -= kTimeQuantum;
+      simulatedTime_ += kTimeQuantum;
+      positioner_.update(kTimeQuantum, mouseState_.pos, ImGui::GetIO().WantCaptureMouse ? false : mouseState_.pressedLeft);
+    }
+    // FPS measurement: real time
+    if (fpsCounter_.tick(deltaSeconds)) {
+      LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
+    }
+
+    const float ratio = width_ / (float)height_;
 
     lvk::TextureHandle tex = ctx_->getCurrentSwapchainTexture();
 
@@ -452,6 +462,10 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 #endif // ANDROID
 
   LLOGD("Terminating app...");
+}
+
+double VulkanApp::getSimulatedTime() const {
+  return simulatedTime_;
 }
 
 void VulkanApp::drawFPS() {

@@ -343,7 +343,7 @@ VULKAN_APP_MAIN {
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime(), glm::vec3(1, 1, 1));
+    const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)app.getSimulatedTime(), glm::vec3(1, 1, 1));
     ctx_->upload(res.instancesBuffer, &transformMatrix, sizeof(transformMatrix), offsetof(lvk::AccelStructInstance, transform));
 
     struct {
@@ -355,7 +355,7 @@ VULKAN_APP_MAIN {
         .camBuffer = ctx_->gpuAddress(res.ubo),
         .outTexture = res.storageImage.index(),
         .tlas = res.TLAS.index(),
-        .time = (float)glfwGetTime(),
+        .time = (float)app.getSimulatedTime(),
     };
 
     buffer.cmdUpdateTLAS(res.TLAS, res.instancesBuffer);

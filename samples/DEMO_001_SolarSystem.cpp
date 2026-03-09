@@ -1750,8 +1750,8 @@ VULKAN_APP_MAIN {
       // update per-frame buffers for all render views - we should do it outside of a render pass
       const PerFrameBuffer perFrame =
           g_MultiViewStereo
-              ? PerFrameBuffer{.proj = {views[0].proj, views[1].proj}, .view = {views[0].view, views[1].view}, .time = (float)glfwGetTime()}
-              : PerFrameBuffer{.proj = {views[0].proj}, .view = {views[0].view}, .time = (float)glfwGetTime()};
+              ? PerFrameBuffer{.proj = {views[0].proj, views[1].proj}, .view = {views[0].view, views[1].view}, .time = (float)app.getSimulatedTime()}
+              : PerFrameBuffer{.proj = {views[0].proj}, .view = {views[0].view}, .time = (float)app.getSimulatedTime()};
       buf.cmdUpdateBuffer(vulkanState.bufPerFrame, perFrame);
       buf.cmdBindVertexBuffer(0, vulkanState.bufVertices, 0);
 

@@ -84,6 +84,8 @@ class VulkanApp {
   virtual void run(DrawFrameFunc drawFrame);
   virtual void drawFPS();
 
+  double getSimulatedTime() const;
+
   lvk::Format getDepthFormat() const;
   lvk::TextureHandle getDepthTexture() const;
 #if !defined(ANDROID)
@@ -129,4 +131,5 @@ class VulkanApp {
 #endif // ANDROID
 
   uint64_t frameCount_ = 0;
+  double simulatedTime_ = 0.0;
 };

@@ -421,11 +421,13 @@ VULKAN_APP_MAIN {
   double accTime = 0;
   uint32_t bufferIndex = 0;
 
+  srand(1);
+
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     if (!g_Pause)
-      accTime += deltaSeconds;
+      accTime += app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
 
     if (accTime >= kTimeQuantum) {
       accTime -= kTimeQuantum;
