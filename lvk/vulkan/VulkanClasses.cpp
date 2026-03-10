@@ -5974,10 +5974,10 @@ lvk::Result lvk::VulkanContext::createInstance() {
   if (hasExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
     instanceExtensionNames.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
   }
+#endif // __APPLE__
   if (hasPortabilityEnumeration) {
     instanceExtensionNames.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
   }
-#endif // __APPLE__
 
   // check if we have the VK_EXT_debug_utils extension
   const bool hasDebugUtils = hasExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, allInstanceExtensions);
