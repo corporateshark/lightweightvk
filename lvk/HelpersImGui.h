@@ -37,6 +37,7 @@ class ImGuiRenderer {
   lvk::Format pipelineColorFormat_ = lvk::Format_Invalid;
   lvk::Holder<lvk::SamplerHandle> samplerClamp_;
   struct ImGuiRendererImpl* pimpl_ = nullptr;
+  lvk::LVKwindow* window_ = nullptr;
 
   uint32_t frameIndex_ = 0;
 

@@ -122,7 +122,7 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
 }
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
-:  ctx_(device), pimpl_(new ImGuiRendererImpl) {
+:  ctx_(device), pimpl_(new ImGuiRendererImpl), window_(window) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
@@ -136,7 +136,9 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
 #if LVK_WITH_GLFW
-  ImGui_ImplGlfw_InitForOther(window, window ? true : false);
+  if (window_) {
+    ImGui_ImplGlfw_InitForOther(window_, true);
+  }
 #endif // LVK_WITH_GLFW
 
   updateFont(defaultFontTTF, fontSizePixels);
@@ -154,7 +156,9 @@ ImGuiRenderer::~ImGuiRenderer() {
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->TexRef = ImTextureRef();
 #if LVK_WITH_GLFW
-  ImGui_ImplGlfw_Shutdown();
+  if (window_) {
+    ImGui_ImplGlfw_Shutdown();
+  }
 #endif // LVK_WITH_GLFW
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
@@ -196,11 +200,14 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
     pipelineColorFormat_ = colorFormat;
   }
 #if LVK_WITH_GLFW
-  ImGui_ImplGlfw_NewFrame();
-#else
-  const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
-  io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
+  if (window_) {
+    ImGui_ImplGlfw_NewFrame();
+  } else
 #endif // LVK_WITH_GLFW
+  {
+    const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
+    io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
+  }
   ImGui::NewFrame();
 }
 
