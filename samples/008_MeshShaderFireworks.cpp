@@ -12,6 +12,8 @@
 // we are going to use raw Vulkan here to initialize VK_EXT_mesh_shader
 #include <lvk/vulkan/VulkanUtils.h>
 
+#include <lmath/Random.h>
+
 const char* codeSlang = R"(
 struct Vertex {
   float3 position;
@@ -168,8 +170,10 @@ void main() {
 };
 )";
 
+LRandom g_rng;
+
 float random(float x) {
-  return glm::linearRand(0.0f, x);
+  return g_rng.randomInRange(0.0f, x);
 }
 
 const int kMaxParticles = 50000;
@@ -420,8 +424,6 @@ VULKAN_APP_MAIN {
   const float kTimeQuantum = 0.02f;
   double accTime = 0;
   uint32_t bufferIndex = 0;
-
-  srand(1);
 
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
