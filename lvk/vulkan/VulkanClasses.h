@@ -156,7 +156,6 @@ class VulkanSwapchain final {
   };
   VkSwapchainPresentFenceInfoKHR presentFenceInfo_ = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,
-      .pNext = &presentModeInfo_,
       .swapchainCount = 1,
       .pFences = nullptr, // we set `pFences` in present() to the current image's present fence
   };
