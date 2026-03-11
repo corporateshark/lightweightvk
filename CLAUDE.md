@@ -14,7 +14,7 @@ Before building, run the bootstrapping scripts to download dependencies:
 python3 deploy_deps.py
 python3 deploy_content.py
 ```
-- `deploy_deps.py`: Clones/downloads third-party libraries (Vulkan headers, GLFW, GLM, ImGui, Tracy, etc.) into `third-party/deps/`. Driven by `third-party/bootstrap-deps.json`. Note: Slang is fetched separately via CMake `FetchContent` when `LVK_WITH_SLANG=ON` to save download time and storage on CI.
+- `deploy_deps.py`: Clones/downloads third-party libraries (Vulkan headers, GLFW, GLM, ImGui, Tracy, Slang, etc.) into `third-party/deps/`. Driven by `third-party/bootstrap-deps.json`. Some libraries (Slang, screenshot tests) use predicates to allow CI jobs to skip them via environment variables (e.g., `LVK_WITH_SLANG=OFF`).
 - `deploy_content.py`: Downloads sample assets (Bistro scene, solar system textures, glTF models, HDR skyboxes, etc.) into `third-party/content/`. Driven by `third-party/bootstrap-content.json`.
 
 Both scripts invoke `third-party/bootstrap.py` which reads the corresponding JSON manifest and fetches git repos, archives, or individual files.

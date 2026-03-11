@@ -10,6 +10,7 @@ on:
 env:
   GIT_CLONE_PROTECTION_ACTIVE: false
   GIT_LFS_SKIP_SMUDGE: true
+  LVK_WITH_SLANG: "OFF"
 
 jobs:
   build:

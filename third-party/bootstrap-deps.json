@@ -253,6 +253,16 @@
     }
 },
 {
+    "name": "slang",
+    "predicate": "os.environ.get('LVK_WITH_SLANG') != 'OFF'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/shader-slang/slang",
+        "revision": "v2026.4",
+        "recursive": true
+    }
+},
+{
     "name": "screenshot_tests",
     "predicate": "os.environ.get('LVK_DEPLOY_SCREENSHOT_TESTS') != 'OFF'",
     "source": {
