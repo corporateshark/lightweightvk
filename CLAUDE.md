@@ -68,6 +68,19 @@ No unit test framework. Verify changes by building and running samples headless:
 ### Screenshot Tests
 CI runs screenshot comparison tests (enabled by default via `LVK_DEPLOY_SCREENSHOT_TESTS`). Reference images, frame numbers, and the comparison script are in a [separate repository](https://github.com/corporateshark/lightweightvk_screenshot_tests) — see its [README](https://github.com/corporateshark/lightweightvk_screenshot_tests/blob/master/README.md) for details.
 
+### CI (GitHub Actions)
+Workflow file: `.github/workflows/c-cpp.yml`. Runs on every push and PR to any branch. Four jobs:
+
+1. **Android (Ubuntu)** — generates Android projects with Ninja + NDK r29, assembles APKs for a subset of samples
+2. **Windows - MSVC 2022** — Debug build with Tracy enabled, no screenshot tests
+3. **Ubuntu - Clang** — two configs: default (X11) and Wayland, Debug builds, no screenshot tests
+4. **Ubuntu - Clang (screenshot tests)** — Debug build with `LVK_DEPLOY_SCREENSHOT_TESTS=ON`, runs samples headless at 1280×720, captures screenshots, then compares against reference images using `compare_screenshots.py` (threshold 1.0). Logs and screenshots are uploaded as artifacts (3-day retention)
+5. **macOS - Clang (Xcode)** — Debug build, Tracy disabled, no screenshot tests
+
+All jobs use Vulkan SDK 1.4.341.0 and cache `third-party/deps` keyed on `bootstrap-deps.json` hash.
+
+To check CI status: `gh run list` or `gh run view <run-id>`.
+
 ### CMake Configuration Options
 - `LVK_DEPLOY_DEPS`: Deploy dependencies via CMake (default: ON)
 - `LVK_WITH_GLFW`: Enable GLFW (default: ON)
