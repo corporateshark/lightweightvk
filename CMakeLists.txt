@@ -106,6 +106,8 @@ message(STATUS "LVK_WITH_TRACY_GPU          = ${LVK_WITH_TRACY_GPU}")
 message(STATUS "LVK_WITH_WAYLAND            = ${LVK_WITH_WAYLAND}")
 message(STATUS "LVK_WITH_IMPLOT             = ${LVK_WITH_IMPLOT}")
 message(STATUS "LVK_WITH_OPENXR             = ${LVK_WITH_OPENXR}")
+message(STATUS "LVK_WITH_SLANG              = ${LVK_WITH_SLANG}")
+message(STATUS "LVK_ENABLE_LONG_PATHS_WIN32 = ${LVK_ENABLE_LONG_PATHS_WIN32}")
 # cmake-format: on
 
 # cmake-format: off
