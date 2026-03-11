@@ -6,7 +6,6 @@
 cmake_minimum_required(VERSION 3.22)
 
 include(CMakeDependentOption)
-include(FetchContent)
 
 project("LVK"
   LANGUAGES CXX C
@@ -135,6 +134,12 @@ message(STATUS "LVK_ROOT_DIR = " ${LVK_ROOT_DIR})
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
 
 if(LVK_DEPLOY_DEPS)
+  # pass CMake options to Bootstrap predicates via env variables
+  if(LVK_WITH_SLANG)
+    set(ENV{LVK_WITH_SLANG} "ON")
+  else()
+    set(ENV{LVK_WITH_SLANG} "OFF")
+  endif()
   # deploy dependencies during configuration
   execute_process(COMMAND ${Python3_EXECUTABLE} deploy_deps.py WORKING_DIRECTORY ${LVK_ROOT_DIR} COMMAND_ERROR_IS_FATAL ANY)
 
@@ -149,14 +154,6 @@ if(LVK_DEPLOY_DEPS)
 
   lvk_set_folder(LVKDependencies "LVK")
 
-  if(LVK_WITH_SLANG)
-    FetchContent_Populate(
-      slang
-      GIT_REPOSITORY https://github.com/shader-slang/slang
-      GIT_TAG        v2026.4
-      SOURCE_DIR     ${LVK_ROOT_DIR}/third-party/deps/src/slang
-    )
-  endif()
 endif()
 
 if(LVK_WITH_WAYLAND)
