@@ -1226,7 +1226,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     registeredPresentModes_[numRegisteredPresentModes_++] = mode;
   }
   if (numRegisteredPresentModes_) {
-    setCurrentPresentMode(currentPresentMode_);
+    (void)LVK_VERIFY(setCurrentPresentMode(currentPresentMode_));
   }
 
   const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
