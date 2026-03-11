@@ -119,6 +119,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - Start with capital letter, no trailing period
 - Use past tense (e.g., "Added", "Fixed", "Updated", "Replaced", "Removed")
 - Optional scope prefix: `Samples:`, `Android:`, `CMake:`, `GitHub:`, `ImGui:`, `HelpersImGui:`, etc.
+- Changes touching only `CMakeLists.txt` or `cmake/` files must use the `CMake:` prefix
 - When a scope prefix is used, the first letter after `:` should be lowercase (e.g., `GitHub: added ...`)
 - Use backticks around code identifiers: functions with `()`, types, extensions, macros
 - Reference GitHub issues when applicable (e.g., `(#64)`, `(fixed #63)`)
