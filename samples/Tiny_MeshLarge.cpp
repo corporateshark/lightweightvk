@@ -2087,7 +2087,9 @@ GLFWkeyfun g_PrevKeyCallback = nullptr;
 GLFWmousebuttonfun g_PrevMouseButtonCallback = nullptr;
 
 int main(int argc, char* argv[]) {
+#if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
+#endif
 
   // find the content folder
   {
@@ -2305,7 +2307,9 @@ void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 }
 
 void android_main(android_app* app) {
+#if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
+#endif
   app->onAppCmd = handle_cmd;
   app->activity->callbacks->onNativeWindowResized = resize_callback;
 

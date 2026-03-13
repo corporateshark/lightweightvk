@@ -197,7 +197,9 @@ std::filesystem::path getPathToContentFolder() {
 }
 
 int main(int argc, char* argv[]) {
+#if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
+#endif // LVK_WITH_MINILOG
 
   GLFWwindow* window = lvk::initWindow("Vulkan YUV", width_, height_, true);
 

@@ -1096,7 +1096,9 @@ inline ImVec4 toVec4(const vec4& c) {
 
 #if !defined(ANDROID)
 int main(int argc, char* argv[]) {
+#if defined(LVK_WITH_MINILOG)
   minilog::initialize(nullptr, {.threadNames = false});
+#endif // LVK_WITH_MINILOG
 
   // find the content folder
   {

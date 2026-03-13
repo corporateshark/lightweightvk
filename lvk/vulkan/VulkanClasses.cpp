@@ -93,11 +93,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   char typeName[128] = {};
   void* messageID = nullptr;
 
+  #if defined(LVK_WITH_MINILOG)
   minilog::eLogLevel level = minilog::Log;
   if (isError) {
     lvk::VulkanContext* ctx = static_cast<lvk::VulkanContext*>(userData);
     level = ctx->config_.terminateOnValidationError ? minilog::FatalError : minilog::Warning;
   }
+  #endif // LVK_WITH_MINILOG
 
   if (!isError && !isWarning && cbData->pMessageIdName) {
     if (strcmp(cbData->pMessageIdName, "Loader Message") == 0) {

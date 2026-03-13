@@ -89,6 +89,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - `LVK_WITH_IMPLOT`: Enable ImPlot (default: ON)
 - `LVK_WITH_OPENXR`: Enable OpenXR (default: OFF)
 - `LVK_WITH_ANDROID_VALIDATION`: Enable validation layers on Android (default: ON)
+- `LVK_WITH_MINILOG`: Enable Minilog (default: ON)
 - `LVK_WITH_SLANG`: Enable Slang compiler (default: OFF)
 
 ## Coding Style
