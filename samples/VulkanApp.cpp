@@ -198,11 +198,13 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     }
   }
 #endif // ANDROID
+#if defined(LVK_WITH_MINILOG)
   minilog::initialize(logFileName,
                       {
                           .logLevelPrintToConsole = cfg_.contextConfig.enableHeadlessSurface ? minilog::Debug : minilog::Log,
                           .threadNames = false,
                       });
+#endif
 
   // we use minilog
   fpsCounter_.printFPS_ = false;

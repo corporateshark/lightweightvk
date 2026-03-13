@@ -14,7 +14,30 @@
 #include <memory>
 #include <utility>
 
-#include <minilog/minilog.h>
+// clang-format off
+#if defined(LVK_WITH_MINILOG)
+  #include <minilog/minilog.h>
+#else
+  #if !defined(MINILOG_LOG_PROC)
+    #define MINILOG_LOG_PROC(...)
+  #endif
+  #if !defined(LLOGP)
+    #define LLOGP(...)
+  #endif
+  #if !defined(LLOGD)
+    #define LLOGD(...)
+  #endif
+  #if !defined(LLOGL)
+    #define LLOGL(...)
+  #endif
+  #if !defined(LLOGW)
+    #define LLOGW(...)
+  #endif
+  #if !defined(LLOGE)
+    #define LLOGE(...)
+  #endif
+#endif
+// clang-format on
 
 #if defined(ANDROID)
 #include <android/native_window.h>

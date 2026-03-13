@@ -26,6 +26,7 @@ option(LVK_WITH_WAYLAND            "Enable Wayland"                          OFF
 option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
 option(LVK_WITH_OPENXR             "Enable OpenXR"                           OFF)
 option(LVK_WITH_ANDROID_VALIDATION "Enable validation layers on Android"     ON)
+option(LVK_WITH_MINILOG            "Enable Minilog"                          ON)
 option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
 
@@ -106,6 +107,7 @@ message(STATUS "LVK_WITH_TRACY_GPU          = ${LVK_WITH_TRACY_GPU}")
 message(STATUS "LVK_WITH_WAYLAND            = ${LVK_WITH_WAYLAND}")
 message(STATUS "LVK_WITH_IMPLOT             = ${LVK_WITH_IMPLOT}")
 message(STATUS "LVK_WITH_OPENXR             = ${LVK_WITH_OPENXR}")
+message(STATUS "LVK_WITH_MINILOG            = ${LVK_WITH_MINILOG}")
 message(STATUS "LVK_WITH_SLANG              = ${LVK_WITH_SLANG}")
 message(STATUS "LVK_ENABLE_LONG_PATHS_WIN32 = ${LVK_ENABLE_LONG_PATHS_WIN32}")
 # cmake-format: on
@@ -189,12 +191,14 @@ if(LVK_WITH_OPENXR)
   # cmake-format: on
 endif()
 
-# cmake-format: off
-set(MINILOG_BUILD_EXAMPLE OFF CACHE BOOL "")
-set(MINILOG_RAW_OUTPUT     ON CACHE BOOL "")
-# cmake-format: on
-add_subdirectory(third-party/deps/src/minilog)
-lvk_set_folder(minilog "third-party")
+if(LVK_WITH_MINILOG)
+  # cmake-format: off
+  set(MINILOG_BUILD_EXAMPLE OFF CACHE BOOL "")
+  set(MINILOG_RAW_OUTPUT     ON CACHE BOOL "")
+  # cmake-format: on
+  add_subdirectory(third-party/deps/src/minilog)
+  lvk_set_folder(minilog "third-party")
+endif()
 
 # temporary
 if(NOT LVK_USE_CUSTOM_MOLTENVK AND NOT LVK_WITH_SLANG)
@@ -238,7 +242,10 @@ if(ANDROID)
 endif()
 lvk_set_folder(LVKstb "LVK")
 
-target_link_libraries(LVKLibrary PUBLIC minilog)
+if(LVK_WITH_MINILOG)
+  target_link_libraries(LVKLibrary PUBLIC minilog)
+  target_compile_definitions(LVKLibrary PUBLIC LVK_WITH_MINILOG)
+endif()
 target_include_directories(LVKLibrary PUBLIC "third-party/deps/src")
 
 if(LVK_WITH_GLFW)

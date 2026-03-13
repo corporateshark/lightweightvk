@@ -357,7 +357,7 @@ lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& out
     }
   });
 
-  glfwSetErrorCallback([](int error, const char* description) { printf("GLFW Error (%i): %s\n", error, description); });
+  glfwSetErrorCallback([](int error, const char* description) { LLOGE("GLFW Error (%i): %s\n", error, description); });
 
   return window;
 }
