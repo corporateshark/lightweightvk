@@ -319,7 +319,12 @@ struct ComputePipelineState final {
 };
 
 struct RayTracingPipelineState final {
-  RayTracingPipelineDesc desc_;
+  std::vector<ShaderModuleHandle> smRayGen_;
+  std::vector<ShaderModuleHandle> smMiss_;
+  std::vector<ShaderModuleHandle> smCallable_;
+  std::vector<RayTracingHitGroupDesc> hitGroups_;
+  SpecializationConstantDesc specInfo_ = {};
+  const char* debugName_ = "";
 
   // non-owning, the last seen VkDescriptorSetLayout from VulkanContext::vkDSL_ (invalidate all VkPipeline objects on new layout)
   VkDescriptorSetLayout lastVkDescriptorSetLayout_ = VK_NULL_HANDLE;
