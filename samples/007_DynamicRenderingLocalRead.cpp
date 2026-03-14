@@ -428,7 +428,7 @@ VULKAN_APP_MAIN {
                    {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
                }},
           framebuffer,
-          {.inputAttachments = {lvk::TextureHandle(texAlbedo), lvk::TextureHandle(texNormal), lvk::TextureHandle(texWorldPos)}});
+          {.inputAttachments = {texAlbedo, texNormal, texWorldPos}});
       buffer.cmdPushDebugGroupLabel("Render deferred", 0xff0000ff);
       buffer.cmdBindRenderPipeline(renderPipelineState_Deferred);
       buffer.cmdPushConstants(ctx->gpuAddress(perFrameBuffer));
@@ -455,7 +455,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
           framebufferGUI,
-          {.textures = {lvk::TextureHandle(texAlbedo), lvk::TextureHandle(texNormal), lvk::TextureHandle(texWorldPos)}});
+          {.textures = {texAlbedo, texNormal, texWorldPos}});
       app.imgui_->beginFrame(framebufferGUI);
       const ImGuiViewport* v = ImGui::GetMainViewport();
       const float size = 0.175f * v->WorkSize.x;
