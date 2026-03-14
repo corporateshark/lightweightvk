@@ -5264,12 +5264,12 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   uint32_t numCallableGroups = 0;
 
   // ray generation groups
-  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleRGen); ++i) {
-    if (moduleRGen[i]) {
+  for (const lvk::ShaderModuleState* sm : moduleRGen) {
+    if (sm) {
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, moduleRGen[i]->ci),
+          .generalShader = addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, sm->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
@@ -5277,15 +5277,15 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
   // miss groups
-  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleMiss); ++i) {
-    if (moduleMiss[i]) {
+  for (const lvk::ShaderModuleState* sm : moduleMiss) {
+    if (sm) {
       if (!numMissGroups)
         idxMiss = numShaderGroups;
       numMissGroups++;
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = addStage(VK_SHADER_STAGE_MISS_BIT_KHR, moduleMiss[i]->ci),
+          .generalShader = addStage(VK_SHADER_STAGE_MISS_BIT_KHR, sm->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
@@ -5309,15 +5309,15 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     }
   }
   // callable groups
-  for (int i = 0; i < LVK_ARRAY_NUM_ELEMENTS(moduleCall); ++i) {
-    if (moduleCall[i]) {
+  for (const lvk::ShaderModuleState* sm : moduleCall) {
+    if (sm) {
       if (!numCallableGroups)
         idxCallable = numShaderGroups;
       numCallableGroups++;
       shaderGroups[numShaderGroups++] = VkRayTracingShaderGroupCreateInfoKHR{
           .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
           .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-          .generalShader = addStage(VK_SHADER_STAGE_CALLABLE_BIT_KHR, moduleCall[i]->ci),
+          .generalShader = addStage(VK_SHADER_STAGE_CALLABLE_BIT_KHR, sm->ci),
           .closestHitShader = VK_SHADER_UNUSED_KHR,
           .anyHitShader = VK_SHADER_UNUSED_KHR,
           .intersectionShader = VK_SHADER_UNUSED_KHR,
