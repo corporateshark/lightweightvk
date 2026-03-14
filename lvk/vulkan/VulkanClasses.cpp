@@ -2023,10 +2023,10 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
 
   LVK_ASSERT(!isRendering_);
 
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++) {
+  for (size_t i = 0; i != deps.textures.size(); i++) {
     useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
+  for (size_t i = 0; i != deps.buffers.size(); i++) {
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
@@ -2151,10 +2151,10 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   isRendering_ = true;
 
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++) {
+  for (size_t i = 0; i != deps.textures.size(); i++) {
     transitionToShaderReadOnly(deps.textures[i]);
   }
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
+  for (size_t i = 0; i != deps.buffers.size(); i++) {
     VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT(buf);
@@ -2663,10 +2663,10 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.textures[i]; i++) {
+  for (size_t i = 0; i != deps.textures.size(); i++) {
     useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
   }
-  for (uint32_t i = 0; i != Dependencies::LVK_MAX_SUBMIT_DEPENDENCIES && deps.buffers[i]; i++) {
+  for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],
                   VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
