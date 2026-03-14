@@ -696,7 +696,7 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBindRayTracingPipeline(res.rayTracingPipeline_);
       buffer.cmdPushConstants(pc);
-      buffer.cmdTraceRays(width, height, 1, {.textures = {lvk::TextureHandle(res.rayTracingOutputImage_)}});
+      buffer.cmdTraceRays(width, height, 1, {.textures = {res.rayTracingOutputImage_}});
     }
 
     // Pass 2: render into the swapchain image
@@ -707,7 +707,7 @@ VULKAN_APP_MAIN {
       const lvk::Framebuffer fbMain = {
           .color = {{.texture = ctx_->getCurrentSwapchainTexture()}},
       };
-      buffer.cmdBeginRendering(renderPassMain, fbMain, {.textures = {lvk::TextureHandle(res.rayTracingOutputImage_)}});
+      buffer.cmdBeginRendering(renderPassMain, fbMain, {.textures = {res.rayTracingOutputImage_}});
       {
         buffer.cmdBindRenderPipeline(res.renderPipelineState_Fullscreen_);
         buffer.cmdPushDebugGroupLabel("Swapchain Output", 0xff0000ff);

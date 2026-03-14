@@ -612,7 +612,7 @@ VULKAN_APP_MAIN {
         },
         framebuffer,
         {
-            .textures = {lvk::TextureHandle(shadowMap)},
+            .textures = {shadowMap},
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);

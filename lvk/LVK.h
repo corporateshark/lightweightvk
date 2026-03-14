@@ -1061,10 +1061,9 @@ struct AccelStructDesc {
 };
 
 struct Dependencies {
-  enum { LVK_MAX_SUBMIT_DEPENDENCIES = 4 };
-  TextureHandle textures[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
-  BufferHandle buffers[LVK_MAX_SUBMIT_DEPENDENCIES] = {};
-  TextureHandle inputAttachments[LVK_MAX_COLOR_ATTACHMENTS] = {};
+  lvk::Span<TextureHandle> textures = {};
+  lvk::Span<BufferHandle> buffers = {};
+  lvk::Span<TextureHandle> inputAttachments = {};
 };
 
 class ICommandBuffer {

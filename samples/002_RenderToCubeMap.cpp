@@ -267,7 +267,7 @@ VULKAN_APP_MAIN {
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}},
-                               {.textures = {lvk::TextureHandle(texture_)}});
+                               {.textures = {texture_}});
       {
         buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
         buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
