@@ -111,6 +111,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - Use `if (ptr)` instead of `if (ptr != nullptr)` for pointer checks
 - No STL containers in public API; the only exception is `std::vector` which is allowed in `.cpp` files and samples
 - Use `()` after function names in code comments and commit messages (e.g., `// call doSomething() first`)
+- **NEVER use `auto` except for lambda types** — always use explicit types
 
 ## Commit Conventions
 - Start with capital letter, no trailing period
