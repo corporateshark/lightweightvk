@@ -725,7 +725,7 @@ bool initModel() {
   BLAS = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
-      .vertexFormat = lvk::VertexFormat::Float3,
+      .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = vb0_,
       .vertexStride = sizeof(VertexData),
       .numVertices = (uint32_t)vertexData_.size(),
@@ -786,10 +786,10 @@ void createPipelines() {
     const lvk::VertexInput vdesc = {
         .attributes =
             {
-                {.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(VertexData, position)},
-                {.location = 1, .format = lvk::VertexFormat::HalfFloat2, .offset = offsetof(VertexData, uv)},
-                {.location = 2, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, normal)},
-                {.location = 3, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, mtlIndex)},
+                {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
+                {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
+                {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
+                {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
             },
         .inputBindings = {{.stride = sizeof(VertexData)}},
     };
@@ -812,8 +812,8 @@ void createPipelines() {
     const lvk::VertexInput vdesc = {
         .attributes =
             {
-                {.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(VertexData, position)},
-                {.location = 3, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, mtlIndex)},
+                {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
+                {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
             },
         .inputBindings = {{.stride = sizeof(VertexData)}},
     };

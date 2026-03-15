@@ -406,93 +406,92 @@ VkStencilOp stencilOpToVkStencilOp(lvk::StencilOp op) {
 }
 
 VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
-  using lvk::VertexFormat;
   switch (fmt) {
-  case VertexFormat::Invalid:
+  case lvk::VertexFormat_Invalid:
     LVK_ASSERT(false);
     return VK_FORMAT_UNDEFINED;
-  case VertexFormat::Float1:
+  case lvk::VertexFormat_Float1:
     return VK_FORMAT_R32_SFLOAT;
-  case VertexFormat::Float2:
+  case lvk::VertexFormat_Float2:
     return VK_FORMAT_R32G32_SFLOAT;
-  case VertexFormat::Float3:
+  case lvk::VertexFormat_Float3:
     return VK_FORMAT_R32G32B32_SFLOAT;
-  case VertexFormat::Float4:
+  case lvk::VertexFormat_Float4:
     return VK_FORMAT_R32G32B32A32_SFLOAT;
-  case VertexFormat::Byte1:
+  case lvk::VertexFormat_Byte1:
     return VK_FORMAT_R8_SINT;
-  case VertexFormat::Byte2:
+  case lvk::VertexFormat_Byte2:
     return VK_FORMAT_R8G8_SINT;
-  case VertexFormat::Byte3:
+  case lvk::VertexFormat_Byte3:
     return VK_FORMAT_R8G8B8_SINT;
-  case VertexFormat::Byte4:
+  case lvk::VertexFormat_Byte4:
     return VK_FORMAT_R8G8B8A8_SINT;
-  case VertexFormat::UByte1:
+  case lvk::VertexFormat_UByte1:
     return VK_FORMAT_R8_UINT;
-  case VertexFormat::UByte2:
+  case lvk::VertexFormat_UByte2:
     return VK_FORMAT_R8G8_UINT;
-  case VertexFormat::UByte3:
+  case lvk::VertexFormat_UByte3:
     return VK_FORMAT_R8G8B8_UINT;
-  case VertexFormat::UByte4:
+  case lvk::VertexFormat_UByte4:
     return VK_FORMAT_R8G8B8A8_UINT;
-  case VertexFormat::Short1:
+  case lvk::VertexFormat_Short1:
     return VK_FORMAT_R16_SINT;
-  case VertexFormat::Short2:
+  case lvk::VertexFormat_Short2:
     return VK_FORMAT_R16G16_SINT;
-  case VertexFormat::Short3:
+  case lvk::VertexFormat_Short3:
     return VK_FORMAT_R16G16B16_SINT;
-  case VertexFormat::Short4:
+  case lvk::VertexFormat_Short4:
     return VK_FORMAT_R16G16B16A16_SINT;
-  case VertexFormat::UShort1:
+  case lvk::VertexFormat_UShort1:
     return VK_FORMAT_R16_UINT;
-  case VertexFormat::UShort2:
+  case lvk::VertexFormat_UShort2:
     return VK_FORMAT_R16G16_UINT;
-  case VertexFormat::UShort3:
+  case lvk::VertexFormat_UShort3:
     return VK_FORMAT_R16G16B16_UINT;
-  case VertexFormat::UShort4:
+  case lvk::VertexFormat_UShort4:
     return VK_FORMAT_R16G16B16A16_UINT;
     // Normalized variants
-  case VertexFormat::Byte2Norm:
+  case lvk::VertexFormat_Byte2Norm:
     return VK_FORMAT_R8G8_SNORM;
-  case VertexFormat::Byte4Norm:
+  case lvk::VertexFormat_Byte4Norm:
     return VK_FORMAT_R8G8B8A8_SNORM;
-  case VertexFormat::UByte2Norm:
+  case lvk::VertexFormat_UByte2Norm:
     return VK_FORMAT_R8G8_UNORM;
-  case VertexFormat::UByte4Norm:
+  case lvk::VertexFormat_UByte4Norm:
     return VK_FORMAT_R8G8B8A8_UNORM;
-  case VertexFormat::Short2Norm:
+  case lvk::VertexFormat_Short2Norm:
     return VK_FORMAT_R16G16_SNORM;
-  case VertexFormat::Short4Norm:
+  case lvk::VertexFormat_Short4Norm:
     return VK_FORMAT_R16G16B16A16_SNORM;
-  case VertexFormat::UShort2Norm:
+  case lvk::VertexFormat_UShort2Norm:
     return VK_FORMAT_R16G16_UNORM;
-  case VertexFormat::UShort4Norm:
+  case lvk::VertexFormat_UShort4Norm:
     return VK_FORMAT_R16G16B16A16_UNORM;
-  case VertexFormat::Int1:
+  case lvk::VertexFormat_Int1:
     return VK_FORMAT_R32_SINT;
-  case VertexFormat::Int2:
+  case lvk::VertexFormat_Int2:
     return VK_FORMAT_R32G32_SINT;
-  case VertexFormat::Int3:
+  case lvk::VertexFormat_Int3:
     return VK_FORMAT_R32G32B32_SINT;
-  case VertexFormat::Int4:
+  case lvk::VertexFormat_Int4:
     return VK_FORMAT_R32G32B32A32_SINT;
-  case VertexFormat::UInt1:
+  case lvk::VertexFormat_UInt1:
     return VK_FORMAT_R32_UINT;
-  case VertexFormat::UInt2:
+  case lvk::VertexFormat_UInt2:
     return VK_FORMAT_R32G32_UINT;
-  case VertexFormat::UInt3:
+  case lvk::VertexFormat_UInt3:
     return VK_FORMAT_R32G32B32_UINT;
-  case VertexFormat::UInt4:
+  case lvk::VertexFormat_UInt4:
     return VK_FORMAT_R32G32B32A32_UINT;
-  case VertexFormat::HalfFloat1:
+  case lvk::VertexFormat_HalfFloat1:
     return VK_FORMAT_R16_SFLOAT;
-  case VertexFormat::HalfFloat2:
+  case lvk::VertexFormat_HalfFloat2:
     return VK_FORMAT_R16G16_SFLOAT;
-  case VertexFormat::HalfFloat3:
+  case lvk::VertexFormat_HalfFloat3:
     return VK_FORMAT_R16G16B16_SFLOAT;
-  case VertexFormat::HalfFloat4:
+  case lvk::VertexFormat_HalfFloat4:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
-  case VertexFormat::Int_2_10_10_10_REV:
+  case lvk::VertexFormat_Int_2_10_10_10_REV:
     return VK_FORMAT_A2B10G10R10_SNORM_PACK32;
   }
   LVK_ASSERT(false);

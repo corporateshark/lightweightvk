@@ -110,13 +110,13 @@ uint32_t lvk::getNumImagePlanes(lvk::Format format) {
 uint32_t lvk::getVertexFormatSize(lvk::VertexFormat format) {
   // clang-format off
 #define SIZE4(LVKBaseType, BaseType)           \
-  case VertexFormat::LVKBaseType##1: return sizeof(BaseType) * 1u; \
-  case VertexFormat::LVKBaseType##2: return sizeof(BaseType) * 2u; \
-  case VertexFormat::LVKBaseType##3: return sizeof(BaseType) * 3u; \
-  case VertexFormat::LVKBaseType##4: return sizeof(BaseType) * 4u;
+  case VertexFormat_##LVKBaseType##1: return sizeof(BaseType) * 1u; \
+  case VertexFormat_##LVKBaseType##2: return sizeof(BaseType) * 2u; \
+  case VertexFormat_##LVKBaseType##3: return sizeof(BaseType) * 3u; \
+  case VertexFormat_##LVKBaseType##4: return sizeof(BaseType) * 4u;
 #define SIZE2_4_NORM(LVKBaseType, BaseType)           \
-  case VertexFormat::LVKBaseType##2Norm: return sizeof(BaseType) * 2u; \
-  case VertexFormat::LVKBaseType##4Norm: return sizeof(BaseType) * 4u;
+  case VertexFormat_##LVKBaseType##2Norm: return sizeof(BaseType) * 2u; \
+  case VertexFormat_##LVKBaseType##4Norm: return sizeof(BaseType) * 4u;
 
   // clang-format on
 
@@ -133,7 +133,7 @@ uint32_t lvk::getVertexFormatSize(lvk::VertexFormat format) {
     SIZE4(Int, uint32_t);
     SIZE4(UInt, uint32_t);
     SIZE4(HalfFloat, uint16_t);
-  case VertexFormat::Int_2_10_10_10_REV:
+  case VertexFormat_Int_2_10_10_10_REV:
     return sizeof(uint32_t);
   default:
     assert(false);
@@ -287,7 +287,7 @@ void lvk::logShaderSource(const char* text) {
 
 uint32_t lvk::VertexInput::getVertexSize() const {
   uint32_t vertexSize = 0;
-  for (uint32_t i = 0; i < LVK_VERTEX_ATTRIBUTES_MAX && attributes[i].format != VertexFormat::Invalid; i++) {
+  for (uint32_t i = 0; i < LVK_VERTEX_ATTRIBUTES_MAX && attributes[i].format != VertexFormat_Invalid; i++) {
     LVK_ASSERT_MSG(attributes[i].offset == vertexSize, "Unsupported vertex attributes format");
     vertexSize += lvk::getVertexFormatSize(attributes[i].format);
   }

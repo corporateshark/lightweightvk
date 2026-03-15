@@ -1012,17 +1012,17 @@ void createPipelines() {
   const lvk::VertexInput vdesc = {
       .attributes =
           {
-              {.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(VertexData, position)},
-              {.location = 1, .format = lvk::VertexFormat::HalfFloat2, .offset = offsetof(VertexData, uv)},
-              {.location = 2, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, normal)},
-              {.location = 3, .format = lvk::VertexFormat::UShort1, .offset = offsetof(VertexData, mtlIndex)},
+              {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
+              {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
+              {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
+              {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
           },
       .inputBindings = {{.stride = sizeof(VertexData)}},
   };
 
   // shadow
   const lvk::VertexInput vdescs = {
-      .attributes = {{.format = lvk::VertexFormat::Float3, .offset = offsetof(VertexData, position)}},
+      .attributes = {{.format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)}},
       .inputBindings = {{.stride = sizeof(VertexData)}},
   };
 

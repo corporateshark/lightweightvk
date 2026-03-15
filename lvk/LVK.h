@@ -463,62 +463,62 @@ enum PolygonMode : uint8_t {
   PolygonMode_Point = 2,
 };
 
-enum class VertexFormat : uint8_t {
-  Invalid = 0,
+enum VertexFormat : uint8_t {
+  VertexFormat_Invalid = 0,
 
-  Float1,
-  Float2,
-  Float3,
-  Float4,
+  VertexFormat_Float1,
+  VertexFormat_Float2,
+  VertexFormat_Float3,
+  VertexFormat_Float4,
 
-  Byte1,
-  Byte2,
-  Byte3,
-  Byte4,
+  VertexFormat_Byte1,
+  VertexFormat_Byte2,
+  VertexFormat_Byte3,
+  VertexFormat_Byte4,
 
-  UByte1,
-  UByte2,
-  UByte3,
-  UByte4,
+  VertexFormat_UByte1,
+  VertexFormat_UByte2,
+  VertexFormat_UByte3,
+  VertexFormat_UByte4,
 
-  Short1,
-  Short2,
-  Short3,
-  Short4,
+  VertexFormat_Short1,
+  VertexFormat_Short2,
+  VertexFormat_Short3,
+  VertexFormat_Short4,
 
-  UShort1,
-  UShort2,
-  UShort3,
-  UShort4,
+  VertexFormat_UShort1,
+  VertexFormat_UShort2,
+  VertexFormat_UShort3,
+  VertexFormat_UShort4,
 
-  Byte2Norm,
-  Byte4Norm,
+  VertexFormat_Byte2Norm,
+  VertexFormat_Byte4Norm,
 
-  UByte2Norm,
-  UByte4Norm,
+  VertexFormat_UByte2Norm,
+  VertexFormat_UByte4Norm,
 
-  Short2Norm,
-  Short4Norm,
+  VertexFormat_Short2Norm,
+  VertexFormat_Short4Norm,
 
-  UShort2Norm,
-  UShort4Norm,
+  VertexFormat_UShort2Norm,
+  VertexFormat_UShort4Norm,
 
-  Int1,
-  Int2,
-  Int3,
-  Int4,
+  VertexFormat_Int1,
+  VertexFormat_Int2,
+  VertexFormat_Int3,
+  VertexFormat_Int4,
 
-  UInt1,
-  UInt2,
-  UInt3,
-  UInt4,
+  VertexFormat_UInt1,
+  VertexFormat_UInt2,
+  VertexFormat_UInt3,
+  VertexFormat_UInt4,
 
-  HalfFloat1,
-  HalfFloat2,
-  HalfFloat3,
-  HalfFloat4,
+  VertexFormat_HalfFloat1,
+  VertexFormat_HalfFloat2,
+  VertexFormat_HalfFloat3,
+  VertexFormat_HalfFloat4,
 
-  Int_2_10_10_10_REV,
+  VertexFormat_Int_2_10_10_10_REV,
 };
 
 enum Format : uint8_t {
@@ -606,7 +606,7 @@ struct VertexInput final {
   struct VertexAttribute final {
     uint32_t location = 0; // a buffer which contains this attribute stream
     uint32_t binding = 0;
-    VertexFormat format = VertexFormat::Invalid; // per-element format
+    VertexFormat format = VertexFormat_Invalid; // per-element format
     uintptr_t offset = 0; // an offset where the first element of this attribute stream starts
   } attributes[LVK_VERTEX_ATTRIBUTES_MAX];
   struct VertexInputBinding final {
@@ -616,7 +616,7 @@ struct VertexInput final {
   // clang-format off
   uint32_t getNumAttributes() const {
     uint32_t n = 0;
-    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat::Invalid) n++;
+    while (n < LVK_VERTEX_ATTRIBUTES_MAX && attributes[n].format != VertexFormat_Invalid) n++;
     return n;
   }
   uint32_t getNumInputBindings() const {
@@ -938,7 +938,7 @@ struct AccelStructDesc {
   AccelStructGeomType geometryType = AccelStructGeomType_Triangles;
   uint8_t geometryFlags = AccelStructGeometryFlagBits_Opaque;
 
-  VertexFormat vertexFormat = VertexFormat::Invalid;
+  VertexFormat vertexFormat = VertexFormat_Invalid;
   BufferHandle vertexBuffer;
   uint32_t vertexStride = 0; // zero means the size of `vertexFormat`
   uint32_t numVertices = 0;

@@ -174,7 +174,7 @@ void createBottomLevelAccelerationStructure() {
   res.BLAS = ctx_->createAccelerationStructure({
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
-      .vertexFormat = lvk::VertexFormat::Float3,
+      .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vertexBuffer,
       .numVertices = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(vertices),
       .indexFormat = lvk::IndexFormat_UI32,
