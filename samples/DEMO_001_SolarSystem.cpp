@@ -1370,9 +1370,9 @@ VULKAN_APP_MAIN {
   ShaderModules smSkyBox = loadShaderProgram(ctx, codeSkyBoxVS, codeSkyBoxFS, codeSkyBoxSlang);
 
   const lvk::VertexInput vinput = {
-      .attributes = {{.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(GeometryShapes::Vertex, pos)},
-                     {.location = 1, .format = lvk::VertexFormat::Float2, .offset = offsetof(GeometryShapes::Vertex, uv)},
-                     {.location = 2, .format = lvk::VertexFormat::Float3, .offset = offsetof(GeometryShapes::Vertex, normal)}},
+      .attributes = {{.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(GeometryShapes::Vertex, pos)},
+                     {.location = 1, .format = lvk::VertexFormat_Float2, .offset = offsetof(GeometryShapes::Vertex, uv)},
+                     {.location = 2, .format = lvk::VertexFormat_Float3, .offset = offsetof(GeometryShapes::Vertex, normal)}},
       .inputBindings = {{.stride = sizeof(GeometryShapes::Vertex)}},
   };
 
@@ -1412,7 +1412,7 @@ VULKAN_APP_MAIN {
       .topology = lvk::Topology_LineStrip,
       .vertexInput =
           {
-              .attributes = {{.location = 0, .format = lvk::VertexFormat::Float3, .offset = offsetof(GeometryShapes::Vertex, pos)}},
+              .attributes = {{.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(GeometryShapes::Vertex, pos)}},
               .inputBindings = {{.stride = sizeof(GeometryShapes::Vertex)}},
           },
       .smVert = smOrbit.vert,
@@ -1440,7 +1440,7 @@ VULKAN_APP_MAIN {
       .topology = lvk::Topology_TriangleStrip,
       .vertexInput =
           {
-              .attributes = {{.location = 1, .format = lvk::VertexFormat::Float2, .offset = offsetof(GeometryShapes::Vertex, uv)}},
+              .attributes = {{.location = 1, .format = lvk::VertexFormat_Float2, .offset = offsetof(GeometryShapes::Vertex, uv)}},
               .inputBindings = {{.stride = sizeof(GeometryShapes::Vertex)}},
           },
       .smVert = smSunCorona.vert,
