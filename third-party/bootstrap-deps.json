@@ -128,7 +128,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/g-truc/glm.git",
-        "revision": "1.0.0"
+        "revision": "1.0.3"
     }
 },
 {
