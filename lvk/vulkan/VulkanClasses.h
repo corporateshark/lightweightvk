@@ -767,6 +767,9 @@ class VulkanContext final : public IContext {
   mutable bool awaitingNewImmutableSamplers_ = false;
 
   lvk::ContextConfig config_;
+  // Adreno GPUs do not support unbounded arrays of acceleration structures (kTLAS[]) - use a fixed-size array declaration in shaders
+  bool workaround_fixedSizeAccelStructArray_ = false;
+
   bool has_KHR_acceleration_structure_ = false;
   bool has_KHR_ray_query_ = false;
   bool has_KHR_ray_tracing_pipeline_ = false;

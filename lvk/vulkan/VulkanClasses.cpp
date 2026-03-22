@@ -78,6 +78,17 @@ uint64_t getAlignedAddress(uint64_t addr, uint64_t align) {
   return offs ? addr + (align - offs) : addr;
 }
 
+void replaceAll(std::string& s, const char* oldStr, const char* newStr) {
+  const size_t oldLen = strlen(oldStr);
+  const size_t newLen = strlen(newStr);
+  size_t offset = 0;
+  while (const char* pos = strstr(s.c_str() + offset, oldStr)) {
+    offset = pos - s.c_str();
+    s.replace(offset, oldLen, newStr);
+    offset += newLen;
+  }
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
                                                    [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT msgType,
                                                    const VkDebugUtilsMessengerCallbackDataEXT* cbData,
@@ -6181,6 +6192,15 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     source = sourcePatched.c_str();
   }
 
+  // Adreno GPUs: rewrite unbounded kTLAS[] to fixed-size kTLAS[128]
+  if (workaround_fixedSizeAccelStructArray_ && strstr(source, "kTLAS[]")) {
+    if (sourcePatched.empty()) {
+      sourcePatched = source;
+    }
+    replaceAll(sourcePatched, "kTLAS[]", "kTLAS[128]");
+    source = sourcePatched.c_str();
+  }
+
   const glslang_resource_t glslangResource = lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits);
 
   std::vector<uint8_t> spirv;
@@ -6265,6 +6285,12 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
 
   sourcePatched += source;
   source = sourcePatched.c_str();
+
+  // Adreno GPUs: rewrite unbounded kTLAS[] to fixed-size kTLAS[128]
+  if (workaround_fixedSizeAccelStructArray_ && strstr(source, "kTLAS[]")) {
+    replaceAll(sourcePatched, "kTLAS[]", "kTLAS[128]");
+    source = sourcePatched.c_str();
+  }
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderSlang(pimpl_->slangGlobalSession_, stage, source, entryPointName, &spirv));
@@ -6911,6 +6937,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &vkPhysicalDeviceProperties2_);
 
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
+
+  workaround_fixedSizeAccelStructArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
 
   LLOGL("Vulkan physical device: %s\n", vkPhysicalDeviceProperties2_.properties.deviceName);
   LLOGL("           API version: %i.%i.%i.%i\n",
@@ -7849,7 +7877,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   uint32_t newMaxTextures = std::max(dset.maxTextures, 16u);
   uint32_t newMaxSamplers = std::max(dset.maxSamplers, 16u);
-  uint32_t newMaxAccelStructs = std::max(dset.maxAccelStructs, 1u);
+  uint32_t newMaxAccelStructs = std::max(dset.maxAccelStructs, workaround_fixedSizeAccelStructArray_ ? 128u : 1u);
 
   while (texturesPool_.objects_.size() > newMaxTextures) {
     newMaxTextures *= 2;
