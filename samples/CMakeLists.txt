@@ -70,6 +70,8 @@ macro(ADD_DEMO app)
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/AndroidManifest.xml")
       configure_file("${LVK_ROOT_DIR}/android/app/data_extraction_rules.xml.in"
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/res/xml/data_extraction_rules.xml")
+      file(COPY "${LVK_ROOT_DIR}/android/app/styles.xml"
+           DESTINATION "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/res/values")
       configure_file("${LVK_ROOT_DIR}/android/app/MainActivity.java.in"
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/java/org/lvk/samples/MainActivity.java")
       
