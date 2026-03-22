@@ -362,6 +362,8 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
   double timeStamp = glfwGetTime();
 
 #if defined(ANDROID)
+  const float kTimeQuantum = 0.02f;
+  double accTime = 0;
   int events = 0;
   android_poll_source* source = nullptr;
   do {
@@ -371,6 +373,12 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
     }
     timeStamp = newTimeStamp;
+    // simulation: tick in fixed quanta
+    accTime += deltaSeconds;
+    while (accTime >= kTimeQuantum) {
+      accTime -= kTimeQuantum;
+      simulatedTime_ += kTimeQuantum;
+    }
     if (ctx_) {
       const float ratio = width_ / (float)height_;
 
