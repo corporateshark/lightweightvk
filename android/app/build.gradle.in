@@ -46,8 +46,8 @@ android {
       path = file('../../../../CMakeLists.txt')
     }
   }
+}
 
-  buildFeatures {
-    viewBinding = true
-  }
+dependencies {
+  implementation project(':lvklib')
 }
