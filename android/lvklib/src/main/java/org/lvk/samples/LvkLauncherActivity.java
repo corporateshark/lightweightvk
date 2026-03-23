@@ -12,16 +12,26 @@ import android.provider.Settings;
  * This avoids starting the native thread before permissions are granted.
  */
 public class LvkLauncherActivity extends Activity {
-  private static final int REQUEST_MANAGE_STORAGE_CODE = 1;
+  private boolean waitingForPermission = false;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     if (!Environment.isExternalStorageManager()) {
+      waitingForPermission = true;
       Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
       intent.setData(Uri.fromParts("package", getPackageName(), null));
-      startActivityForResult(intent, REQUEST_MANAGE_STORAGE_CODE);
+      startActivity(intent);
     } else {
+      launchNativeActivity();
+    }
+  }
+
+  @Override
+  protected void onRestart() {
+    super.onRestart();
+    if (waitingForPermission) {
+      waitingForPermission = false;
       launchNativeActivity();
     }
   }
@@ -31,14 +41,5 @@ public class LvkLauncherActivity extends Activity {
     intent.setClassName(this, "org.lvk.samples.MainActivity");
     startActivity(intent);
     finish();
-  }
-
-  @SuppressWarnings("deprecation")
-  @Override
-  protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-    super.onActivityResult(requestCode, resultCode, data);
-    if (requestCode == REQUEST_MANAGE_STORAGE_CODE) {
-      launchNativeActivity();
-    }
   }
 }

@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.window.OnBackInvokedDispatcher;
 
 public class LvkActivity extends android.app.NativeActivity {
 
@@ -19,7 +20,6 @@ public class LvkActivity extends android.app.NativeActivity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    getWindow().setDecorFitsSystemWindows(false);
     getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
 
     super.onCreate(savedInstanceState);
@@ -37,6 +37,12 @@ public class LvkActivity extends android.app.NativeActivity {
       }
       return view.onApplyWindowInsets(insets);
     });
+
+    getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+        OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> {
+          System.gc();
+          System.exit(0);
+        });
   }
 
   @Override
@@ -57,12 +63,5 @@ public class LvkActivity extends android.app.NativeActivity {
     if (hasFocus) {
       hideSystemBars();
     }
-  }
-
-  @SuppressWarnings("deprecation")
-  @Override
-  public void onBackPressed() {
-    System.gc();
-    System.exit(0);
   }
 }
