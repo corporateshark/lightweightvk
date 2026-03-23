@@ -1,0 +1,18 @@
+plugins {
+  id 'com.android.library'
+}
+
+android {
+  namespace = 'org.lvk.lib'
+  compileSdk = 34
+
+  defaultConfig {
+    minSdk = 30
+    targetSdk = 34
+  }
+
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+  }
+}
