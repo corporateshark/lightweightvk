@@ -1,21 +1,11 @@
 package org.lvk.samples;
 
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.Settings;
-import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
 public class LvkActivity extends android.app.NativeActivity {
-  private static final String PERMISSION_READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE";
-  private static final String PERMISSION_WRITE_EXTERNAL_STORAGE = "android.permission.WRITE_EXTERNAL_STORAGE";
-  private static final int REQUEST_PERMISSION_CODE = 1;
 
   private void hideSystemBars() {
     final WindowInsetsController controller = getWindow().getInsetsController();
@@ -47,20 +37,6 @@ public class LvkActivity extends android.app.NativeActivity {
       }
       return view.onApplyWindowInsets(insets);
     });
-
-    if (checkSelfPermission(PERMISSION_READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
-        checkSelfPermission(PERMISSION_WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-      requestPermissions(new String[] {PERMISSION_READ_EXTERNAL_STORAGE,
-                                       PERMISSION_WRITE_EXTERNAL_STORAGE}, REQUEST_PERMISSION_CODE);
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      if (!Environment.isExternalStorageManager()) {
-        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-        Uri uri = Uri.fromParts("package", getPackageName(), null);
-        intent.setData(uri);
-        startActivity(intent);
-      }
-    }
   }
 
   @Override

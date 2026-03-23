@@ -9,6 +9,17 @@
       android:enableOnBackInvokedCallback="true">
     <activity
         android:exported="true"
+        android:name="org.lvk.samples.LvkLauncherActivity"
+        android:theme="@style/LvkFullscreen"
+        android:screenOrientation="landscape"
+        android:label="@APP_NAME@">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <activity
+        android:exported="false"
         android:name="org.lvk.samples.MainActivity"
         android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density"
         android:screenOrientation="landscape"
@@ -18,10 +29,6 @@
       <meta-data
           android:name="android.app.lib_name"
           android:value="lvk_android_native_@APP_NAME@" />
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.LAUNCHER" />
-      </intent-filter>
     </activity>
   </application>
 </manifest>
