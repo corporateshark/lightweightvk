@@ -4,12 +4,12 @@ plugins {
 
 android {
   namespace = 'org.lvk.samples'
-  compileSdk = 34
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "org.lvk.samples.lvk_@APP_NAME@"
-    minSdk = 30
-    targetSdk = 34
+    minSdk = 33
+    targetSdk = 35
     versionCode = 1
     versionName = "1.0"
     ndk {

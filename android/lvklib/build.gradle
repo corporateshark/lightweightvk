@@ -4,11 +4,11 @@ plugins {
 
 android {
   namespace = 'org.lvk.lib'
-  compileSdk = 34
+  compileSdk = 35
 
   defaultConfig {
-    minSdk = 30
-    targetSdk = 34
+    minSdk = 33
+    targetSdk = 35
   }
 
   compileOptions {
