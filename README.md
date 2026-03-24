@@ -18,7 +18,7 @@ There are no plans to keep this fork in sync with the upstream.
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)
-   * optional **VK_EXT_mesh_shader** (Windows, Linux)
+   * optional **VK_EXT_mesh_shader** (Windows, Linux, Android)
 
 ## Supported platforms
 
@@ -35,7 +35,7 @@ There are no plans to keep this fork in sync with the upstream.
 | VK_KHR_acceleration_structure | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_KHR_ray_tracing_pipeline   | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
-| VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            |                            |
+| VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 
 On MacOS, `KosmicKrisp` or `MoltenVK 1.4+`, and `VulkanSDK 1.4.341+` are required.
 
