@@ -177,6 +177,13 @@ VULKAN_APP_MAIN {
 #endif // !ANDROID
 
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+#if defined(ANDROID)
+    // cycle through demos on touch release
+    if (app.imguiClearMouseNextFrame_ && !res_.demos.empty()) {
+      currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
+    }
+#endif // ANDROID
+
     const lvk::Framebuffer framebuffer = {
         .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
     };
