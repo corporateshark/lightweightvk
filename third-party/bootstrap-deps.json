@@ -250,7 +250,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/shader-slang/slang",
-        "revision": "v2026.4.2",
+        "revision": "v2026.5.1",
         "recursive": true
     }
 }
