@@ -4595,7 +4595,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
       .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
       .format = vkFormat,
       .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
-      .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL,
+      .ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
       .components = {VK_COMPONENT_SWIZZLE_IDENTITY,
                      VK_COMPONENT_SWIZZLE_IDENTITY,
                      VK_COMPONENT_SWIZZLE_IDENTITY,
