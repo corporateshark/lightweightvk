@@ -225,6 +225,9 @@ class VulkanImmediateCommands final {
 struct RenderPipelineState final {
   RenderPipelineDesc desc_;
 
+  // Adreno 840: YUV texture index from spec constant, cached at creation time before the data pointer goes stale
+  uint32_t workaround_yuvTextureIndex_ = UINT32_MAX;
+
   uint32_t numBindings_ = 0;
   uint32_t numAttributes_ = 0;
   VkVertexInputBindingDescription vkBindings_[VertexInput::LVK_VERTEX_BUFFER_MAX] = {};
@@ -769,6 +772,8 @@ class VulkanContext final : public IContext {
   lvk::ContextConfig config_;
   // Adreno GPUs do not support unbounded arrays of acceleration structures (kTLAS[]) - use a fixed-size array declaration in shaders
   bool workaround_fixedSizeAccelStructArray_ = false;
+  // Adreno GPUs do not support arrays (of any size) of combined image samplers with YCbCr immutable samplers - use a single non-array sampler
+  bool workaround_noYcbcrSamplerArray_ = false;
 
   bool has_KHR_acceleration_structure_ = false;
   bool has_KHR_ray_query_ = false;

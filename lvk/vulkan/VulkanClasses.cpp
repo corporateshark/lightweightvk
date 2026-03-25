@@ -89,6 +89,22 @@ void replaceAll(std::string& s, const char* oldStr, const char* newStr) {
   }
 }
 
+// Erases every "[...]" that immediately follows `varName` in `s`.
+// Example: stripArrayIndex("kSamplersYUV[textureId]", "kSamplersYUV") rewrites "kSamplersYUV[textureId]" to "kSamplersYUV".
+void stripArrayIndex(std::string& s, const char* varName) {
+  const size_t nameLen = strlen(varName);
+  size_t offset = 0;
+  while (const char* pos = strstr(s.c_str() + offset, varName)) {
+    offset = pos - s.c_str() + nameLen;
+    if (offset < s.size() && s[offset] == '[') {
+      const char* close = strchr(s.c_str() + offset, ']');
+      if (close) {
+        s.erase(offset, close - s.c_str() - offset + 1);
+      }
+    }
+  }
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT msgSeverity,
                                                    [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT msgType,
                                                    const VkDebugUtilsMessengerCallbackDataEXT* cbData,
@@ -763,6 +779,8 @@ struct VulkanContextImpl final {
   uint32_t numYcbcrSamplers_ = 0;
   // max of all used values of VkSamplerYcbcrConversionImageFormatProperties::combinedImageSamplerDescriptorCount
   uint32_t maxCombinedImageSamplerDescriptorCount_ = 1;
+  // Adreno 840: texture pool index of the active YUV texture for the single non-array descriptor slot
+  uint32_t workaround_activeYuvTextureIndex_ = UINT32_MAX;
 
   slang::IGlobalSession* slangGlobalSession_ = nullptr;
 
@@ -4943,6 +4961,19 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     return VK_NULL_HANDLE;
   }
 
+  // Adreno 840: infer the active YUV texture index from the pipeline's specialization constant (the same value that indexed kSamplersYUV[]
+  // in the original shader before array stripping)
+  if (workaround_noYcbcrSamplerArray_ && pimpl_->numYcbcrSamplers_ &&
+      rps->workaround_yuvTextureIndex_ != pimpl_->workaround_activeYuvTextureIndex_) {
+    const uint32_t idx = rps->workaround_yuvTextureIndex_; // some ad hoc guessing...
+    const bool isYuv = idx < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
+    if (isYuv) {
+      pimpl_->workaround_activeYuvTextureIndex_ = idx;
+      awaitingNewImmutableSamplers_ = true;
+      awaitingCreation_ = true;
+    }
+  }
+
   checkAndUpdateDescriptorSets();
 
   const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
@@ -5552,6 +5583,22 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
   }
 
   RenderPipelineState rps = {.desc_ = desc};
+
+  // Adreno 840: find the spec constant whose value is a valid YUV texture index (the one that was used to index
+  // kSamplersYUV[] before array stripping)
+  if (workaround_noYcbcrSamplerArray_ && desc.specInfo.data) {
+    for (uint32_t i = 0; i != desc.specInfo.getNumSpecializationConstants(); i++) {
+      const SpecializationConstantEntry& entry = desc.specInfo.entries[i];
+      // some ad hoc guessing...
+      if (entry.size == sizeof(uint32_t) && entry.offset + sizeof(uint32_t) <= desc.specInfo.dataSize) {
+        const uint32_t value = *(const uint32_t*)((const uint8_t*)desc.specInfo.data + entry.offset);
+        if (value < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[value].obj_.vkImageFormat_) > 1) {
+          rps.workaround_yuvTextureIndex_ = value;
+          break;
+        }
+      }
+    }
+  }
 
   // Iterate and cache vertex input bindings and attributes
   const lvk::VertexInput& vstate = rps.desc_.vertexInput;
@@ -6201,6 +6248,16 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     source = sourcePatched.c_str();
   }
 
+  // Adreno 840: strip array indexing from kSamplersYUV (YCbCr combined image samplers cannot be arrays)
+  if (workaround_noYcbcrSamplerArray_ && strstr(source, "kSamplersYUV[")) {
+    if (sourcePatched.empty()) {
+      sourcePatched = source;
+    }
+    replaceAll(sourcePatched, "kSamplersYUV[]", "kSamplersYUV");
+    stripArrayIndex(sourcePatched, "kSamplersYUV");
+    source = sourcePatched.c_str();
+  }
+
   const glslang_resource_t glslangResource = lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits);
 
   std::vector<uint8_t> spirv;
@@ -6244,7 +6301,6 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
       "[[vk::binding(1, 3)]] SamplerComparisonState kSamplersShadow[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
-  // cannot handle unbounded arrays https://github.com/shader-slang/slang/issues/8902
   addCode("kTLAS[", "[[vk::binding(4, 0)]] RaytracingAccelerationStructure kTLAS[];\n");
   addCode("textureBindless2D(",
           "float4 textureBindless2D(uint textureid, uint samplerid, float2 uv) {\n"
@@ -6289,6 +6345,13 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
   // Adreno GPUs: rewrite unbounded kTLAS[] to fixed-size kTLAS[128]
   if (workaround_fixedSizeAccelStructArray_ && strstr(source, "kTLAS[]")) {
     replaceAll(sourcePatched, "kTLAS[]", "kTLAS[128]");
+    source = sourcePatched.c_str();
+  }
+
+  // Adreno 840: strip array indexing from kSamplersYUV
+  if (workaround_noYcbcrSamplerArray_ && strstr(source, "kSamplersYUV[")) {
+    replaceAll(sourcePatched, "kSamplersYUV[]", "kSamplersYUV");
+    stripArrayIndex(sourcePatched, "kSamplersYUV");
     source = sourcePatched.c_str();
   }
 
@@ -6939,6 +7002,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
 
   workaround_fixedSizeAccelStructArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
+  // Adreno 840 cannot handle arrays (of any size) of combined image samplers with YCbCr immutable samplers
+  workaround_noYcbcrSamplerArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
 
   LLOGL("Vulkan physical device: %s\n", vkPhysicalDeviceProperties2_.properties.deviceName);
   LLOGL("           API version: %i.%i.%i.%i\n",
@@ -7623,14 +7688,23 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
   const VkSampler* immutableSamplersData = nullptr;
 
   if (firstYcbcrSampler) {
-    immutableSamplers.resize(maxTextures, firstYcbcrSampler);
-    for (size_t i = 0; i != texturesPool_.objects_.size(); i++) {
-      const auto& obj = texturesPool_.objects_[i];
-      const VulkanImage* img = &obj.obj_;
-      // multisampled images cannot be directly accessed from shaders
-      const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
-      const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
-      immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : firstYcbcrSampler;
+    if (workaround_noYcbcrSamplerArray_) {
+      // Adreno 840: single descriptor slot - use the active YUV texture's format sampler
+      const uint32_t idx = pimpl_->workaround_activeYuvTextureIndex_;
+      const bool isValidYuv = idx < texturesPool_.objects_.size() &&
+                              lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
+      immutableSamplers.push_back(isValidYuv ? getOrCreateYcbcrSampler(vkFormatToFormat(texturesPool_.objects_[idx].obj_.vkImageFormat_))
+                                             : firstYcbcrSampler);
+    } else {
+      immutableSamplers.resize(maxTextures, firstYcbcrSampler);
+      for (size_t i = 0; i != texturesPool_.objects_.size(); i++) {
+        const auto& obj = texturesPool_.objects_[i];
+        const VulkanImage* img = &obj.obj_;
+        // multisampled images cannot be directly accessed from shaders
+        const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+        const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
+        immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : firstYcbcrSampler;
+      }
     }
     immutableSamplersData = immutableSamplers.data();
   }
@@ -7648,7 +7722,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
       lvk::getDSLBinding(kBinding_StorageImages, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxTextures, stageFlags),
       lvk::getDSLBinding(kBinding_YUVImages,
                          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                         (uint32_t)immutableSamplers.size() ? maxTextures : 0,
+                         (uint32_t)immutableSamplers.size() ? (workaround_noYcbcrSamplerArray_ ? 1u : maxTextures) : 0,
                          stageFlags,
                          immutableSamplersData),
       lvk::getDSLBinding(kBinding_AccelerationStructures, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxAccelStructs, stageFlags),
@@ -7686,7 +7760,7 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
     if (!immutableSamplers.empty()) {
       poolSizes[numPoolSizes++] = VkDescriptorPoolSize{
           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-          pimpl_->maxCombinedImageSamplerDescriptorCount_ * maxTextures,
+          pimpl_->maxCombinedImageSamplerDescriptorCount_ * (workaround_noYcbcrSamplerArray_ ? 1u : maxTextures),
       };
     }
     if (has_KHR_acceleration_structure_) {
@@ -7928,7 +8002,7 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
         .imageView = isStorageImage ? storageView : dummyImageView,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     });
-    if (hasYcbcrSamplers) {
+    if (hasYcbcrSamplers && !workaround_noYcbcrSamplerArray_) {
       // we don't need to update this if there're no YUV samplers
       infoYUVImages.push_back(VkDescriptorImageInfo{
           .sampler = dummySampler, // this will be replaced by immutable samplers from VkPipeline
@@ -7936,6 +8010,18 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
           .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
       });
     }
+  }
+
+  // Adreno 840: single YUV descriptor using the active texture inferred from spec constants
+  if (hasYcbcrSamplers && workaround_noYcbcrSamplerArray_) {
+    const uint32_t idx = pimpl_->workaround_activeYuvTextureIndex_;
+    const bool isValidYuv = idx < texturesPool_.objects_.size() &&
+                            lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
+    infoYUVImages.push_back(VkDescriptorImageInfo{
+        .sampler = dummySampler,
+        .imageView = isValidYuv ? texturesPool_.objects_[idx].obj_.imageView_ : dummyImageView,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    });
   }
 
   // 2. Samplers
