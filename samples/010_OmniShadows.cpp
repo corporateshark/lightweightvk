@@ -497,7 +497,7 @@ VULKAN_APP_MAIN {
 
   lvk::Holder<lvk::TextureHandle> shadowMap = ctx->createTexture({
       .type = lvk::TextureType_Cube,
-      .format = app.getDepthFormat(),
+      .format = lvk::Format_Z_UN16, // `Mali-G925` does not work with VK_FORMAT_D32_SFLOAT
       .dimensions = {shadowMapSize, shadowMapSize},
       .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_Attachment,
       .debugName = "Texture: shadow map",
@@ -583,7 +583,7 @@ VULKAN_APP_MAIN {
     // 1. Render shadow map
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1000.0},
+            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
             .layerCount = 6,
             .viewMask = 0b111111,
         },
