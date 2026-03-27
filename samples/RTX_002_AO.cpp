@@ -22,8 +22,8 @@ vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 
 #if defined(ANDROID)
-constexpr int kNumSamplesMSAA = 1;
-constexpr int kFramebufferScalar = 2;
+constexpr int kNumSamplesMSAA = 4;
+constexpr float kFramebufferScalar = 1.0f;
 #else
 constexpr int kNumSamplesMSAA = 4;
 constexpr int kFramebufferScalar = 1;
@@ -324,7 +324,7 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     if (rq.CommittedStatus() != COMMITTED_NOTHING) occlusion *= 0.5;
   }
 
-  float NdotL1 = clamp(dot(n, normalize(float3(-1, 1, 1))), 0.0, 1.0);
+  float NdotL1 = clamp(dot(n, normalize(float3(+1, 1, +1))), 0.0, 1.0);
   float NdotL2 = clamp(dot(n, normalize(float3(-1, 1, -1))), 0.0, 1.0);
   float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
 
@@ -646,7 +646,7 @@ void main() {
     if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) occlusion *= 0.5;
   }
 
-  float NdotL1 = clamp(dot(n, normalize(vec3(-1, 1, 1))),  0.0, 1.0);
+  float NdotL1 = clamp(dot(n, normalize(vec3(+1, 1, +1))),  0.0, 1.0);
   float NdotL2 = clamp(dot(n, normalize(vec3(-1, 1, -1))), 0.0, 1.0);
   float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
 
@@ -951,7 +951,7 @@ VULKAN_APP_MAIN {
   res.smFullscreenFrag_ = ctx_->createShaderModule({kCodeFullscreenFS, lvk::Stage_Frag, "Shader Module: fullscreen (frag)"});
 #endif // defined(LVK_DEMO_WITH_SLANG)
 
-  lvk::Framebuffer fbOffscreen = createOffscreenFramebuffer(app.width_, app.height_);
+  lvk::Framebuffer fbOffscreen = createOffscreenFramebuffer(app.width_ / kFramebufferScalar, app.height_ / kFramebufferScalar);
 
   res.renderPipelineState_Mesh_ = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
       .vertexInput =
