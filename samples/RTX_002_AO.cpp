@@ -320,6 +320,16 @@ uint spatialHashFind(float3 position, float cellSize, uint normalHashPCG, uint n
   return 0xFFFFFFFFu;
 }
 
+// Adaptive cell size (Gautron 2020, Eq. 2-3): projects to ~pc.sp pixels on screen, quantized to power-of-2.
+float computeCellSize(float3 worldPos) {
+  float3 camPos = -(mul(float3x3(pc.perFrame->view), pc.perFrame->view[3].xyz));
+  float dist = distance(camPos, worldPos);
+  // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
+  float h = dist / pc.perFrame->proj[1][1];
+  float sw = pc.sp * (h * 2.0) / pc.resolutionY;
+  return exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
+}
+
 [shader("fragment")]
 float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
   PerVertex vtx = input.vtx;
@@ -334,12 +344,7 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     uint seed = tea(uint(fragCoord.y * 4003.0 + fragCoord.x), pc.frameId); // prime
 
     if (pc.enableSpatialHash) {
-      float3 camPos = -(mul(float3x3(pc.perFrame->view), pc.perFrame->view[3].xyz));
-      float dist = distance(camPos, vtx.worldPos);
-      // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
-      float h = dist / pc.perFrame->proj[1][1];
-      float sw = pc.sp * (h * 2.0) / pc.resolutionY;
-      float swd = exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
+      float swd = computeCellSize(vtx.worldPos);
 
       // precompute normal hash (shared across all LODs)
       int3 nn = int3(floor(n * 3.0));
@@ -786,6 +791,16 @@ uint spatialHashFind(vec3 position, float cellSize, uint normalHashPCG, uint nor
   return 0xFFFFFFFFu;
 }
 
+// Adaptive cell size (Gautron 2020, Eq. 2-3): projects to ~pc.sp pixels on screen, quantized to power-of-2.
+float computeCellSize(vec3 worldPos) {
+  vec3 camPos = -(transpose(mat3(pc.perFrame.view)) * pc.perFrame.view[3].xyz);
+  float dist = distance(camPos, worldPos);
+  // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
+  float h = dist / pc.perFrame.proj[1][1];
+  float sw = pc.sp * (h * 2.0) / pc.resolutionY;
+  return exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
+}
+
 void main() {
   vec3 n = normalize(vtx.normal);
 
@@ -802,13 +817,7 @@ void main() {
     uint seed = tea(uint(gl_FragCoord.y * 4003.0 + gl_FragCoord.x), pc.frameId); // prime
 
     if (pc.enableSpatialHash) {
-      // extract camera position from view matrix
-      vec3 camPos = -(transpose(mat3(pc.perFrame.view)) * pc.perFrame.view[3].xyz);
-      float dist = distance(camPos, vtx.worldPos);
-      // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
-      float h = dist / pc.perFrame.proj[1][1];
-      float sw = pc.sp * (h * 2.0) / pc.resolutionY;
-      float swd = exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
+      float swd = computeCellSize(vtx.worldPos);
 
       // precompute normal hash (shared across all LODs)
       ivec3 nn = ivec3(floor(n * 3.0));
