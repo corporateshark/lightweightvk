@@ -38,10 +38,6 @@ constexpr uint32_t kHashMapSize = 8 * 1024 * 1024; // 8M entries on desktop (96 
 const char* codeFullscreenSlang = R"(
 struct PushConstants {
   uint tex;
-  uint denoise;
-  float sigma;
-  float ksigma;
-  float threshold;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -51,50 +47,9 @@ struct VSOutput {
   float4 position : SV_Position;
 };
 
-#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
-#define INV_PI 0.31830988618379067153776752674503
-
-// https://github.com/BrutPitt/glslSmartDeNoise
-/*
-//  Copyright (c) 2018-2024 Michele Morrone
-//  All rights reserved.
-//  https://michelemorrone.eu - https://brutpitt.com
-//  X: https://x.com/BrutPitt - GitHub: https://github.com/BrutPitt
-//  direct mail: brutpitt(at)gmail.com - me(at)michelemorrone.eu
-//  This software is distributed under the terms of the BSD 2-Clause license
-*/
-float4 smartDeNoise(uint tex, float2 uv, float sigma, float kSigma, float threshold) {
-  float radius = round(kSigma * sigma);
-  float radQ = radius * radius;
-  float invSigmaQx2 = 0.5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
-  float invSigmaQx2PI = INV_PI * invSigmaQx2;     // 1/(2 * PI * sigma^2)
-  float invThresholdSqx2 = 0.5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
-  float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
-
-  float4 centrPx = textureBindless2D(tex, 0, uv);
-  float zBuff = 0.0;
-  float4 aBuff = float4(0.0, 0.0, 0.0, 0.0);
-  float2 size = float2(textureBindlessSize2D(tex));
-
-  float2 d;
-  for (d.x = -radius; d.x <= radius; d.x++) {
-    float pt = sqrt(radQ - d.x * d.x);       // pt = yRadius: have circular trend
-    for (d.y = -pt; d.y <= pt; d.y++) {
-      float blurFactor = exp(-dot(d, d) * invSigmaQx2) * invSigmaQx2PI;
-      float4 walkPx = textureBindless2D(tex, 0, uv + d / size);
-      float4 dC = walkPx - centrPx;
-      float deltaFactor = exp(-dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
-      zBuff += deltaFactor;
-      aBuff += deltaFactor * walkPx;
-    }
-  }
-  return aBuff / zBuff;
-}
-
 [shader("vertex")]
 VSOutput vertexMain(uint vertexID : SV_VertexID) {
   VSOutput out;
-  // generate a triangle covering the entire screen
   out.uv = float2((vertexID << 1) & 2, vertexID & 2);
   out.position = float4(out.uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
   return out;
@@ -102,9 +57,7 @@ VSOutput vertexMain(uint vertexID : SV_VertexID) {
 
 [shader("fragment")]
 float4 fragmentMain(VSOutput input) : SV_Target {
-  return pc.denoise > 0 ?
-      smartDeNoise(pc.tex, input.uv, pc.sigma, pc.ksigma, pc.threshold) :
-      textureBindless2D(pc.tex, 0, input.uv);
+  return textureBindless2D(pc.tex, 0, input.uv);
 }
 )";
 
@@ -498,61 +451,10 @@ layout (location=0) out vec4 out_FragColor;
 
 layout(push_constant) uniform constants {
    uint tex;
-   uint denoise;
-   float sigma;
-   float ksigma;
-   float threshold;
 } pc;
 
-#define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
-#define INV_PI 0.31830988618379067153776752674503
-
-// https://github.com/BrutPitt/glslSmartDeNoise
-/*
-//  Copyright (c) 2018-2024 Michele Morrone
-//  All rights reserved.
-//  https://michelemorrone.eu - https://brutpitt.com
-//  X: https://x.com/BrutPitt - GitHub: https://github.com/BrutPitt
-//  direct mail: brutpitt(at)gmail.com - me(at)michelemorrone.eu
-//  This software is distributed under the terms of the BSD 2-Clause license
-*/
-vec4 smartDeNoise(uint tex, vec2 uv, float sigma, float kSigma, float threshold) {
-  float radius = round(kSigma*sigma);
-  float radQ   = radius * radius;
-
-  float invSigmaQx2   = .5 / (sigma * sigma);      // 1.0 / (sigma^2 * 2.0)
-  float invSigmaQx2PI = INV_PI * invSigmaQx2;    // 1/(2 * PI * sigma^2)
-
-  float invThresholdSqx2    = .5 / (threshold * threshold);     // 1.0 / (sigma^2 * 2.0)
-  float invThresholdSqrt2PI = INV_SQRT_OF_2PI / threshold;   // 1.0 / (sqrt(2*PI) * sigma^2)
-
-  vec4 centrPx = textureBindless2D(tex, 0, uv);
-
-  float zBuff = 0.0;
-  vec4 aBuff  = vec4(0.0);
-  vec2 size   = vec2(textureBindlessSize2D(tex));
-
-  vec2 d;
-  for (d.x=-radius; d.x <= radius; d.x++) {
-    float pt = sqrt(radQ-d.x*d.x);       // pt = yRadius: have circular trend
-    for (d.y=-pt; d.y <= pt; d.y++) {
-      float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
-
-      vec4 walkPx = textureBindless2D(tex, 0, uv+d/size);
-      vec4 dC = walkPx-centrPx;
-      float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
-
-      zBuff += deltaFactor;
-      aBuff += deltaFactor*walkPx;
-    }
-  }
-  return aBuff/zBuff;
-}
-
 void main() {
-  out_FragColor = pc.denoise > 0 ?
-      smartDeNoise(pc.tex, uv, pc.sigma, pc.ksigma, pc.threshold) :
-      textureBindless2D(pc.tex, 0, uv);
+  out_FragColor = textureBindless2D(pc.tex, 0, uv);
 }
 )";
 
@@ -971,11 +873,6 @@ struct {
 
 bool enableShadows_ = true;
 bool enableAO_ = true;
-
-float denoiseSigma_ = 1.2f;
-float denoiseKSigma_ = 6.0f;
-float denoiseThreshold_ = 0.43f;
-bool enableDenoise_ = false;
 
 int aoSamples_ = 2;
 bool aoDistanceBased_ = true;
@@ -1453,16 +1350,8 @@ VULKAN_APP_MAIN {
         buffer.cmdBindDepthState({});
         const struct {
           uint32_t texture;
-          uint32_t denoise;
-          float denoiseSigma = 2.0f;
-          float denoiseKSigma = 2.0f;
-          float denoiseThreshold = 0.5f;
         } bindings = {
             .texture = tex.index(),
-            .denoise = enableDenoise_ ? 1u : 0u,
-            .denoiseSigma = denoiseSigma_,
-            .denoiseKSigma = denoiseKSigma_,
-            .denoiseThreshold = denoiseThreshold_,
         };
         buffer.cmdPushConstants(bindings);
         buffer.cmdDraw(3);
@@ -1486,7 +1375,6 @@ VULKAN_APP_MAIN {
           ImGui::Text("1/2 - camera up/down");
           ImGui::Text("Shift - fast movement");
           ImGui::Separator();
-          ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
           ImGui::Checkbox("Ray traced shadows", &enableShadows_);
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableShadows_);
@@ -1494,28 +1382,23 @@ VULKAN_APP_MAIN {
           imGuiPopFlagsAndStyles();
           lightDir_ = glm::normalize(lightDir_);
           ImGui::Unindent(indentSize);
-          ImGui::Checkbox("Denoise:", &enableDenoise_);
-          ImGui::Indent(indentSize);
-          imGuiPushFlagsAndStyles(enableDenoise_);
-          ImGui::SliderFloat("Sigma", &denoiseSigma_, 0.001f, 3.0f);
-          ImGui::SliderFloat("kSigma", &denoiseKSigma_, 0.001f, 9.0f);
-          ImGui::SliderFloat("Threshold", &denoiseThreshold_, 0.001f, 1.0f);
-          ImGui::Unindent(indentSize);
-          imGuiPopFlagsAndStyles();
           ImGui::Checkbox("Ray traced AO:", &enableAO_);
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableAO_);
+          ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
+          imGuiPushFlagsAndStyles(!enableSpatialHash_);
           ImGui::Checkbox("Distance based AO", &aoDistanceBased_);
           ImGui::SliderFloat("AO radius", &aoRadius_, 0.5f, 16.0f);
           ImGui::SliderFloat("AO power", &aoPower_, 1.0f, 2.0f);
           ImGui::SliderInt("AO samples", &aoSamples_, 1, 32);
+          imGuiPopFlagsAndStyles();
           ImGui::Separator();
-          ImGui::Checkbox("Spatial hash (Gautron 2020)", &enableSpatialHash_);
+          ImGui::Checkbox("Spatial hashing", &enableSpatialHash_);
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableSpatialHash_);
           ImGui::SliderFloat("Pixel size (sp)", &spatialHashPixelSize_, 1.0f, 10.0f);
           ImGui::SliderFloat("Min cell size", &spatialHashMinCellSize_, 0.05f, 0.5f);
-          ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1024);
+          ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1000);
           if (ImGui::Button("Reset hash map")) {
             buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
             buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
