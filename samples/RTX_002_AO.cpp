@@ -128,7 +128,6 @@ struct PushConstants {
   uint tlas;
   bool enableShadows;
   bool enableAO;
-  bool aoDistanceBased;
   int aoSamples;
   float aoRadius;
   float aoPower;
@@ -215,17 +214,11 @@ float traceAO(inout RayQuery<RAY_FLAG_NONE> rq, float3 origin, float3 dir) {
   ray.TMin = 0.0f;
   ray.TMax = pc.aoRadius;
 
-  uint flags = pc.aoDistanceBased ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE;
-  rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], flags, 0xFF, ray);
+  rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, ray);
 
   while (rq.Proceed()) {}
 
-  if (rq.CommittedStatus() != COMMITTED_NOTHING) {
-    if (pc.aoDistanceBased) return 1;
-    float length = 1.0 - (rq.CommittedRayT() / pc.aoRadius);
-    return length;
-  }
-  return 0;
+  return (rq.CommittedStatus() != COMMITTED_NOTHING) ? 1.0 : 0.0;
 }
 
 // generate a random unsigned int in [0, 2^24) given the previous RNG state using the Numerical Recipes LCG
@@ -655,7 +648,6 @@ layout(push_constant) uniform constants {
   uint tlas;
   bool enableShadows;
   bool enableAO;
-  bool aoDistanceBased;
   int aoSamples;
   float aoRadius;
   float aoPower;
@@ -683,19 +675,11 @@ void computeTBN(in vec3 n, out vec3 x, out vec3 y) {
 }
 
 float traceAO(rayQueryEXT rq, vec3 origin, vec3 dir) {
-  uint flags = pc.aoDistanceBased ? gl_RayFlagsTerminateOnFirstHitEXT : gl_RayFlagsNoneEXT;
-
-  rayQueryInitializeEXT(rq, kTLAS[pc.tlas], flags, 0xFF, origin, 0.0f, dir, pc.aoRadius);
+  rayQueryInitializeEXT(rq, kTLAS[pc.tlas], gl_RayFlagsTerminateOnFirstHitEXT, 0xFF, origin, 0.0f, dir, pc.aoRadius);
 
   while (rayQueryProceedEXT(rq)) {}
 
-  if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-    if (pc.aoDistanceBased) return 1;
-    float length = 1.0 - (rayQueryGetIntersectionTEXT(rq, true) / pc.aoRadius);
-    return length;
-  }
-
-  return 0;
+  return (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) ? 1.0 : 0.0;
 }
 
 // generate a random unsigned int in [0, 2^24) given the previous RNG state using the Numerical Recipes LCG
@@ -978,8 +962,6 @@ bool enableShadows_ = true;
 bool enableAO_ = true;
 
 int aoSamples_ = 2;
-bool aoDistanceBased_ = true;
-
 float aoRadius_ = 16.0f;
 float aoPower_ = 2.0f;
 bool timeVaryingNoise = true;
@@ -1390,7 +1372,6 @@ VULKAN_APP_MAIN {
         uint32_t tlas;
         int enableShadows;
         int enableAO;
-        int aoDistanceBased;
         int aoSamples;
         float aoRadius;
         float aoPower;
@@ -1413,7 +1394,6 @@ VULKAN_APP_MAIN {
           .tlas = res.TLAS.index(),
           .enableShadows = enableShadows_ ? 1 : 0,
           .enableAO = enableAO_ ? 1 : 0,
-          .aoDistanceBased = aoDistanceBased_ ? 1 : 0,
           .aoSamples = aoSamples_,
           .aoRadius = aoRadius_,
           .aoPower = aoPower_,
@@ -1492,10 +1472,9 @@ VULKAN_APP_MAIN {
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableAO_);
           ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
-          imGuiPushFlagsAndStyles(!enableSpatialHash_);
-          ImGui::Checkbox("Distance based AO", &aoDistanceBased_);
-          ImGui::SliderFloat("AO radius", &aoRadius_, 0.5f, 16.0f);
           ImGui::SliderFloat("AO power", &aoPower_, 1.0f, 2.0f);
+          ImGui::SliderFloat("AO radius", &aoRadius_, 0.5f, 16.0f);
+          imGuiPushFlagsAndStyles(!enableSpatialHash_);
           ImGui::SliderInt("AO samples", &aoSamples_, 1, 32);
           imGuiPopFlagsAndStyles();
           ImGui::Separator();
