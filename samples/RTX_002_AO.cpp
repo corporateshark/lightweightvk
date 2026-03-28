@@ -120,6 +120,8 @@ struct AOHashChecksums { uint v[]; };
 struct AOSpatialData { uint v[]; };
 struct AOHashTime { uint v[]; };
 
+[[vk::constant_id(0)]] const bool kEnableSpatialHash = true;
+
 struct PushConstants {
   float4 lightDir;
   PerFrame* perFrame;
@@ -135,7 +137,6 @@ struct PushConstants {
   AOHashChecksums* hashChecksums;
   AOSpatialData* spatialData;
   AOHashTime* hashTime;
-  bool enableSpatialHash;
   float sp;
   float smin;
   uint maxSamples;
@@ -336,7 +337,7 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     computeTBN(n, tangent, bitangent);
     uint seed = tea(uint(fragCoord.y * 4003.0 + fragCoord.x), pc.frameId); // prime
 
-    if (pc.enableSpatialHash) {
+    if (kEnableSpatialHash) {
       float swd = computeCellSize(vtx.worldPos);
 
       // precompute normal hash (shared across all LODs)
@@ -619,6 +620,8 @@ const char* kCodeFS = R"(
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_ray_query : require
 
+layout(constant_id = 0) const bool kEnableSpatialHash = true;
+
 layout(set = 0, binding = 0) uniform texture2D kTextures2D[];
 layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
 
@@ -655,7 +658,6 @@ layout(push_constant) uniform constants {
   HashChecksums hashChecksums;
   SpatialData spatialData;
   HashTime hashTime;
-  bool enableSpatialHash;
   float sp;
   float smin;
   uint maxSamples;
@@ -800,7 +802,7 @@ void main() {
 
     uint seed = tea(uint(gl_FragCoord.y * 4003.0 + gl_FragCoord.x), pc.frameId); // prime
 
-    if (pc.enableSpatialHash) {
+    if (kEnableSpatialHash) {
       float swd = computeCellSize(vtx.worldPos);
 
       // precompute normal hash (shared across all LODs)
@@ -943,7 +945,7 @@ struct {
   lvk::Holder<lvk::ShaderModuleHandle> smMeshFragZPrepass_;
   lvk::Holder<lvk::ShaderModuleHandle> smFullscreenVert_;
   lvk::Holder<lvk::ShaderModuleHandle> smFullscreenFrag_;
-  lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Mesh_;
+  lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Mesh_[2]; // [0] = no spatial hash, [1] = spatial hash
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_MeshZPrepass_;
   lvk::Holder<lvk::RenderPipelineHandle> renderPipelineState_Fullscreen_;
   lvk::Holder<lvk::BufferHandle> vb0_, ib0_; // buffers for vertices and indices
@@ -1237,27 +1239,29 @@ VULKAN_APP_MAIN {
 
   lvk::Framebuffer fbOffscreen = createOffscreenFramebuffer(app.width_ / kFramebufferScalar, app.height_ / kFramebufferScalar);
 
-  res.renderPipelineState_Mesh_ = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
-      .vertexInput =
-          {
-              .attributes =
-                  {
-                      {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
-                      {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
-                      {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
-                      {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
-                  },
-              .inputBindings = {{.stride = sizeof(VertexData)}},
-          },
-      .smVert = res.smMeshVert_,
-      .smFrag = res.smMeshFrag_,
-      .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
-      .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
-      .cullMode = lvk::CullMode_Back,
-      .frontFace = lvk::WindingMode_CCW,
-      .samplesCount = kNumSamplesMSAA,
-      .debugName = "Pipeline: mesh",
-  });
+  const lvk::VertexInput vertexInput = {
+      .attributes = {{.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
+                     {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
+                     {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, normal)},
+                     {.location = 3, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)}},
+      .inputBindings = {{.stride = sizeof(VertexData)}},
+  };
+  for (uint32_t enableSpatialHash = 0; enableSpatialHash < 2; enableSpatialHash++) {
+    res.renderPipelineState_Mesh_[enableSpatialHash] = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
+        .vertexInput = vertexInput,
+        .smVert = res.smMeshVert_,
+        .smFrag = res.smMeshFrag_,
+        .specInfo = {.entries = {{.constantId = 0, .size = sizeof(uint32_t)}},
+                     .data = &enableSpatialHash,
+                     .dataSize = sizeof(enableSpatialHash)},
+        .color = {{.format = ctx_->getFormat(fbOffscreen.color[0].texture)}},
+        .depthFormat = ctx_->getFormat(fbOffscreen.depthStencil.texture),
+        .cullMode = lvk::CullMode_Back,
+        .frontFace = lvk::WindingMode_CCW,
+        .samplesCount = kNumSamplesMSAA,
+        .debugName = "Pipeline: mesh",
+    });
+  }
 
   res.renderPipelineState_MeshZPrepass_ = ctx_->createRenderPipeline(lvk::RenderPipelineDesc{
       .vertexInput =
@@ -1363,7 +1367,7 @@ VULKAN_APP_MAIN {
     {
       buffer.cmdBeginRendering(renderPassOffscreen_, fbOffscreen);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindRenderPipeline(res.renderPipelineState_Mesh_);
+      buffer.cmdBindRenderPipeline(res.renderPipelineState_Mesh_[enableSpatialHash_ ? 1 : 0]);
       const struct {
         vec4 lightDir;
         uint64_t perFrame;
@@ -1379,7 +1383,6 @@ VULKAN_APP_MAIN {
         uint64_t hashChecksums;
         uint64_t spatialData;
         uint64_t hashTime;
-        int enableSpatialHash;
         float sp;
         float smin;
         uint32_t maxSamples;
@@ -1401,7 +1404,6 @@ VULKAN_APP_MAIN {
           .hashChecksums = ctx_->gpuAddress(res.sbHashChecksums_),
           .spatialData = ctx_->gpuAddress(res.sbSpatialData_),
           .hashTime = ctx_->gpuAddress(res.sbHashTime_),
-          .enableSpatialHash = enableSpatialHash_ ? 1 : 0,
           .sp = spatialHashPixelSize_,
           .smin = spatialHashMinCellSize_,
           .maxSamples = (uint32_t)spatialHashMaxSamples_,
