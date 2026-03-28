@@ -22,12 +22,18 @@ vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
 
 #if defined(ANDROID)
-constexpr int kNumSamplesMSAA = 4;
+constexpr int kNumSamplesMSAA = 2;
 constexpr float kFramebufferScalar = 1.0f;
 #else
 constexpr int kNumSamplesMSAA = 4;
 constexpr int kFramebufferScalar = 1;
 #endif // ANDROID
+
+#if defined(ANDROID)
+constexpr uint32_t kHashMapSize = 2 * 1024 * 1024; // 2M entries on mobile (24 MB across 3 buffers)
+#else
+constexpr uint32_t kHashMapSize = 8 * 1024 * 1024; // 8M entries on desktop (96 MB across 3 buffers)
+#endif
 
 const char* codeFullscreenSlang = R"(
 struct PushConstants {
@@ -157,6 +163,10 @@ struct Materials {
   Material mtl[];
 };
 
+struct AOHashChecksums { uint v[]; };
+struct AOSpatialData { uint v[]; };
+struct AOHashTime { uint v[]; };
+
 struct PushConstants {
   float4 lightDir;
   PerFrame* perFrame;
@@ -170,6 +180,15 @@ struct PushConstants {
   float aoRadius;
   float aoPower;
   uint frameId;
+  AOHashChecksums* hashChecksums;
+  AOSpatialData* spatialData;
+  AOHashTime* hashTime;
+  bool enableSpatialHash;
+  float sp;
+  float smin;
+  uint maxSamples;
+  uint hashMapSize;
+  float resolutionY;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -281,6 +300,55 @@ uint tea(uint val0, uint val1) {
   return v0;
 }
 
+// PCG hash (https://www.pcg-random.org/)
+uint pcg(uint v) {
+  uint state = v * 747796405u + 2891336453u;
+  uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+// xxHash32 for collision detection checksum
+uint xxhash32(uint p) {
+  const uint PRIME32_2 = 2246822519u;
+  const uint PRIME32_3 = 3266489917u;
+  const uint PRIME32_4 = 668265263u;
+  const uint PRIME32_5 = 374761393u;
+  uint h32 = p + PRIME32_5;
+  h32 = PRIME32_4 * ((h32 << 17u) | (h32 >> 15u));
+  h32 = PRIME32_2 * (h32 ^ (h32 >> 15u));
+  h32 = PRIME32_3 * (h32 ^ (h32 >> 13u));
+  return h32 ^ (h32 >> 16u);
+}
+
+// Gautron 2020: "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing"
+// normalHashPCG/normalHashXXH are precomputed from the quantized normal to avoid redundant work across LODs
+uint spatialHashFindOrInsert(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  int3 p = int3(floor(position / cellSize));
+  uint cs = uint(cellSize * 10000.0);
+  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
+  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u); // hashMapSize/4 buckets
+  uint baseCell = bucketIndex << 2u;                           // first cell in the bucket
+  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) +
+                  xxhash32(uint(p.z) + normalHashXXH))));
+  checksum = max(checksum, 1u);
+  // linear probing within the bucket (4 contiguous slots = 16 bytes, fits in one cache line)
+  for (uint i = 0u; i < 4u; i++) {
+    uint cellIndex = baseCell + i;
+    uint prev;
+    InterlockedCompareExchange(pc.hashChecksums->v[cellIndex], 0u, checksum, prev);
+    if (prev == 0u || prev == checksum)
+      return cellIndex;
+    if (pc.frameId - pc.hashTime->v[cellIndex] > 1) {
+      uint dummy;
+      InterlockedExchange(pc.hashChecksums->v[cellIndex], checksum, dummy);
+      InterlockedExchange(pc.spatialData->v[cellIndex], 0u, dummy);
+      InterlockedExchange(pc.hashTime->v[cellIndex], pc.frameId, dummy);
+      return cellIndex;
+    }
+  }
+  return 0xFFFFFFFFu;
+}
+
 [shader("fragment")]
 float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
   PerVertex vtx = input.vtx;
@@ -293,18 +361,101 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     float3 tangent, bitangent;
     computeTBN(n, tangent, bitangent);
     uint seed = tea(uint(fragCoord.y * 4003.0 + fragCoord.x), pc.frameId); // prime
-    float occl = 0.0;
-    for(int i = 0; i < pc.aoSamples; i++) {
-      float r1 = rnd(seed);
-      float r2 = rnd(seed);
-      float sq = sqrt(1.0 - r2);
-      float phi = 2 * 3.141592653589 * r1;
-      float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-      direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
-      RayQuery<RAY_FLAG_NONE> rayQuery;
-      occl += traceAO(rayQuery, origin, direction);
+
+    if (pc.enableSpatialHash) {
+      float3 camPos = -(mul(float3x3(pc.perFrame->view), pc.perFrame->view[3].xyz));
+      float dist = distance(camPos, vtx.worldPos);
+      // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
+      float h = dist / pc.perFrame->proj[1][1];
+      float sw = pc.sp * (h * 2.0) / pc.resolutionY;
+      float swd = exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
+
+      // precompute normal hash (shared across all LODs)
+      int3 nn = int3(floor(n * 3.0));
+      uint nhPCG = pcg(uint(nn.x) + pcg(uint(nn.y) + pcg(uint(nn.z))));
+      uint nhXXH = xxhash32(uint(nn.x) + xxhash32(uint(nn.y) + xxhash32(uint(nn.z))));
+
+      // always find LOD 0
+      uint cell0 = spatialHashFindOrInsert(vtx.worldPos, swd, nhPCG, nhXXH);
+      uint data0 = (cell0 != 0xFFFFFFFFu) ? pc.spatialData->v[cell0] : 0u;
+      uint samples0 = data0 & 0xFFFFu;
+
+      if (samples0 >= 4u) {
+        // --- fast path: LOD 0 has enough data, skip coarser LODs ---
+        if (samples0 < pc.maxSamples) {
+          float r1 = rnd(seed);
+          float r2 = rnd(seed);
+          float sq = sqrt(1.0 - r2);
+          float phi = 2.0 * 3.141592653589 * r1;
+          float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+          direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+          RayQuery<RAY_FLAG_NONE> rayQuery;
+          uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+          uint prevData;
+          InterlockedAdd(pc.spatialData->v[cell0], (hit << 16u) + 1u, prevData);
+        }
+        if (pc.hashTime->v[cell0] != pc.frameId) {
+          uint dummy;
+          InterlockedExchange(pc.hashTime->v[cell0], pc.frameId, dummy);
+        }
+        occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+      } else {
+        // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
+        uint cells[4];
+        cells[0] = cell0;
+        float lodSize = swd * 2.0;
+        for (int lod = 1; lod < 4; lod++) {
+          cells[lod] = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
+          lodSize *= 2.0;
+        }
+        float r1 = rnd(seed);
+        float r2 = rnd(seed);
+        float sq = sqrt(1.0 - r2);
+        float phi = 2.0 * 3.141592653589 * r1;
+        float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        RayQuery<RAY_FLAG_NONE> rayQuery;
+        uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+        // read spatialData once per LOD, cache for reuse in the render selection below
+        uint cachedData[4];
+        for (int lod = 0; lod < 4; lod++) {
+          cachedData[lod] = 0u;
+          if (cells[lod] != 0xFFFFFFFFu) {
+            cachedData[lod] = pc.spatialData->v[cells[lod]];
+            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples) {
+              uint prevData;
+              InterlockedAdd(pc.spatialData->v[cells[lod]], (hit << 16u) + 1u, prevData);
+            }
+            if (pc.hashTime->v[cells[lod]] != pc.frameId) {
+              uint dummy;
+              InterlockedExchange(pc.hashTime->v[cells[lod]], pc.frameId, dummy);
+            }
+          }
+        }
+        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
+        uint renderData = 0u;
+        for (int lod = 3; lod >= 0; lod--) {
+          if ((cachedData[lod] & 0xFFFFu) >= 4u)
+            renderData = cachedData[lod];
+        }
+        if ((renderData & 0xFFFFu) > 0u)
+          occlusion = 1.0 - float(renderData >> 16u) / float(renderData & 0xFFFFu);
+      }
+    } else {
+      // per-pixel AO (original path, spatial hash disabled)
+      float occl = 0.0;
+      for(int i = 0; i < pc.aoSamples; i++) {
+        float r1 = rnd(seed);
+        float r2 = rnd(seed);
+        float sq = sqrt(1.0 - r2);
+        float phi = 2 * 3.141592653589 * r1;
+        float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        RayQuery<RAY_FLAG_NONE> rayQuery;
+        occl += traceAO(rayQuery, origin, direction);
+      }
+      occlusion = 1 - (occl / pc.aoSamples);
     }
-    occlusion = 1 - (occl / pc.aoSamples);
     occlusion = pow(clamp(occlusion, 0, 1), pc.aoPower);
   }
 
@@ -530,6 +681,10 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 light;
 };
 
+layout(std430, buffer_reference) coherent buffer HashChecksums { uint v[]; };
+layout(std430, buffer_reference) coherent buffer SpatialData { uint v[]; };
+layout(std430, buffer_reference) coherent buffer HashTime { uint v[]; };
+
 struct PerVertex {
   vec3 worldPos;
   vec3 normal;
@@ -551,6 +706,15 @@ layout(push_constant) uniform constants {
   float aoRadius;
   float aoPower;
   uint frameId;
+  HashChecksums hashChecksums;
+  SpatialData spatialData;
+  HashTime hashTime;
+  bool enableSpatialHash;
+  float sp;
+  float smin;
+  uint maxSamples;
+  uint hashMapSize;
+  float resolutionY;
 } pc;
 
 layout (location=0) in PerVertex vtx;
@@ -608,6 +772,53 @@ uint tea(uint val0, uint val1) {
   return v0;
 }
 
+// PCG hash (https://www.pcg-random.org/)
+uint pcg(uint v) {
+  uint state = v * 747796405u + 2891336453u;
+  uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+// xxHash32 for collision detection checksum
+uint xxhash32(uint p) {
+  const uint PRIME32_2 = 2246822519u;
+  const uint PRIME32_3 = 3266489917u;
+  const uint PRIME32_4 = 668265263u;
+  const uint PRIME32_5 = 374761393u;
+  uint h32 = p + PRIME32_5;
+  h32 = PRIME32_4 * ((h32 << 17u) | (h32 >> 15u));
+  h32 = PRIME32_2 * (h32 ^ (h32 >> 15u));
+  h32 = PRIME32_3 * (h32 ^ (h32 >> 13u));
+  return h32 ^ (h32 >> 16u);
+}
+
+// Gautron 2020: "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing"
+// normalHashPCG/normalHashXXH are precomputed from the quantized normal to avoid redundant work across LODs
+uint spatialHashFindOrInsert(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  ivec3 p = ivec3(floor(position / cellSize));
+  uint cs = uint(cellSize * 10000.0);
+  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
+  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u); // hashMapSize/4 buckets
+  uint baseCell = bucketIndex << 2u;                           // first cell in the bucket
+  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) +
+                  xxhash32(uint(p.z) + normalHashXXH))));
+  checksum = max(checksum, 1u); // 0 = empty sentinel
+  // linear probing within the bucket (4 contiguous slots = 16 bytes, fits in one cache line)
+  for (uint i = 0u; i < 4u; i++) {
+    uint cellIndex = baseCell + i;
+    uint prev = atomicCompSwap(pc.hashChecksums.v[cellIndex], 0u, checksum);
+    if (prev == 0u || prev == checksum)
+      return cellIndex;
+    if (pc.frameId - pc.hashTime.v[cellIndex] > 1) {
+      atomicExchange(pc.hashChecksums.v[cellIndex], checksum);
+      atomicExchange(pc.spatialData.v[cellIndex], 0u);
+      atomicExchange(pc.hashTime.v[cellIndex], pc.frameId);
+      return cellIndex;
+    }
+  }
+  return 0xFFFFFFFFu;
+}
+
 void main() {
   vec3 n = normalize(vtx.normal);
 
@@ -623,19 +834,96 @@ void main() {
 
     uint seed = tea(uint(gl_FragCoord.y * 4003.0 + gl_FragCoord.x), pc.frameId); // prime
 
-    float occl = 0.0;
+    if (pc.enableSpatialHash) {
+      // extract camera position from view matrix
+      vec3 camPos = -(transpose(mat3(pc.perFrame.view)) * pc.perFrame.view[3].xyz);
+      float dist = distance(camPos, vtx.worldPos);
+      // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
+      float h = dist / pc.perFrame.proj[1][1];
+      float sw = pc.sp * (h * 2.0) / pc.resolutionY;
+      float swd = exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
 
-    for(int i = 0; i < pc.aoSamples; i++) {
-      float r1        = rnd(seed);
-      float r2        = rnd(seed);
-      float sq        = sqrt(1.0 - r2);
-      float phi       = 2 * 3.141592653589 * r1;
-      vec3  direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-      direction       = direction.x * tangent + direction.y * bitangent + direction.z * n;
-      rayQueryEXT rayQuery;
-      occl += traceAO(rayQuery, origin, direction);
+      // precompute normal hash (shared across all LODs)
+      ivec3 nn = ivec3(floor(n * 3.0));
+      uint nhPCG = pcg(uint(nn.x) + pcg(uint(nn.y) + pcg(uint(nn.z))));
+      uint nhXXH = xxhash32(uint(nn.x) + xxhash32(uint(nn.y) + xxhash32(uint(nn.z))));
+
+      // always find LOD 0
+      uint cell0 = spatialHashFindOrInsert(vtx.worldPos, swd, nhPCG, nhXXH);
+      uint data0 = (cell0 != 0xFFFFFFFFu) ? pc.spatialData.v[cell0] : 0u;
+      uint samples0 = data0 & 0xFFFFu;
+
+      if (samples0 >= 4u) {
+        // --- fast path: LOD 0 has enough data, skip coarser LODs ---
+        if (samples0 < pc.maxSamples) {
+          // trace 1 ray, update LOD 0 only
+          float r1 = rnd(seed);
+          float r2 = rnd(seed);
+          float sq = sqrt(1.0 - r2);
+          float phi = 2.0 * 3.141592653589 * r1;
+          vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+          direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+          rayQueryEXT rayQuery;
+          uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+          atomicAdd(pc.spatialData.v[cell0], (hit << 16u) + 1u);
+        }
+        if (pc.hashTime.v[cell0] != pc.frameId)
+          atomicExchange(pc.hashTime.v[cell0], pc.frameId);
+        occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+      } else {
+        // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
+        uint cells[4];
+        cells[0] = cell0;
+        float lodSize = swd * 2.0;
+        for (int lod = 1; lod < 4; lod++) {
+          cells[lod] = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
+          lodSize *= 2.0;
+        }
+        // trace 1 ray, update ALL LODs
+        float r1 = rnd(seed);
+        float r2 = rnd(seed);
+        float sq = sqrt(1.0 - r2);
+        float phi = 2.0 * 3.141592653589 * r1;
+        vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        rayQueryEXT rayQuery;
+        uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+        // read spatialData once per LOD, cache for reuse in the render selection below
+        uint cachedData[4];
+        for (int lod = 0; lod < 4; lod++) {
+          cachedData[lod] = 0u;
+          if (cells[lod] != 0xFFFFFFFFu) {
+            cachedData[lod] = pc.spatialData.v[cells[lod]];
+            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples)
+              atomicAdd(pc.spatialData.v[cells[lod]], (hit << 16u) + 1u);
+            if (pc.hashTime.v[cells[lod]] != pc.frameId)
+              atomicExchange(pc.hashTime.v[cells[lod]], pc.frameId);
+          }
+        }
+        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
+        uint renderData = 0u;
+        for (int lod = 3; lod >= 0; lod--) {
+          if ((cachedData[lod] & 0xFFFFu) >= 4u)
+            renderData = cachedData[lod];
+        }
+        if ((renderData & 0xFFFFu) > 0u)
+          occlusion = 1.0 - float(renderData >> 16u) / float(renderData & 0xFFFFu);
+      }
+    } else {
+      // per-pixel AO (original path, spatial hash disabled)
+      float occl = 0.0;
+      for(int i = 0; i < pc.aoSamples; i++) {
+        float r1        = rnd(seed);
+        float r2        = rnd(seed);
+        float sq        = sqrt(1.0 - r2);
+        float phi       = 2 * 3.141592653589 * r1;
+        vec3  direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+        direction       = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        rayQueryEXT rayQuery;
+        occl += traceAO(rayQuery, origin, direction);
+      }
+      occlusion = 1 - (occl / pc.aoSamples);
     }
-    occlusion = 1 - (occl / pc.aoSamples);
     occlusion = pow(clamp(occlusion, 0, 1), pc.aoPower);
   }
   // directional shadow
@@ -676,6 +964,9 @@ struct {
   lvk::Holder<lvk::BufferHandle> ubPerObject_;
   std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
+  lvk::Holder<lvk::BufferHandle> sbHashChecksums_;
+  lvk::Holder<lvk::BufferHandle> sbSpatialData_;
+  lvk::Holder<lvk::BufferHandle> sbHashTime_;
 } res;
 
 bool enableShadows_ = true;
@@ -692,6 +983,16 @@ bool aoDistanceBased_ = true;
 float aoRadius_ = 16.0f;
 float aoPower_ = 2.0f;
 bool timeVaryingNoise = true;
+
+bool enableSpatialHash_ = true;
+#if defined(ANDROID)
+float spatialHashPixelSize_ = 10.0f;
+float spatialHashMinCellSize_ = 0.350f;
+#else
+float spatialHashPixelSize_ = 6.0f;
+float spatialHashMinCellSize_ = 0.250f;
+#endif
+int spatialHashMaxSamples_ = 500;
 
 uint32_t frameId = 0;
 
@@ -1003,6 +1304,33 @@ VULKAN_APP_MAIN {
       .debugName = "Pipeline: fullscreen",
   });
 
+  // create spatial hash map buffers (zero-initialized)
+  {
+    res.sbHashChecksums_ = ctx_->createBuffer({
+        .usage = lvk::BufferUsageBits_Storage,
+        .storage = lvk::StorageType_Device,
+        .size = sizeof(uint32_t) * kHashMapSize,
+        .debugName = "Buffer: AO hash checksums",
+    });
+    res.sbSpatialData_ = ctx_->createBuffer({
+        .usage = lvk::BufferUsageBits_Storage,
+        .storage = lvk::StorageType_Device,
+        .size = sizeof(uint32_t) * kHashMapSize,
+        .debugName = "Buffer: AO spatial data",
+    });
+    res.sbHashTime_ = ctx_->createBuffer({
+        .usage = lvk::BufferUsageBits_Storage,
+        .storage = lvk::StorageType_Device,
+        .size = sizeof(uint32_t) * kHashMapSize,
+        .debugName = "Buffer: AO hash time",
+    });
+    lvk::ICommandBuffer& buf = ctx_->acquireCommandBuffer();
+    buf.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    buf.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    buf.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    ctx_->submit(buf);
+  }
+
   if (!initModel(app.folderContentRoot_)) {
     VULKAN_APP_EXIT();
   }
@@ -1053,7 +1381,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(renderPassOffscreen_, fbOffscreen);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
       buffer.cmdBindRenderPipeline(res.renderPipelineState_Mesh_);
-      struct {
+      const struct {
         vec4 lightDir;
         uint64_t perFrame;
         uint64_t perObject;
@@ -1066,6 +1394,15 @@ VULKAN_APP_MAIN {
         float aoRadius;
         float aoPower;
         uint32_t frameId;
+        uint64_t hashChecksums;
+        uint64_t spatialData;
+        uint64_t hashTime;
+        int enableSpatialHash;
+        float sp;
+        float smin;
+        uint32_t maxSamples;
+        uint32_t hashMapSize;
+        float resolutionY;
       } pc = {
           .lightDir = vec4(lightDir_, 1.0),
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
@@ -1079,6 +1416,15 @@ VULKAN_APP_MAIN {
           .aoRadius = aoRadius_,
           .aoPower = aoPower_,
           .frameId = timeVaryingNoise ? frameId++ : 0,
+          .hashChecksums = ctx_->gpuAddress(res.sbHashChecksums_),
+          .spatialData = ctx_->gpuAddress(res.sbSpatialData_),
+          .hashTime = ctx_->gpuAddress(res.sbHashTime_),
+          .enableSpatialHash = enableSpatialHash_ ? 1 : 0,
+          .sp = spatialHashPixelSize_,
+          .smin = spatialHashMinCellSize_,
+          .maxSamples = (uint32_t)spatialHashMaxSamples_,
+          .hashMapSize = kHashMapSize,
+          .resolutionY = (float)height,
       };
       buffer.cmdPushConstants(pc);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Equal, .isDepthWriteEnabled = false});
@@ -1105,7 +1451,7 @@ VULKAN_APP_MAIN {
         buffer.cmdBindRenderPipeline(res.renderPipelineState_Fullscreen_);
         buffer.cmdPushDebugGroupLabel("Swapchain Output", 0xff0000ff);
         buffer.cmdBindDepthState({});
-        struct {
+        const struct {
           uint32_t texture;
           uint32_t denoise;
           float denoiseSigma = 2.0f;
@@ -1163,6 +1509,20 @@ VULKAN_APP_MAIN {
           ImGui::SliderFloat("AO radius", &aoRadius_, 0.5f, 16.0f);
           ImGui::SliderFloat("AO power", &aoPower_, 1.0f, 2.0f);
           ImGui::SliderInt("AO samples", &aoSamples_, 1, 32);
+          ImGui::Separator();
+          ImGui::Checkbox("Spatial hash (Gautron 2020)", &enableSpatialHash_);
+          ImGui::Indent(indentSize);
+          imGuiPushFlagsAndStyles(enableSpatialHash_);
+          ImGui::SliderFloat("Pixel size (sp)", &spatialHashPixelSize_, 1.0f, 10.0f);
+          ImGui::SliderFloat("Min cell size", &spatialHashMinCellSize_, 0.05f, 0.5f);
+          ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1024);
+          if (ImGui::Button("Reset hash map")) {
+            buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
+            buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
+            buffer.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
+          }
+          ImGui::Unindent(indentSize);
+          imGuiPopFlagsAndStyles();
           ImGui::Unindent(indentSize);
           imGuiPopFlagsAndStyles();
           ImGui::End();
