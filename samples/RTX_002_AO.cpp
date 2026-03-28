@@ -142,6 +142,7 @@ struct PushConstants {
   uint maxSamples;
   uint hashMapSize;
   float resolutionY;
+  bool enableFiltering;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -302,6 +303,23 @@ uint spatialHashFindOrInsert(float3 position, float cellSize, uint normalHashPCG
   return 0xFFFFFFFFu;
 }
 
+// Read-only hash lookup - no allocation, no atomics. Returns cellIndex or 0xFFFFFFFFu if not found.
+uint spatialHashFind(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  int3 p = int3(floor(position / cellSize));
+  uint cs = uint(cellSize * 10000.0);
+  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
+  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u);
+  uint baseCell = bucketIndex << 2u;
+  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH))));
+  checksum = max(checksum, 1u);
+  for (uint i = 0u; i < 4u; i++) {
+    uint stored = pc.hashChecksums->v[baseCell + i];
+    if (stored == checksum) return baseCell + i;
+    if (stored == 0u) return 0xFFFFFFFFu;
+  }
+  return 0xFFFFFFFFu;
+}
+
 [shader("fragment")]
 float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target {
   PerVertex vtx = input.vtx;
@@ -351,7 +369,36 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
           uint dummy;
           InterlockedExchange(pc.hashTime->v[cell0], pc.frameId, dummy);
         }
-        occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+        if (pc.enableFiltering) {
+          // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
+          float3 cellPos = vtx.worldPos / swd - 0.5;
+          int3 base = int3(floor(cellPos));
+          float3 f = fract(cellPos);
+          float totalWeight = 0.0;
+          float totalAO = 0.0;
+          for (int dz = 0; dz < 2; dz++) {
+            for (int dy = 0; dy < 2; dy++) {
+              for (int dx = 0; dx < 2; dx++) {
+                float3 neighborPos = (float3(base + int3(dx, dy, dz)) + 0.5) * swd;
+                uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
+                if (ci != 0xFFFFFFFFu) {
+                  uint d = pc.spatialData->v[ci];
+                  uint s = d & 0xFFFFu;
+                  if (s >= 4u) {
+                    float w = (dx == 0 ? (1.0 - f.x) : f.x) *
+                              (dy == 0 ? (1.0 - f.y) : f.y) *
+                              (dz == 0 ? (1.0 - f.z) : f.z);
+                    totalWeight += w;
+                    totalAO += w * (1.0 - float(d >> 16u) / float(s));
+                  }
+                }
+              }
+            }
+          }
+          occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
+        } else {
+          occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+        }
       } else {
         // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
         uint cells[4];
@@ -617,6 +664,7 @@ layout(push_constant) uniform constants {
   uint maxSamples;
   uint hashMapSize;
   float resolutionY;
+  bool enableFiltering;
 } pc;
 
 layout (location=0) in PerVertex vtx;
@@ -721,6 +769,23 @@ uint spatialHashFindOrInsert(vec3 position, float cellSize, uint normalHashPCG, 
   return 0xFFFFFFFFu;
 }
 
+// Read-only hash lookup - no allocation, no atomics. Returns cellIndex or 0xFFFFFFFFu if not found.
+uint spatialHashFind(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  ivec3 p = ivec3(floor(position / cellSize));
+  uint cs = uint(cellSize * 10000.0);
+  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
+  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u);
+  uint baseCell = bucketIndex << 2u;
+  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH))));
+  checksum = max(checksum, 1u);
+  for (uint i = 0u; i < 4u; i++) {
+    uint stored = pc.hashChecksums.v[baseCell + i];
+    if (stored == checksum) return baseCell + i;
+    if (stored == 0u) return 0xFFFFFFFFu;
+  }
+  return 0xFFFFFFFFu;
+}
+
 void main() {
   vec3 n = normalize(vtx.normal);
 
@@ -771,7 +836,36 @@ void main() {
         }
         if (pc.hashTime.v[cell0] != pc.frameId)
           atomicExchange(pc.hashTime.v[cell0], pc.frameId);
-        occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+        if (pc.enableFiltering) {
+          // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
+          vec3 cellPos = vtx.worldPos / swd - 0.5;
+          ivec3 base = ivec3(floor(cellPos));
+          vec3 f = fract(cellPos);
+          float totalWeight = 0.0;
+          float totalAO = 0.0;
+          for (int dz = 0; dz < 2; dz++) {
+            for (int dy = 0; dy < 2; dy++) {
+              for (int dx = 0; dx < 2; dx++) {
+                vec3 neighborPos = (vec3(base + ivec3(dx, dy, dz)) + 0.5) * swd;
+                uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
+                if (ci != 0xFFFFFFFFu) {
+                  uint d = pc.spatialData.v[ci];
+                  uint s = d & 0xFFFFu;
+                  if (s >= 4u) {
+                    float w = (dx == 0 ? (1.0 - f.x) : f.x) *
+                              (dy == 0 ? (1.0 - f.y) : f.y) *
+                              (dz == 0 ? (1.0 - f.z) : f.z);
+                    totalWeight += w;
+                    totalAO += w * (1.0 - float(d >> 16u) / float(s));
+                  }
+                }
+              }
+            }
+          }
+          occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
+        } else {
+          occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
+        }
       } else {
         // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
         uint cells[4];
@@ -890,6 +984,7 @@ float spatialHashPixelSize_ = 6.0f;
 float spatialHashMinCellSize_ = 0.250f;
 #endif
 int spatialHashMaxSamples_ = 500;
+bool enableFiltering_ = false;
 
 uint32_t frameId = 0;
 
@@ -1300,6 +1395,7 @@ VULKAN_APP_MAIN {
         uint32_t maxSamples;
         uint32_t hashMapSize;
         float resolutionY;
+        int enableFiltering;
       } pc = {
           .lightDir = vec4(lightDir_, 1.0),
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
@@ -1322,6 +1418,7 @@ VULKAN_APP_MAIN {
           .maxSamples = (uint32_t)spatialHashMaxSamples_,
           .hashMapSize = kHashMapSize,
           .resolutionY = (float)height,
+          .enableFiltering = enableFiltering_ ? 1 : 0,
       };
       buffer.cmdPushConstants(pc);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Equal, .isDepthWriteEnabled = false});
@@ -1399,6 +1496,7 @@ VULKAN_APP_MAIN {
           ImGui::SliderFloat("Pixel size (sp)", &spatialHashPixelSize_, 1.0f, 10.0f);
           ImGui::SliderFloat("Min cell size", &spatialHashMinCellSize_, 0.05f, 0.5f);
           ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1000);
+          ImGui::Checkbox("Trilinear filtering", &enableFiltering_);
           if (ImGui::Button("Reset hash map")) {
             buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
             buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
