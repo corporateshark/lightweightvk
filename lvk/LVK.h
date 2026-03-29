@@ -581,9 +581,8 @@ enum LoadOp : uint8_t {
 };
 
 enum StoreOp : uint8_t {
-  StoreOp_DontCare = 0,
-  StoreOp_Store,
-  StoreOp_MsaaResolve,
+  StoreOp_Store = 0,
+  StoreOp_DontCare,
   StoreOp_None,
 };
 

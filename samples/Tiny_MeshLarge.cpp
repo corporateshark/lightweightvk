@@ -718,7 +718,7 @@ bool init(lvk::LVKwindow* window) {
 
   renderPassOffscreen_ = {.color = {{
                               .loadOp = lvk::LoadOp_Clear,
-                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_MsaaResolve : lvk::StoreOp_Store,
+                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
                               .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                           }},
                           .depth = {
