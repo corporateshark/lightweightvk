@@ -1201,23 +1201,23 @@ VULKAN_APP_MAIN {
   });
 
   lvk::RenderPass renderPassZPrepass_ = {.color = {{
-                                             .loadOp = lvk::LoadOp_Clear,
+                                             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                          }},
                                          .depth = {
-                                             .loadOp = lvk::LoadOp_Clear,
+                                             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                              .storeOp = lvk::StoreOp_Store,
                                              .clearDepth = 1.0f,
                                          }};
 
   lvk::RenderPass renderPassOffscreen_ = {.color = {{
-                                              .loadOp = lvk::LoadOp_Clear,
+                                              .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                               .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
                                               .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                                           }},
                                           .depth = {
-                                              .loadOp = lvk::LoadOp_Load,
+                                              .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
                                               .storeOp = lvk::StoreOp_DontCare,
                                           }};
 
@@ -1430,7 +1430,7 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.textures = {tex, fbOffscreen.color[0].texture}});

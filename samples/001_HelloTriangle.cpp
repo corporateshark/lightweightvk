@@ -104,7 +104,7 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       // this will clear the framebuffer
-      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}}},
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}});
       buffer.cmdBindRenderPipeline(renderPipelineState_Triangle_);
       buffer.cmdPushDebugGroupLabel("Render Triangle", 0xff0000ff);
