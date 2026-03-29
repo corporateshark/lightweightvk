@@ -2748,7 +2748,7 @@ void lvk::CommandBuffer::cmdFillBuffer(BufferHandle buffer, size_t bufferOffset,
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT(buffer.valid());
   LVK_ASSERT(size);
-  LVK_ASSERT(size % 4 == 0);
+  LVK_ASSERT((size == VK_WHOLE_SIZE) || (size % 4 == 0));
   LVK_ASSERT(bufferOffset % 4 == 0);
 
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(buffer);
