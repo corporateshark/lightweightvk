@@ -542,7 +542,7 @@ VULKAN_APP_MAIN {
     lvk::Framebuffer framebuffer = {
         .color = {{.texture = ctx_->getCurrentSwapchainTexture()}},
     };
-    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = lvk::StoreOp_Store}}},
+    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = VK_ATTACHMENT_STORE_OP_STORE}}},
                              framebuffer);
     app.imgui_->beginFrame(framebuffer);
     app.drawFPS();

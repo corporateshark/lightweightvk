@@ -172,19 +172,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
-  switch (a) {
-  case lvk::StoreOp_Store:
-    return VK_ATTACHMENT_STORE_OP_STORE;
-  case lvk::StoreOp_DontCare:
-    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  case lvk::StoreOp_None:
-    return VK_ATTACHMENT_STORE_OP_NONE;
-  }
-  LVK_ASSERT(false);
-  return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-}
-
 VkResolveModeFlagBits getSupportedVkResolveModeFlagBits(VkResolveModeFlagBits mode, VkResolveModeFlags supported) {
   return supported & mode ? mode : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
 }
@@ -2176,7 +2163,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = descColor.loadOp,
-        .storeOp = storeOpToVkAttachmentStoreOp(descColor.storeOp),
+        .storeOp = descColor.storeOp,
     };
     memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
     // handle MSAA
@@ -2207,7 +2194,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = descDepth.loadOp,
-        .storeOp = storeOpToVkAttachmentStoreOp(descDepth.storeOp),
+        .storeOp = descDepth.storeOp,
         .clearValue = {.depthStencil = {.depth = descDepth.clearDepth, .stencil = descDepth.clearStencil}},
     };
     // handle depth MSAA
@@ -2244,7 +2231,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
   const bool isStencilFormat = (renderPass.stencil.loadOp != VK_ATTACHMENT_LOAD_OP_DONT_CARE) ||
-                               (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
+                               (renderPass.stencil.storeOp != VK_ATTACHMENT_STORE_OP_DONT_CARE);
 
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,

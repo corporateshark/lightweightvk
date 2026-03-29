@@ -695,21 +695,21 @@ bool init(lvk::LVKwindow* window) {
 
   renderPassOffscreen_ = {.color = {{
                               .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
+                              .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
                               .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
                           }},
                           .depth = {
                               .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                              .storeOp = lvk::StoreOp_Store,
+                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                               .clearDepth = 1.0f,
                           }};
 
   renderPassMain_ = {
-      .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+      .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
   };
   renderPassShadow_ = {
       .color = {},
-      .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearDepth = 1.0f},
+      .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .clearDepth = 1.0f},
   };
 
   fbMain_ = {
