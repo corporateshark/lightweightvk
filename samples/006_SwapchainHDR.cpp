@@ -120,7 +120,7 @@ VULKAN_APP_MAIN {
       const lvk::Framebuffer fb = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
       };
-      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}}}, fb);
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}}}, fb);
       buffer.cmdBindRenderPipeline(renderPipelineState_Triangle_);
       buffer.cmdPushConstants(pc);
       buffer.cmdDraw(3);
