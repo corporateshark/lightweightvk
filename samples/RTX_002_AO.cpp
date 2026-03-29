@@ -1332,6 +1332,8 @@ VULKAN_APP_MAIN {
   app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
+    bool resetHashMap = false;
+
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
     buffer.cmdUpdateBuffer(res.ubPerFrame_,
@@ -1487,11 +1489,7 @@ VULKAN_APP_MAIN {
           ImGui::SliderFloat("Min cell size", &spatialHashMinCellSize_, 0.05f, 0.5f);
           ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1000);
           ImGui::Checkbox("Trilinear filtering", &enableFiltering_);
-          if (ImGui::Button("Reset hash map")) {
-            buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
-            buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
-            buffer.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
-          }
+          resetHashMap = ImGui::Button("Reset hash map");
           ImGui::Unindent(indentSize);
           imGuiPopFlagsAndStyles();
           ImGui::Unindent(indentSize);
@@ -1503,6 +1501,12 @@ VULKAN_APP_MAIN {
         app.imgui_->endFrame(buffer);
       }
       buffer.cmdEndRendering();
+
+      if (resetHashMap) {
+        buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
+        buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
+        buffer.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
+      }
 
       ctx_->submit(buffer, fbMain_.color[0].texture);
     }
