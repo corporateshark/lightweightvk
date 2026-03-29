@@ -409,14 +409,6 @@ enum Format : uint8_t {
   Format_YUV_420p,
 };
 
-enum LoadOp : uint8_t {
-  LoadOp_Load = 0,
-  LoadOp_Clear,
-  LoadOp_DontCare,
-  LoadOp_None,
-  LoadOp_Invalid = 0xFF,
-};
-
 enum StoreOp : uint8_t {
   StoreOp_Store = 0,
   StoreOp_DontCare,
@@ -656,7 +648,7 @@ struct RayTracingPipelineDesc final {
 
 struct RenderPass final {
   struct AttachmentDesc final {
-    LoadOp loadOp = LoadOp_Invalid;
+    VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_MAX_ENUM; // invalid default value to detect uninitialized attachments
     StoreOp storeOp = StoreOp_Store;
     VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
     uint8_t layer = 0;
@@ -667,15 +659,15 @@ struct RenderPass final {
   };
 
   AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
-  AttachmentDesc depth = {.loadOp = LoadOp_DontCare, .storeOp = StoreOp_DontCare};
-  AttachmentDesc stencil = {.loadOp = LoadOp_DontCare, .storeOp = StoreOp_DontCare};
+  AttachmentDesc depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = StoreOp_DontCare};
+  AttachmentDesc stencil = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = StoreOp_DontCare};
 
   uint32_t layerCount = 1;
   uint32_t viewMask = 0;
 
   uint32_t getNumColorAttachments() const {
     uint32_t n = 0;
-    while (n < LVK_MAX_COLOR_ATTACHMENTS && color[n].loadOp != LoadOp_Invalid) {
+    while (n < LVK_MAX_COLOR_ATTACHMENTS && color[n].loadOp != VK_ATTACHMENT_LOAD_OP_MAX_ENUM) {
       n++;
     }
     return n;

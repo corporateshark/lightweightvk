@@ -903,7 +903,7 @@ VULKAN_APP_MAIN {
     for (uint32_t i = 0; i != views.size(); i++) {
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           lvk::Framebuffer{
               .color = {{.texture = views[i].colorTexture}},
@@ -934,7 +934,8 @@ VULKAN_APP_MAIN {
 #if !defined(LVK_DEMO_WITH_OPENXR)
     // ImGui overlay (non-XR only)
     const lvk::Framebuffer framebuffer = {.color = {{.texture = views[0].colorTexture}}};
-    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
+    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = lvk::StoreOp_Store}}},
+                             framebuffer);
     app.imgui_->beginFrame(framebuffer);
     ImGui::SetNextWindowPos({0, 0});
     ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);

@@ -210,7 +210,7 @@ VULKAN_APP_MAIN {
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
-    buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_DontCare}}}, framebuffer);
+    buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE}}}, framebuffer);
 
     if (!res_.demos.empty()) {
       const YUVFormatDemo& demo = res_.demos[currentDemo_];

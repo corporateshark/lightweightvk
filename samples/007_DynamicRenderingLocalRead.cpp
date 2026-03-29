@@ -605,10 +605,10 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color =
                {
-                   {.loadOp = lvk::LoadOp_DontCare, .storeOp = lvk::StoreOp_Store},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = lvk::StoreOp_Store},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}},
                }},
           framebuffer,
           {.inputAttachments = {texAlbedo, texNormal, texWorldPos}});
@@ -634,10 +634,9 @@ VULKAN_APP_MAIN {
       const lvk::Framebuffer framebufferGUI = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
       };
-      buffer.cmdBeginRendering(
-          {.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
-          framebufferGUI,
-          {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, .storeOp = lvk::StoreOp_Store}}},
+                               framebufferGUI,
+                               {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
       app.imgui_->beginFrame(framebufferGUI);
       const ImGuiViewport* v = ImGui::GetMainViewport();
       const float size = 0.175f * v->WorkSize.x;

@@ -241,7 +241,7 @@ VULKAN_APP_MAIN {
                                             {0.3f, 0.3f, 0.1f, 1.0f},
                                             {0.1f, 0.3f, 0.3f, 1.0f}};
         buffer.cmdBeginRendering({.color = {{
-                                      .loadOp = lvk::LoadOp_Clear,
+                                      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                       .storeOp = lvk::StoreOp_Store,
                                       .layer = face,
                                       .clearColor = colors[face],
@@ -262,7 +262,7 @@ VULKAN_APP_MAIN {
       buffer.cmdPopDebugGroupLabel();
 
       buffer.cmdBeginRendering({.color = {{
-                                    .loadOp = lvk::LoadOp_Clear,
+                                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                     .storeOp = lvk::StoreOp_Store,
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
