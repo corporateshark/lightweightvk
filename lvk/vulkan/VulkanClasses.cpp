@@ -195,12 +195,9 @@ VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
 
 VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
   switch (a) {
-  case lvk::StoreOp_DontCare:
-    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
   case lvk::StoreOp_Store:
     return VK_ATTACHMENT_STORE_OP_STORE;
-  case lvk::StoreOp_MsaaResolve:
-    // for MSAA resolve, we have to store data into a special "resolve" attachment
+  case lvk::StoreOp_DontCare:
     return VK_ATTACHMENT_STORE_OP_DONT_CARE;
   case lvk::StoreOp_None:
     return VK_ATTACHMENT_STORE_OP_NONE;
@@ -2252,8 +2249,10 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
             {.color = {.float32 = {descColor.clearColor[0], descColor.clearColor[1], descColor.clearColor[2], descColor.clearColor[3]}}},
     };
     // handle MSAA
-    if (descColor.storeOp == StoreOp_MsaaResolve) {
+    if (attachment.resolveTexture) {
       LVK_ASSERT(samples > 1);
+      LVK_ASSERT_MSG(colorAttachments[i].storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                     "Multisampled attachments should have store op DONT_CARE");
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
       lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       colorAttachments[i].resolveImageView =
@@ -2281,8 +2280,10 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .clearValue = {.depthStencil = {.depth = descDepth.clearDepth, .stencil = descDepth.clearStencil}},
     };
     // handle depth MSAA
-    if (descDepth.storeOp == StoreOp_MsaaResolve) {
+    if (fb.depthStencil.resolveTexture) {
+      LVK_ASSERT(depthTexture.vkSamples_ > 1);
       LVK_ASSERT(depthTexture.vkSamples_ == samples);
+      LVK_ASSERT_MSG(depthAttachment.storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE, "Multisampled attachments should have store op DONT_CARE");
       const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
