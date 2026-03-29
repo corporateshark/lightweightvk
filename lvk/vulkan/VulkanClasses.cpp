@@ -177,17 +177,17 @@ VkPrimitiveTopology topologyToVkPrimitiveTopology(lvk::Topology t) {
 
 VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
   switch (a) {
-  case lvk::LoadOp_Invalid:
-    LVK_ASSERT(false);
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  case lvk::LoadOp_DontCare:
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   case lvk::LoadOp_Load:
     return VK_ATTACHMENT_LOAD_OP_LOAD;
   case lvk::LoadOp_Clear:
     return VK_ATTACHMENT_LOAD_OP_CLEAR;
+  case lvk::LoadOp_DontCare:
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   case lvk::LoadOp_None:
-    return VK_ATTACHMENT_LOAD_OP_NONE_EXT;
+    return VK_ATTACHMENT_LOAD_OP_NONE;
+  case lvk::LoadOp_Invalid:
+    LVK_ASSERT(false);
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
   }
   LVK_ASSERT(false);
   return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -2309,7 +2309,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
-  const bool isStencilFormat = renderPass.stencil.loadOp != lvk::LoadOp_Invalid;
+  const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
