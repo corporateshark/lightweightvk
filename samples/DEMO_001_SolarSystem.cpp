@@ -1761,8 +1761,8 @@ VULKAN_APP_MAIN {
       buf.cmdUpdateBuffer(vulkanState.bufPerFrame, perFrame);
       buf.cmdBindVertexBuffer(0, vulkanState.bufVertices, 0);
 
-      buf.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
-                             .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
+      buf.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+                             .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearDepth = 1.0f},
                              .layerCount = (uint32_t)views.size(),
                              .viewMask = g_MultiViewStereo ? 0b11 : 0u},
                             fb);
@@ -1826,7 +1826,7 @@ VULKAN_APP_MAIN {
     const lvk::Framebuffer fbImGui = {
         .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
     };
-    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load}}}, fbImGui);
+    buf.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD}}}, fbImGui);
     app.imgui_->beginFrame(fbImGui);
     auto imGuiPushFlagsAndStyles = [](bool value) {
       ImGui::BeginDisabled(!value);

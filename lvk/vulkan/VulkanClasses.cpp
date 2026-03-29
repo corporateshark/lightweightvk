@@ -172,24 +172,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   return VK_FALSE;
 }
 
-VkAttachmentLoadOp loadOpToVkAttachmentLoadOp(lvk::LoadOp a) {
-  switch (a) {
-  case lvk::LoadOp_Load:
-    return VK_ATTACHMENT_LOAD_OP_LOAD;
-  case lvk::LoadOp_Clear:
-    return VK_ATTACHMENT_LOAD_OP_CLEAR;
-  case lvk::LoadOp_DontCare:
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  case lvk::LoadOp_None:
-    return VK_ATTACHMENT_LOAD_OP_NONE;
-  case lvk::LoadOp_Invalid:
-    LVK_ASSERT(false);
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  }
-  LVK_ASSERT(false);
-  return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-}
-
 VkAttachmentStoreOp storeOpToVkAttachmentStoreOp(lvk::StoreOp a) {
   switch (a) {
   case lvk::StoreOp_Store:
@@ -2193,7 +2175,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
                                      : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
+        .loadOp = descColor.loadOp,
         .storeOp = storeOpToVkAttachmentStoreOp(descColor.storeOp),
     };
     memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
@@ -2224,7 +2206,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .loadOp = loadOpToVkAttachmentLoadOp(descDepth.loadOp),
+        .loadOp = descDepth.loadOp,
         .storeOp = storeOpToVkAttachmentStoreOp(descDepth.storeOp),
         .clearValue = {.depthStencil = {.depth = descDepth.clearDepth, .stencil = descDepth.clearStencil}},
     };
@@ -2261,7 +2243,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   VkRenderingAttachmentInfo stencilAttachment = depthAttachment;
 
-  const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
+  const bool isStencilFormat = (renderPass.stencil.loadOp != VK_ATTACHMENT_LOAD_OP_DONT_CARE) ||
+                               (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
