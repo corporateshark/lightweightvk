@@ -245,15 +245,16 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       buffer.cmdPushDebugGroupLabel("Render to Cube Map", 0xff0000ff);
+      // clang-format off
       buffer.cmdBeginRendering(
           {.color =
                {
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
                }},
           {.color = {
                {.texture = texture_},
@@ -263,6 +264,7 @@ VULKAN_APP_MAIN {
                {.texture = texture_},
                {.texture = texture_},
            }});
+      // clang-format on
       buffer.cmdBindRenderPipeline(renderPipelineState_Triangle_);
       buffer.cmdPushConstants(float(10.0 * app.getSimulatedTime()));
       buffer.cmdDraw(3);
@@ -270,7 +272,7 @@ VULKAN_APP_MAIN {
       buffer.cmdPopDebugGroupLabel();
 
       buffer.cmdBeginRendering({.color = {{
-                                    .loadOp = lvk::LoadOp_Clear,
+                                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                     .storeOp = lvk::StoreOp_Store,
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
