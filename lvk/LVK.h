@@ -408,12 +408,6 @@ enum Format : uint8_t {
   Format_YUV_420p,
 };
 
-enum StoreOp : uint8_t {
-  StoreOp_Store = 0,
-  StoreOp_DontCare,
-  StoreOp_None,
-};
-
 enum ShaderStage : uint8_t {
   Stage_Vert,
   Stage_Tesc,
@@ -643,7 +637,7 @@ struct RayTracingPipelineDesc final {
 struct RenderPass final {
   struct AttachmentDesc final {
     VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_MAX_ENUM; // invalid default value to detect uninitialized attachments
-    StoreOp storeOp = StoreOp_Store;
+    VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
     uint8_t layer = 0;
     uint8_t level = 0;
@@ -653,8 +647,8 @@ struct RenderPass final {
   };
 
   AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
-  AttachmentDesc depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = StoreOp_DontCare};
-  AttachmentDesc stencil = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = StoreOp_DontCare};
+  AttachmentDesc depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE};
+  AttachmentDesc stencil = {.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE};
 
   uint32_t layerCount = 1;
   uint32_t viewMask = 0;

@@ -249,12 +249,12 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color =
                {
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
-                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 0, .clearColor = {0.3f, 0.1f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 1, .clearColor = {0.1f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 2, .clearColor = {0.1f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 3, .clearColor = {0.3f, 0.1f, 0.3f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 4, .clearColor = {0.3f, 0.3f, 0.1f, 1.0f}},
+                   {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .layer = 5, .clearColor = {0.1f, 0.3f, 0.3f, 1.0f}},
                }},
           {.color = {
                {.texture = texture_},
@@ -273,7 +273,7 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering({.color = {{
                                     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                    .storeOp = lvk::StoreOp_Store,
+                                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}},
