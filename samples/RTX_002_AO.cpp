@@ -1200,26 +1200,28 @@ VULKAN_APP_MAIN {
       .debugName = "Buffer: uniforms (per object)",
   });
 
-  lvk::RenderPass renderPassZPrepass_ = {.color = {{
-                                             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                             .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                             .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                         }},
-                                         .depth = {
-                                             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                             .storeOp = lvk::StoreOp_Store,
-                                             .clearDepth = 1.0f,
-                                         }};
+  lvk::RenderPass renderPassZPrepass_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+          .clearDepth = 1.0f,
+      }};
 
-  lvk::RenderPass renderPassOffscreen_ = {.color = {{
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                              .storeOp = kNumSamplesMSAA > 1 ? lvk::StoreOp_DontCare : lvk::StoreOp_Store,
-                                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                                          }},
-                                          .depth = {
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                              .storeOp = lvk::StoreOp_DontCare,
-                                          }};
+  lvk::RenderPass renderPassOffscreen_ = {
+      .color = {{
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = kNumSamplesMSAA > 1 ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE,
+          .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+      }},
+      .depth = {
+          .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+          .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      }};
 
 #if defined(LVK_DEMO_WITH_SLANG)
   res.smMeshVert_ = ctx_->createShaderModule({codeSlang, lvk::Stage_Vert, "Shader Module: main (vert)"});
@@ -1430,7 +1432,9 @@ VULKAN_APP_MAIN {
 
       buffer.cmdBeginRendering(
           lvk::RenderPass{
-              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+              .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                         .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
           {.sampledImages = {tex, fbOffscreen.color[0].texture}});

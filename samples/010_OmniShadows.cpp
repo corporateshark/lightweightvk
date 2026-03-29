@@ -607,7 +607,9 @@ VULKAN_APP_MAIN {
     };
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
+            .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                       .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
             .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearDepth = 1.0},
         },
         framebuffer,
