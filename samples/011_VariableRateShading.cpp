@@ -366,7 +366,7 @@ VULKAN_APP_MAIN {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       // 1. shade the background at quarter resolution
-      buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, framebuffer);
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, framebuffer);
       buffer.cmdBindRenderPipeline(mode == Mode_Primitive ? pipelinePrimitiveRate_ : pipeline_);
       if (hasFSR) {
         // the pipeline rate is the first combiner input and the primitive rate the second: KEEP the first, REPLACE the second
@@ -383,8 +383,9 @@ VULKAN_APP_MAIN {
 
       // 2. magnify it into the swapchain and draw the UI on top (both at full shading rate)
       const lvk::Framebuffer fbSwapchain = {.color = {{.texture = swapchain}}};
-      buffer.cmdBeginRendering(
-          {.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, fbSwapchain, {.sampledImages = {offscreen_}});
+      buffer.cmdBeginRendering({.color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}},
+                               fbSwapchain,
+                               {.sampledImages = {offscreen_}});
       buffer.cmdBindRenderPipeline(pipelineUpscale_);
       pc.texture0 = offscreen_.index();
       buffer.cmdPushConstants(pc);
