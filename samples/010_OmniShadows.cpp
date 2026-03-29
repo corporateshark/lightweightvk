@@ -585,7 +585,7 @@ VULKAN_APP_MAIN {
     // 1. Render shadow map
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
+            .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearDepth = 1.0f},
             .layerCount = 6,
             .viewMask = 0b111111,
         },
@@ -609,8 +609,8 @@ VULKAN_APP_MAIN {
     };
     buffer.cmdBeginRendering(
         lvk::RenderPass{
-            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
-            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0},
+            .color = {{.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = lvk::StoreOp_Store, .clearColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
+            .depth = {.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .clearDepth = 1.0},
         },
         framebuffer,
         {
