@@ -375,7 +375,12 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   std::unique_ptr<VulkanContext> ctx;
 
 #if defined(_WIN32)
+#if defined(LVK_WITH_GLFW)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetWin32Window(window));
+#else
+  // assume `window` is HWND
+  ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
+#endif // LVK_WITH_GLFW
 #elif defined(ANDROID)
   ctx = std::make_unique<VulkanContext>(cfg, (void*)window);
 #elif defined(__linux__)
