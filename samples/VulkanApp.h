@@ -116,6 +116,16 @@ class VulkanApp {
     callbacksKey.push_back(cb);
   }
 #endif // ANDROID
+#if LVK_WITH_OPENXR
+  lvk::TextureHandle xrSwapchainTexture(uint32_t eye, uint32_t imageIndex) const {
+    LVK_ASSERT(eye < 2 && imageIndex < xrSwapchains_[eye].textures.size());
+    return xrSwapchains_[eye].textures[imageIndex];
+  }
+  lvk::TextureHandle xrDepthSwapchainTexture(uint32_t eye, uint32_t imageIndex) const {
+    LVK_ASSERT(eye < 2 && imageIndex < xrDepthSwapchains_[eye].textures.size());
+    return xrDepthSwapchains_[eye].textures[imageIndex];
+  }
+#endif // LVK_WITH_OPENXR
  public:
   std::string folderThirdParty_;
   std::string folderContentRoot_;
@@ -152,4 +162,64 @@ class VulkanApp {
 
   uint64_t frameCount_ = 0;
   double simulatedTime_ = 0.0;
+
+#if LVK_WITH_OPENXR
+  void initOpenXR();
+  void initXrSession();
+  void initXrSwapchains();
+  void destroyXrSwapchains();
+  void pollXrEvents();
+  bool renderXrFrame(DrawFrameFunc& drawFrame);
+  static std::unique_ptr<lvk::IContext> createVulkanContextXR(XrInstance xrInstance,
+                                                              XrSystemId xrSystemId,
+                                                              PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                              const lvk::ContextConfig& ctxCfg);
+
+  static mat4 xrCreateProjectionMatrix(const XrFovf& fov, float nearZ, float farZ);
+  static mat4 xrCreateViewMatrix(const XrPosef& pose);
+
+  // OpenXR state
+  XrInstance xrInstance_ = XR_NULL_HANDLE;
+  XrSystemId xrSystemId_ = XR_NULL_SYSTEM_ID;
+  XrSession xrSession_ = XR_NULL_HANDLE;
+  XrSpace xrAppSpace_ = XR_NULL_HANDLE;
+  XrSessionState xrSessionState_ = XR_SESSION_STATE_UNKNOWN;
+  bool xrSessionRunning_ = false;
+  bool xrShouldQuit_ = false;
+  double xrLastTimeStamp_ = 0;
+
+  // OpenXR extension function pointers
+  PFN_xrGetVulkanGraphicsRequirementsKHR xrGetVulkanGraphicsRequirementsKHR_ = nullptr;
+  PFN_xrGetVulkanInstanceExtensionsKHR xrGetVulkanInstanceExtensionsKHR_ = nullptr;
+  PFN_xrGetVulkanDeviceExtensionsKHR xrGetVulkanDeviceExtensionsKHR_ = nullptr;
+  PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDeviceKHR_ = nullptr;
+
+  // extension strings storage (must outlive ContextConfig)
+  std::string xrVulkanInstanceExtensions_;
+  std::string xrVulkanDeviceExtensions_;
+  std::vector<const char*> xrInstanceExtPtrs_;
+  std::vector<const char*> xrDeviceExtPtrs_;
+
+  // per-eye swapchain data
+  struct XrSwapchainData {
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    int64_t format = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<XrSwapchainImageVulkanKHR> images;
+    std::vector<lvk::TextureHandle> textures;
+  };
+  XrSwapchainData xrSwapchains_[2] = {}; // left and right eye
+
+  struct XrDepthSwapchainData {
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<XrSwapchainImageVulkanKHR> images;
+    std::vector<lvk::TextureHandle> textures;
+  };
+  XrDepthSwapchainData xrDepthSwapchains_[2] = {};
+
+  std::vector<XrViewConfigurationView> xrConfigViews_;
+#endif // LVK_WITH_OPENXR
 };
