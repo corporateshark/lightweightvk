@@ -156,6 +156,63 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 } // extern "C"
 #endif // ANDROID
 
+#if LVK_WITH_OPENXR
+#define XR_CHECK(func)                                                                                                  \
+  {                                                                                                                     \
+    const XrResult xrResult_ = func;                                                                                    \
+    if (XR_FAILED(xrResult_)) {                                                                                         \
+      char resultStr_[XR_MAX_RESULT_STRING_SIZE] = "unknown";                                                           \
+      if (xrInstance_) {                                                                                                \
+        xrResultToString(xrInstance_, xrResult_, resultStr_);                                                           \
+      }                                                                                                                 \
+      LLOGW("OpenXR error: `%s` returned `%s` (%d) at %s:%d\n", #func, resultStr_, (int)xrResult_, __FILE__, __LINE__); \
+      LVK_ASSERT_MSG(false, "OpenXR call failed");                                                                      \
+    }                                                                                                                   \
+  }
+
+namespace {
+
+// clang-format off
+const char* xrSessionStateToString(XrSessionState state) {
+  switch (state) {
+  case XR_SESSION_STATE_UNKNOWN:      return "UNKNOWN";
+  case XR_SESSION_STATE_IDLE:         return "IDLE";
+  case XR_SESSION_STATE_READY:        return "READY";
+  case XR_SESSION_STATE_SYNCHRONIZED: return "SYNCHRONIZED";
+  case XR_SESSION_STATE_VISIBLE:      return "VISIBLE";
+  case XR_SESSION_STATE_FOCUSED:      return "FOCUSED";
+  case XR_SESSION_STATE_STOPPING:     return "STOPPING";
+  case XR_SESSION_STATE_LOSS_PENDING: return "LOSS_PENDING";
+  case XR_SESSION_STATE_EXITING:      return "EXITING";
+  default:                            return "INVALID";
+  }
+}
+// clang-format on
+
+// replace spaces with null terminators in-place so that pointers into the string are valid C strings
+void parseExtensionString(std::string& storage, std::vector<const char*>& outPtrs) {
+  outPtrs.clear();
+  if (storage.empty()) {
+    return;
+  }
+  char* p = storage.data();
+  char* end = p + storage.size();
+  while (p < end) {
+    while (p < end && (*p == ' ' || *p == '\0')) {
+      *p = '\0';
+      p++;
+    }
+    if (p >= end)
+      break;
+    outPtrs.push_back(p);
+    while (p < end && *p != ' ' && *p != '\0')
+      p++;
+  }
+}
+
+} // namespace
+#endif // LVK_WITH_OPENXR
+
 #if defined(ANDROID)
 VulkanApp::VulkanApp(android_app* androidApp, const VulkanAppConfig& cfg) : androidApp_(androidApp), cfg_(cfg) {
   const char* logFileName = nullptr;

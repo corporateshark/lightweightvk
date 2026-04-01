@@ -19,6 +19,13 @@
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
+#if LVK_WITH_OPENXR
+#include <lvk/vulkan/VulkanClasses.h>
+#define XR_USE_GRAPHICS_API_VULKAN
+#include <openxr/openxr.h>
+#include <openxr/openxr_platform.h>
+#endif // LVK_WITH_OPENXR
+
 // clang-format off
 #if defined(ANDROID)
 #  include <android_native_app_glue.h>
@@ -80,6 +87,9 @@ struct VulkanAppConfig {
   uint64_t screenshotFrameNumber = 0; // frames start from 1
   const char* screenshotFileName = "screenshot.png";
   lvk::ContextConfig contextConfig;
+#if LVK_WITH_OPENXR
+  bool enableOpenXR = false;
+#endif // LVK_WITH_OPENXR
 };
 
 class VulkanApp {
