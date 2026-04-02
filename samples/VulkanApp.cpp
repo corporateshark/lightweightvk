@@ -316,12 +316,25 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   androidApp_->activity->instance = this;
   androidApp_->activity->callbacks->onNativeWindowResized = resize_callback;
 #else
-  width_ = cfg_.width;
-  height_ = cfg_.height;
-
-  window_ = lvk::initWindow("Simple example", width_, height_, cfg_.resizable, cfg_.contextConfig.enableHeadlessSurface);
-
-  ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
+#if LVK_WITH_OPENXR
+  if (cfg_.enableOpenXR) {
+#if defined(LVK_WITH_GLFW)
+    glfwInit();
+#endif // LVK_WITH_GLFW
+    initOpenXR();
+    initXrSession();
+    initXrSwapchains();
+    width_ = xrSwapchains_[0].width;
+    height_ = xrSwapchains_[0].height;
+    xrLastTimeStamp_ = glfwGetTime();
+  } else
+#endif // LVK_WITH_OPENXR
+  {
+    width_ = cfg_.width;
+    height_ = cfg_.height;
+    window_ = lvk::initWindow("Simple example", width_, height_, cfg_.resizable, cfg_.contextConfig.enableHeadlessSurface);
+    ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
+  }
 #endif // ANDROID
 
 #if !defined(ANDROID)
@@ -390,6 +403,26 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 VulkanApp::~VulkanApp() {
   imgui_ = nullptr;
   depthTexture_ = nullptr;
+#if LVK_WITH_OPENXR
+  if (cfg_.enableOpenXR) {
+    if (ctx_) {
+      ctx_->wait({});
+    }
+    destroyXrSwapchains();
+    if (xrAppSpace_) {
+      xrDestroySpace(xrAppSpace_);
+    }
+    if (xrSession_) {
+      xrDestroySession(xrSession_);
+    }
+    ctx_ = nullptr;
+    if (xrInstance_) {
+      xrDestroyInstance(xrInstance_);
+    }
+    glfwTerminate();
+    return;
+  }
+#endif // LVK_WITH_OPENXR
   ctx_ = nullptr;
 #if !defined(ANDROID)
   glfwDestroyWindow(window_);
@@ -416,6 +449,19 @@ lvk::TextureHandle VulkanApp::getDepthTexture() const {
 }
 
 void VulkanApp::run(DrawFrameFunc drawFrame) {
+#if LVK_WITH_OPENXR
+  if (cfg_.enableOpenXR) {
+    while (!xrShouldQuit_) {
+      pollXrEvents();
+      if (xrShouldQuit_)
+        break;
+      if (!renderXrFrame(drawFrame))
+        break;
+    }
+    return;
+  }
+#endif // LVK_WITH_OPENXR
+
   double timeStamp = glfwGetTime();
 
 #if defined(ANDROID)
@@ -561,3 +607,604 @@ void VulkanApp::drawFPS() {
   }
   ImGui::End();
 }
+
+#if LVK_WITH_OPENXR
+
+void VulkanApp::initOpenXR() {
+  const char* extensions[] = {
+      XR_KHR_VULKAN_ENABLE_EXTENSION_NAME,
+  };
+
+  const XrInstanceCreateInfo instanceCI = {
+      .type = XR_TYPE_INSTANCE_CREATE_INFO,
+      .applicationInfo =
+          {
+              .applicationName = "LVK OpenXR App",
+              .applicationVersion = 1,
+              .engineName = "LightweightVK",
+              .engineVersion = 1,
+              .apiVersion = XR_CURRENT_API_VERSION,
+          },
+      .enabledExtensionCount = 1,
+      .enabledExtensionNames = extensions,
+  };
+
+  const XrResult result = xrCreateInstance(&instanceCI, &xrInstance_);
+  if (XR_FAILED(result)) {
+    LLOGW("Failed to create OpenXR instance (result=%d). Is an OpenXR runtime available?\n", (int)result);
+    LVK_ASSERT(false);
+    return;
+  }
+
+  XrInstanceProperties instanceProps = {.type = XR_TYPE_INSTANCE_PROPERTIES};
+  XR_CHECK(xrGetInstanceProperties(xrInstance_, &instanceProps));
+  LLOGL("OpenXR Runtime: %s v%u.%u.%u\n",
+        instanceProps.runtimeName,
+        XR_VERSION_MAJOR(instanceProps.runtimeVersion),
+        XR_VERSION_MINOR(instanceProps.runtimeVersion),
+        XR_VERSION_PATCH(instanceProps.runtimeVersion));
+
+  // load extension functions
+  XR_CHECK(
+      xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsRequirementsKHR_));
+  XR_CHECK(xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&xrGetVulkanInstanceExtensionsKHR_));
+  XR_CHECK(xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&xrGetVulkanDeviceExtensionsKHR_));
+  XR_CHECK(xrGetInstanceProcAddr(xrInstance_, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsDeviceKHR_));
+
+  // get system (HMD)
+  const XrSystemGetInfo systemGI = {
+      .type = XR_TYPE_SYSTEM_GET_INFO,
+      .formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY,
+  };
+  {
+    const XrResult sysResult = xrGetSystem(xrInstance_, &systemGI, &xrSystemId_);
+    if (sysResult == XR_ERROR_FORM_FACTOR_UNAVAILABLE) {
+      LLOGW("No HMD found. Make sure your Quest 3 is connected and Quest Link is active.\n");
+      exit(1);
+    }
+    if (XR_FAILED(sysResult)) {
+      char resultStr[XR_MAX_RESULT_STRING_SIZE] = "unknown";
+      xrResultToString(xrInstance_, sysResult, resultStr);
+      LLOGW("OpenXR error: xrGetSystem() returned %s (%d)\n", resultStr, (int)sysResult);
+      LVK_ASSERT_MSG(false, "xrGetSystem() failed");
+    }
+  }
+
+  XrSystemProperties systemProps = {.type = XR_TYPE_SYSTEM_PROPERTIES};
+  XR_CHECK(xrGetSystemProperties(xrInstance_, xrSystemId_, &systemProps));
+  LLOGL("OpenXR System: %s (vendorId=%u)\n", systemProps.systemName, systemProps.vendorId);
+
+  // get Vulkan graphics requirements (must be called before creating Vulkan device per spec)
+  XrGraphicsRequirementsVulkanKHR graphicsReqs = {.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
+  XR_CHECK(xrGetVulkanGraphicsRequirementsKHR_(xrInstance_, xrSystemId_, &graphicsReqs));
+
+  // get required Vulkan instance extensions from XR runtime
+  uint32_t instanceExtSize = 0;
+  XR_CHECK(xrGetVulkanInstanceExtensionsKHR_(xrInstance_, xrSystemId_, 0, &instanceExtSize, nullptr));
+  if (instanceExtSize) {
+    xrVulkanInstanceExtensions_.resize(instanceExtSize);
+    XR_CHECK(
+        xrGetVulkanInstanceExtensionsKHR_(xrInstance_, xrSystemId_, instanceExtSize, &instanceExtSize, xrVulkanInstanceExtensions_.data()));
+    while (!xrVulkanInstanceExtensions_.empty() && xrVulkanInstanceExtensions_.back() == '\0') {
+      xrVulkanInstanceExtensions_.pop_back();
+    }
+    LLOGL("OpenXR required Vulkan instance extensions: %s\n", xrVulkanInstanceExtensions_.c_str());
+    parseExtensionString(xrVulkanInstanceExtensions_, xrInstanceExtPtrs_);
+  }
+
+  // get required Vulkan device extensions from XR runtime
+  uint32_t deviceExtSize = 0;
+  XR_CHECK(xrGetVulkanDeviceExtensionsKHR_(xrInstance_, xrSystemId_, 0, &deviceExtSize, nullptr));
+  if (deviceExtSize) {
+    xrVulkanDeviceExtensions_.resize(deviceExtSize);
+    XR_CHECK(xrGetVulkanDeviceExtensionsKHR_(xrInstance_, xrSystemId_, deviceExtSize, &deviceExtSize, xrVulkanDeviceExtensions_.data()));
+    while (!xrVulkanDeviceExtensions_.empty() && xrVulkanDeviceExtensions_.back() == '\0') {
+      xrVulkanDeviceExtensions_.pop_back();
+    }
+    LLOGL("OpenXR required Vulkan device extensions: %s\n", xrVulkanDeviceExtensions_.c_str());
+    parseExtensionString(xrVulkanDeviceExtensions_, xrDeviceExtPtrs_);
+  }
+
+  // query view configuration
+  uint32_t viewConfigCount = 0;
+  XR_CHECK(
+      xrEnumerateViewConfigurationViews(xrInstance_, xrSystemId_, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &viewConfigCount, nullptr));
+  xrConfigViews_.resize(viewConfigCount, {.type = XR_TYPE_VIEW_CONFIGURATION_VIEW});
+  XR_CHECK(xrEnumerateViewConfigurationViews(
+      xrInstance_, xrSystemId_, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, viewConfigCount, &viewConfigCount, xrConfigViews_.data()));
+
+  LVK_ASSERT(viewConfigCount == 2);
+
+  LLOGL("OpenXR view config: %ux%u (recommended), %ux%u (max)\n",
+        xrConfigViews_[0].recommendedImageRectWidth,
+        xrConfigViews_[0].recommendedImageRectHeight,
+        xrConfigViews_[0].maxImageRectWidth,
+        xrConfigViews_[0].maxImageRectHeight);
+
+  // add XR-required instance extensions
+  uint32_t extIdx = 0;
+  for (; extIdx < lvk::kMaxCustomExtensions && cfg_.contextConfig.extensionsInstance[extIdx]; extIdx++)
+    ;
+  for (const char* ext : xrInstanceExtPtrs_) {
+    if (LVK_VERIFY(extIdx < lvk::kMaxCustomExtensions)) {
+      cfg_.contextConfig.extensionsInstance[extIdx++] = ext;
+    }
+  }
+
+  // add XR-required device extensions
+  uint32_t devExtIdx = 0;
+  for (; devExtIdx < lvk::kMaxCustomExtensions && cfg_.contextConfig.extensionsDevice[devExtIdx]; devExtIdx++)
+    ;
+  for (const char* ext : xrDeviceExtPtrs_) {
+    if (LVK_VERIFY(devExtIdx < lvk::kMaxCustomExtensions)) {
+      cfg_.contextConfig.extensionsDevice[devExtIdx++] = ext;
+    }
+  }
+
+  ctx_ = createVulkanContextXR(xrInstance_, xrSystemId_, xrGetVulkanGraphicsDeviceKHR_, cfg_.contextConfig);
+}
+
+std::unique_ptr<lvk::IContext> VulkanApp::createVulkanContextXR(XrInstance xrInstance_,
+                                                                XrSystemId xrSystemId,
+                                                                PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                                const lvk::ContextConfig& ctxCfg) {
+  std::unique_ptr<lvk::VulkanContext> vkCtx = std::make_unique<lvk::VulkanContext>(ctxCfg, nullptr);
+
+  lvk::HWDeviceDesc devices[16];
+  const uint32_t numDevices = vkCtx->queryDevices(devices, 16);
+  LVK_ASSERT_MSG(numDevices > 0, "No GPU found");
+
+  // get the physical device OpenXR wants
+  VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
+  XR_CHECK(xrGetVulkanGraphicsDevice(xrInstance_, xrSystemId, vkCtx->getVkInstance(), &vkPhysicalDevice));
+
+  // find the matching device index
+  int selectedDevice = 0; // mutated in loop
+  for (uint32_t i = 0; i < numDevices; i++) {
+    if (devices[i].guid == (uintptr_t)vkPhysicalDevice) {
+      selectedDevice = (int)i;
+      break;
+    }
+  }
+
+  const lvk::Result res = vkCtx->initContext(devices[selectedDevice]);
+  LVK_ASSERT(res.isOk());
+
+  if (vkCtx->getVkPhysicalDevice() != vkPhysicalDevice) {
+    LLOGW("LVK selected a different physical device than OpenXR requested\n");
+  }
+
+  return vkCtx;
+}
+
+void VulkanApp::initXrSession() {
+  const lvk::VulkanContext* vkCtx = static_cast<lvk::VulkanContext*>(ctx_.get());
+
+  const XrGraphicsBindingVulkanKHR graphicsBinding = {
+      .type = XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR,
+      .instance = vkCtx->getVkInstance(),
+      .physicalDevice = vkCtx->getVkPhysicalDevice(),
+      .device = vkCtx->getVkDevice(),
+      .queueFamilyIndex = vkCtx->deviceQueues_.graphicsQueueFamilyIndex,
+      .queueIndex = 0,
+  };
+
+  const XrSessionCreateInfo sessionCI = {
+      .type = XR_TYPE_SESSION_CREATE_INFO,
+      .next = &graphicsBinding,
+      .systemId = xrSystemId_,
+  };
+
+  XR_CHECK(xrCreateSession(xrInstance_, &sessionCI, &xrSession_));
+  LLOGL("OpenXR session created\n");
+
+  const XrReferenceSpaceCreateInfo spaceCI = {
+      .type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
+      .referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL,
+      .poseInReferenceSpace =
+          {
+              .orientation = {.x = 0, .y = 0, .z = 0, .w = 1},
+              .position = {.x = 0, .y = 0, .z = 0},
+          },
+  };
+  XR_CHECK(xrCreateReferenceSpace(xrSession_, &spaceCI, &xrAppSpace_));
+}
+
+void VulkanApp::initXrSwapchains() {
+  lvk::VulkanContext* const vkCtx = static_cast<lvk::VulkanContext*>(ctx_.get());
+
+  uint32_t formatCount = 0;
+  XR_CHECK(xrEnumerateSwapchainFormats(xrSession_, 0, &formatCount, nullptr));
+  std::vector<int64_t> formats(formatCount);
+  XR_CHECK(xrEnumerateSwapchainFormats(xrSession_, formatCount, &formatCount, formats.data()));
+
+  // select the first available format from a preference list
+  auto selectFormat = [&formats](const std::vector<VkFormat>& preferred, VkFormat fallback) -> VkFormat {
+    for (const VkFormat p : preferred) {
+      for (const int64_t a : formats) {
+        if (a == p)
+          return p;
+      }
+    }
+    return fallback;
+  };
+
+  const VkFormat vkColorFormat = selectFormat(
+      {
+          VK_FORMAT_R8G8B8A8_SRGB,
+          VK_FORMAT_B8G8R8A8_SRGB,
+          VK_FORMAT_R8G8B8A8_UNORM,
+          VK_FORMAT_B8G8R8A8_UNORM,
+      },
+      VkFormat(formats[0]));
+  LLOGD("OpenXR color format: VkFormat %d\n", (int)vkColorFormat);
+
+  const VkFormat vkDepthFormat =
+      selectFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM}, VK_FORMAT_UNDEFINED);
+
+  for (uint32_t eye = 0; eye < 2; eye++) {
+    const uint32_t width = xrConfigViews_[eye].recommendedImageRectWidth;
+    const uint32_t height = xrConfigViews_[eye].recommendedImageRectHeight;
+
+    // color swapchain
+    {
+      const XrSwapchainCreateInfo swapchainCI = {
+          .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+          .usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT,
+          .format = vkColorFormat,
+          .sampleCount = 1,
+          .width = width,
+          .height = height,
+          .faceCount = 1,
+          .arraySize = 1,
+          .mipCount = 1,
+      };
+
+      XrSwapchainData& sc = xrSwapchains_[eye];
+      XR_CHECK(xrCreateSwapchain(xrSession_, &swapchainCI, &sc.swapchain));
+      sc.format = vkColorFormat;
+      sc.width = width;
+      sc.height = height;
+
+      uint32_t imageCount = 0;
+      XR_CHECK(xrEnumerateSwapchainImages(sc.swapchain, 0, &imageCount, nullptr));
+      sc.images.resize(imageCount, {.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+      XR_CHECK(xrEnumerateSwapchainImages(sc.swapchain, imageCount, &imageCount, (XrSwapchainImageBaseHeader*)sc.images.data()));
+
+      sc.textures.resize(imageCount);
+      for (uint32_t i = 0; i < imageCount; i++) {
+        char debugNameImage[256];
+        char debugNameView[256];
+        snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u color %u", eye, i);
+        snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u color %u", eye, i);
+
+        lvk::VulkanImage image = {
+            .vkImage_ = sc.images[i].image,
+            .vkUsageFlags_ = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            .vkExtent_ = {.width = width, .height = height, .depth = 1},
+            .vkType_ = VK_IMAGE_TYPE_2D,
+            .vkImageFormat_ = vkColorFormat,
+            .isOwningVkImage_ = false,
+        };
+
+        lvk::setDebugObjectName(vkCtx->getVkDevice(), VK_OBJECT_TYPE_IMAGE, (uint64_t)image.vkImage_, debugNameImage);
+
+        image.imageView_ = image.createImageView(vkCtx->getVkDevice(),
+                                                 VK_IMAGE_VIEW_TYPE_2D,
+                                                 vkColorFormat,
+                                                 VK_IMAGE_ASPECT_COLOR_BIT,
+                                                 0,
+                                                 VK_REMAINING_MIP_LEVELS,
+                                                 0,
+                                                 1,
+                                                 {},
+                                                 nullptr,
+                                                 debugNameView);
+
+        sc.textures[i] = vkCtx->texturesPool_.create(std::move(image));
+      }
+    }
+
+    // depth swapchain
+    if (vkDepthFormat != VK_FORMAT_UNDEFINED) {
+      const XrSwapchainCreateInfo depthCI = {
+          .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
+          .usageFlags = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+          .format = vkDepthFormat,
+          .sampleCount = 1,
+          .width = width,
+          .height = height,
+          .faceCount = 1,
+          .arraySize = 1,
+          .mipCount = 1,
+      };
+
+      XrDepthSwapchainData& dsc = xrDepthSwapchains_[eye];
+      XR_CHECK(xrCreateSwapchain(xrSession_, &depthCI, &dsc.swapchain));
+      dsc.width = width;
+      dsc.height = height;
+
+      uint32_t imageCount = 0;
+      XR_CHECK(xrEnumerateSwapchainImages(dsc.swapchain, 0, &imageCount, nullptr));
+      dsc.images.resize(imageCount, {.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR});
+      XR_CHECK(xrEnumerateSwapchainImages(dsc.swapchain, imageCount, &imageCount, (XrSwapchainImageBaseHeader*)dsc.images.data()));
+
+      dsc.textures.resize(imageCount);
+      for (uint32_t i = 0; i < imageCount; i++) {
+        char debugNameImage[256];
+        char debugNameView[256];
+        snprintf(debugNameImage, sizeof(debugNameImage), "Image: XR eye%u depth %u", eye, i);
+        snprintf(debugNameView, sizeof(debugNameView), "Image View: XR eye%u depth %u", eye, i);
+
+        lvk::VulkanImage image = {
+            .vkImage_ = dsc.images[i].image,
+            .vkUsageFlags_ = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            .vkExtent_ = {.width = width, .height = height, .depth = 1},
+            .vkType_ = VK_IMAGE_TYPE_2D,
+            .vkImageFormat_ = vkDepthFormat,
+            .isOwningVkImage_ = false,
+            .isDepthFormat_ = lvk::VulkanImage::isDepthFormat(vkDepthFormat),
+            .isStencilFormat_ = lvk::VulkanImage::isStencilFormat(vkDepthFormat),
+        };
+
+        lvk::setDebugObjectName(vkCtx->getVkDevice(), VK_OBJECT_TYPE_IMAGE, (uint64_t)image.vkImage_, debugNameImage);
+
+        const VkImageAspectFlags aspect = image.getImageAspectFlags();
+        image.imageView_ = image.createImageView(vkCtx->getVkDevice(),
+                                                 VK_IMAGE_VIEW_TYPE_2D,
+                                                 vkDepthFormat,
+                                                 aspect,
+                                                 0,
+                                                 VK_REMAINING_MIP_LEVELS,
+                                                 0,
+                                                 1,
+                                                 {},
+                                                 nullptr,
+                                                 debugNameView);
+
+        dsc.textures[i] = vkCtx->texturesPool_.create(std::move(image));
+      }
+    }
+  }
+
+  LLOGL("OpenXR swapchains created: %ux%u per eye, %u images\n",
+        xrSwapchains_[0].width,
+        xrSwapchains_[0].height,
+        (uint32_t)xrSwapchains_[0].images.size());
+}
+
+void VulkanApp::destroyXrSwapchains() {
+  if (ctx_) {
+    for (uint32_t eye = 0; eye < 2; eye++) {
+      for (lvk::TextureHandle tex : xrSwapchains_[eye].textures) {
+        ctx_->destroy(tex);
+      }
+      xrSwapchains_[eye].textures.clear();
+
+      for (lvk::TextureHandle tex : xrDepthSwapchains_[eye].textures) {
+        ctx_->destroy(tex);
+      }
+      xrDepthSwapchains_[eye].textures.clear();
+    }
+  }
+
+  for (uint32_t eye = 0; eye < 2; eye++) {
+    if (xrSwapchains_[eye].swapchain) {
+      xrDestroySwapchain(xrSwapchains_[eye].swapchain);
+      xrSwapchains_[eye].swapchain = XR_NULL_HANDLE;
+    }
+    if (xrDepthSwapchains_[eye].swapchain) {
+      xrDestroySwapchain(xrDepthSwapchains_[eye].swapchain);
+      xrDepthSwapchains_[eye].swapchain = XR_NULL_HANDLE;
+    }
+  }
+}
+
+void VulkanApp::pollXrEvents() {
+  XrEventDataBuffer event = {.type = XR_TYPE_EVENT_DATA_BUFFER};
+
+  while (xrPollEvent(xrInstance_, &event) == XR_SUCCESS) {
+    switch (event.type) {
+    case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
+      const XrEventDataSessionStateChanged* stateEvent = (XrEventDataSessionStateChanged*)&event;
+      xrSessionState_ = stateEvent->state;
+      LLOGL("OpenXR session state: %s\n", xrSessionStateToString(xrSessionState_));
+      switch (xrSessionState_) {
+      case XR_SESSION_STATE_READY: {
+        const XrSessionBeginInfo beginInfo = {
+            .type = XR_TYPE_SESSION_BEGIN_INFO,
+            .primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+        };
+        XR_CHECK(xrBeginSession(xrSession_, &beginInfo));
+        xrSessionRunning_ = true;
+        LLOGL("OpenXR session started\n");
+        break;
+      }
+      case XR_SESSION_STATE_STOPPING:
+        XR_CHECK(xrEndSession(xrSession_));
+        xrSessionRunning_ = false;
+        LLOGL("OpenXR session stopped\n");
+        break;
+      case XR_SESSION_STATE_EXITING:
+      case XR_SESSION_STATE_LOSS_PENDING:
+        xrShouldQuit_ = true;
+        break;
+      default:
+        break;
+      }
+      break;
+    }
+    case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
+      xrShouldQuit_ = true;
+      break;
+    default:
+      break;
+    }
+    event = {.type = XR_TYPE_EVENT_DATA_BUFFER};
+  }
+}
+
+mat4 VulkanApp::xrCreateProjectionMatrix(const XrFovf& fov, float nearZ, float farZ) {
+  const float tanLeft = tanf(fov.angleLeft);
+  const float tanRight = tanf(fov.angleRight);
+  const float tanUp = tanf(fov.angleUp);
+  const float tanDown = tanf(fov.angleDown);
+
+  const float tanWidth = tanRight - tanLeft;
+  const float tanHeight = tanUp - tanDown;
+
+  mat4 proj(0.0f);
+  proj[0][0] = 2.0f / tanWidth;
+  proj[1][1] = 2.0f / tanHeight;
+  proj[2][0] = (tanRight + tanLeft) / tanWidth;
+  proj[2][1] = (tanUp + tanDown) / tanHeight;
+  proj[2][2] = -farZ / (farZ - nearZ);
+  proj[2][3] = -1.0f;
+  proj[3][2] = -(farZ * nearZ) / (farZ - nearZ);
+
+  return proj;
+}
+
+mat4 VulkanApp::xrCreateViewMatrix(const XrPosef& pose) {
+  const glm::quat q(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
+  const vec3 pos(pose.position.x, pose.position.y, pose.position.z);
+
+  const mat4 rotation = glm::mat4_cast(glm::inverse(q));
+  const mat4 translation = glm::translate(mat4(1.0f), -pos);
+
+  return rotation * translation;
+}
+
+bool VulkanApp::renderXrFrame(DrawFrameFunc& drawFrame) {
+  if (!xrSessionRunning_) {
+    return true;
+  }
+
+  const XrFrameWaitInfo frameWaitInfo = {.type = XR_TYPE_FRAME_WAIT_INFO};
+  XrFrameState frameState = {.type = XR_TYPE_FRAME_STATE};
+  XR_CHECK(xrWaitFrame(xrSession_, &frameWaitInfo, &frameState));
+
+  // timing (always update to avoid delta spikes when shouldRender is false)
+  const double now = glfwGetTime();
+  const float deltaSeconds = static_cast<float>(now - xrLastTimeStamp_);
+  xrLastTimeStamp_ = now;
+
+  const XrFrameBeginInfo frameBeginInfo = {.type = XR_TYPE_FRAME_BEGIN_INFO};
+  XR_CHECK(xrBeginFrame(xrSession_, &frameBeginInfo));
+
+  if (!frameState.shouldRender) {
+    // drain the GPU queue so the runtime's xrEndFrame() compositing doesn't race with prior submissions
+    ctx_->wait({});
+    const XrFrameEndInfo frameEndInfo = {
+        .type = XR_TYPE_FRAME_END_INFO,
+        .displayTime = frameState.predictedDisplayTime,
+        .environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+    };
+    XR_CHECK(xrEndFrame(xrSession_, &frameEndInfo));
+    return true;
+  }
+
+  const XrViewLocateInfo viewLocateInfo = {
+      .type = XR_TYPE_VIEW_LOCATE_INFO,
+      .viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
+      .displayTime = frameState.predictedDisplayTime,
+      .space = xrAppSpace_,
+  };
+
+  XrViewState viewState = {.type = XR_TYPE_VIEW_STATE};
+  XrView xrViews[2] = {{.type = XR_TYPE_VIEW}, {.type = XR_TYPE_VIEW}};
+  uint32_t viewCount = 2;
+  XR_CHECK(xrLocateViews(xrSession_, &viewLocateInfo, &viewState, 2, &viewCount, xrViews));
+
+  // acquire all swapchain images
+  uint32_t colorImageIndices[2] = {};
+  uint32_t depthImageIndices[2] = {};
+  bool hasDepth[2] = {};
+  RenderView renderViews[2] = {};
+
+  for (uint32_t eye = 0; eye != 2; eye++) {
+    const XrSwapchainImageAcquireInfo acquireInfo = {.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    XR_CHECK(xrAcquireSwapchainImage(xrSwapchains_[eye].swapchain, &acquireInfo, &colorImageIndices[eye]));
+
+    const XrSwapchainImageWaitInfo waitInfo = {
+        .type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
+        .timeout = XR_INFINITE_DURATION,
+    };
+    XR_CHECK(xrWaitSwapchainImage(xrSwapchains_[eye].swapchain, &waitInfo));
+
+    hasDepth[eye] = (xrDepthSwapchains_[eye].swapchain);
+    if (hasDepth[eye]) {
+      XR_CHECK(xrAcquireSwapchainImage(xrDepthSwapchains_[eye].swapchain, &acquireInfo, &depthImageIndices[eye]));
+      XR_CHECK(xrWaitSwapchainImage(xrDepthSwapchains_[eye].swapchain, &waitInfo));
+    }
+
+    // populate render views
+    const float w = (float)xrSwapchains_[eye].width;
+    const float h = (float)xrSwapchains_[eye].height;
+    renderViews[eye] = {
+        .proj = xrCreateProjectionMatrix(xrViews[eye].fov, 0.1f, 100.0f),
+        .view = xrCreateViewMatrix(xrViews[eye].pose),
+        .viewport = {0.0f, 0.0f, w, h, 0.0f, 1.0f},
+        .scissorRect = {0, 0, (uint32_t)w, (uint32_t)h},
+        .colorTexture = xrSwapchains_[eye].textures[colorImageIndices[eye]],
+        .depthTexture = hasDepth[eye] ? xrDepthSwapchains_[eye].textures[depthImageIndices[eye]] : lvk::TextureHandle{},
+        .aspectRatio = w / h,
+    };
+  }
+
+  // call the sample's draw function
+  drawFrame(renderViews, deltaSeconds);
+
+  // wait for GPU before releasing swapchain images
+  ctx_->wait({});
+
+  // release swapchain images and fill composition layer
+  XrCompositionLayerProjectionView projectionViews[2] = {
+      {.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
+      {.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},
+  };
+
+  for (uint32_t eye = 0; eye < 2; eye++) {
+    const XrSwapchainImageReleaseInfo releaseInfo = {.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    XR_CHECK(xrReleaseSwapchainImage(xrSwapchains_[eye].swapchain, &releaseInfo));
+    if (hasDepth[eye]) {
+      XR_CHECK(xrReleaseSwapchainImage(xrDepthSwapchains_[eye].swapchain, &releaseInfo));
+    }
+
+    projectionViews[eye] = {
+        .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW,
+        .pose = xrViews[eye].pose,
+        .fov = xrViews[eye].fov,
+        .subImage =
+            {
+                .swapchain = xrSwapchains_[eye].swapchain,
+                .imageRect =
+                    {
+                        .offset = {0, 0},
+                        .extent = {(int32_t)xrSwapchains_[eye].width, (int32_t)xrSwapchains_[eye].height},
+                    },
+            },
+    };
+  }
+
+  const XrCompositionLayerProjection projectionLayer = {
+      .type = XR_TYPE_COMPOSITION_LAYER_PROJECTION,
+      .space = xrAppSpace_,
+      .viewCount = 2,
+      .views = projectionViews,
+  };
+  const XrCompositionLayerBaseHeader* layers[] = {(XrCompositionLayerBaseHeader*)&projectionLayer};
+
+  const XrFrameEndInfo frameEndInfo = {
+      .type = XR_TYPE_FRAME_END_INFO,
+      .displayTime = frameState.predictedDisplayTime,
+      .environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE,
+      .layerCount = 1,
+      .layers = layers,
+  };
+  XR_CHECK(xrEndFrame(xrSession_, &frameEndInfo));
+
+  return true;
+}
+
+#endif // LVK_WITH_OPENXR
