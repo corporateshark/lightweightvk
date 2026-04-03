@@ -7068,6 +7068,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .vertexPipelineStoresAndAtomics = vkFeatures10_.features.vertexPipelineStoresAndAtomics, // enable if supported
       .fragmentStoresAndAtomics = VK_TRUE,
       .shaderImageGatherExtended = VK_TRUE,
+      .shaderStorageImageMultisample = vkFeatures10_.features.shaderStorageImageMultisample,
       .shaderInt64 = vkFeatures10_.features.shaderInt64, // enable if supported
       .shaderInt16 = vkFeatures10_.features.shaderInt16, // enable if supported
   };
