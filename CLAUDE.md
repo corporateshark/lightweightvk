@@ -109,10 +109,13 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - Use C++20 designated initializers whenever possible (e.g., `lvk::RenderPass{.color = {...}}`)
 - Use `if (ptr)` instead of `if (ptr != nullptr)` for pointer checks
 - Use `if (value)` instead of `if (value != 0)` for integer checks
+- Use `if (handle)` instead of `if (handle != VK_NULL_HANDLE)` or `if (handle != XR_NULL_HANDLE)` for Vulkan/OpenXR handle checks
 - No STL containers in public API; the only exception is `std::vector` which is allowed in `.cpp` files and samples
 - Use `()` after function names in code comments and commit messages (e.g., `// call doSomething() first`)
+- Instead of deep nested if-blocks, prefer early exit
 - **Use `const` on local variables whenever possible**
 - **NEVER use `auto` except for lambda types** — always use explicit types
+- **NEVER use `goto`**
 
 ## Commit Conventions
 - Start with capital letter, no trailing period
