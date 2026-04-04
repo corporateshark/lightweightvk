@@ -242,6 +242,8 @@ struct ParticleSystem {
   Particle particlesStack[kStackSize];
   int totalParticles = 0;
   int queuedParticles = 0;
+  vec3 viewerPos = vec3(0.0f);
+  bool useViewerFacingExplosions = false;
 
   void nextFrame() {
     int processedParticles = 0;
@@ -287,13 +289,26 @@ struct ParticleSystem {
         {0.1, 0.80, 0.2},
     };
 
+    // optionally build an orthonormal basis perpendicular to the viewer direction
+    vec3 right(1, 0, 0);
+    vec3 up(0, 1, 0);
+    vec3 viewDir(0, 0, 1);
+    if (useViewerFacingExplosions) {
+      const vec3 toViewer = viewerPos - pos;
+      const float dist = glm::length(toViewer);
+      viewDir = dist > 0.001f ? toViewer / dist : vec3(0, 0, 1);
+      const vec3 ref = fabsf(viewDir.y) < 0.99f ? vec3(0, 1, 0) : vec3(1, 0, 0);
+      right = glm::normalize(glm::cross(ref, viewDir));
+      up = glm::cross(viewDir, right);
+    }
+
     const int paletteIndex = static_cast<int>(random(3));
 
     for (int i = 0; i < 300; i++) {
-      float radius = random(1) / 10;
-      float angle = random(M_PI * 2.0f);
-      vec3 velocity(radius * cosf(angle), radius * sinf(angle), (random(100) - 50) / 5000.0f);
-      vec3 color = FlarePal[paletteIndex] + vec3(random(1) / 5, random(1) / 5, random(1) / 5);
+      const float radius = random(1) / 10.0f;
+      const float angle = random(M_PI * 2.0f);
+      const vec3 velocity = right * (radius * cosf(angle)) + up * (radius * sinf(angle)) + viewDir * (random(100) - 50) / 5000.0f;
+      const vec3 color = FlarePal[paletteIndex] + vec3(random(1) / 5, random(1) / 5, random(1) / 5);
 
       Particle particle(pos, velocity, color, 90 + random(20), true);
       particle.emission = true;
