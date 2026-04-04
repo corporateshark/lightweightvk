@@ -397,11 +397,11 @@ VULKAN_APP_MAIN {
     });
 
     // main loop
-    app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+    app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
       LVK_PROFILER_FUNCTION();
 
       const float fov = float(45.0f * (M_PI / 180.0f));
-      const mat4 proj = glm::perspectiveLH(fov, aspectRatio, 0.1f, 500.0f);
+      const mat4 proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
       const mat4 model = glm::rotate(mat4(1.0f), (float)app.getSimulatedTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
       const PerFrame bindingsDeferred = {
@@ -462,11 +462,11 @@ VULKAN_APP_MAIN {
       ImGui::SetNextWindowPos({0, 15}, ImGuiCond_Always);
       ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs | ImGuiWindowFlags_NoMove);
       ImGui::Text("Albedo:");
-      ImGui::Image(texAlbedo.index(), ImVec2(size, size / aspectRatio));
+      ImGui::Image(texAlbedo.index(), ImVec2(size, size / views[0].aspectRatio));
       ImGui::Text("Normals:");
-      ImGui::Image(texNormal.index(), ImVec2(size, size / aspectRatio));
+      ImGui::Image(texNormal.index(), ImVec2(size, size / views[0].aspectRatio));
       ImGui::Text("World positions:");
-      ImGui::Image(texWorldPos.index(), ImVec2(size, size / aspectRatio));
+      ImGui::Image(texWorldPos.index(), ImVec2(size, size / views[0].aspectRatio));
       ImGui::End();
 #else
       app.imgui_->beginFrame(framebuffer);

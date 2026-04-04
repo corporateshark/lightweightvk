@@ -340,7 +340,9 @@ VULKAN_APP_MAIN {
       .hitGroups = {{.smClosestHit = res.hit_}},
   });
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+    const uint32_t width = views[0].scissorRect.width;
+    const uint32_t height = views[0].scissorRect.height;
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
     const glm::mat3x4 transformMatrix = glm::rotate(glm::mat4(1.0f), (float)app.getSimulatedTime(), glm::vec3(1, 1, 1));

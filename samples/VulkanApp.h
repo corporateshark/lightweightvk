@@ -53,7 +53,17 @@ using glm::vec2;
 using glm::vec3;
 using glm::vec4;
 
-using DrawFrameFunc = std::function<void(uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds)>;
+struct RenderView {
+  mat4 proj; // OpenXR projection
+  mat4 view; // OpenXR view (head space to eye space)
+  lvk::Viewport viewport;
+  lvk::ScissorRect scissorRect;
+  lvk::TextureHandle colorTexture;
+  lvk::TextureHandle depthTexture;
+  float aspectRatio = 1.0f;
+};
+
+using DrawFrameFunc = std::function<void(lvk::Span<const RenderView> views, float deltaSeconds)>;
 
 struct VulkanAppConfig {
   int width = -95; // 95% horizontally

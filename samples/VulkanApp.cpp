@@ -396,7 +396,13 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       imguiClearMouseNextFrame_ = !mouseState_.pressedLeft && imguiLastPressedLeft_;
       imguiLastPressedLeft_ = mouseState_.pressedLeft;
 
-      drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
+      const RenderView view = {
+          .viewport = {0.0f, 0.0f, (float)width_, (float)height_, 0.0f, 1.0f},
+          .scissorRect = {0, 0, (uint32_t)width_, (uint32_t)height_},
+          .colorTexture = ctx_->getCurrentSwapchainTexture(),
+          .aspectRatio = ratio,
+      };
+      drawFrame({&view, 1}, deltaSeconds);
     }
     if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
       if (source) {
@@ -436,14 +442,19 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
 
     const float ratio = width_ / (float)height_;
 
-    lvk::TextureHandle tex = ctx_->getCurrentSwapchainTexture();
+    const RenderView view = {
+        .viewport = {0.0f, 0.0f, (float)width_, (float)height_, 0.0f, 1.0f},
+        .scissorRect = {0, 0, (uint32_t)width_, (uint32_t)height_},
+        .colorTexture = ctx_->getCurrentSwapchainTexture(),
+        .aspectRatio = ratio,
+    };
 
-    drawFrame((uint32_t)width_, (uint32_t)height_, ratio, deltaSeconds);
+    drawFrame({&view, 1}, deltaSeconds);
 
     if (cfg_.screenshotFrameNumber == ++frameCount_) {
       ctx_->wait({});
-      const lvk::Dimensions dim = ctx_->getDimensions(tex);
-      const lvk::Format format = ctx_->getFormat(tex);
+      const lvk::Dimensions dim = ctx_->getDimensions(view.colorTexture);
+      const lvk::Format format = ctx_->getFormat(view.colorTexture);
       LLOGL("Saving screenshot...%ux%u\n", dim.width, dim.height);
       if (format != lvk::Format_BGRA_UN8 && format != lvk::Format_BGRA_SRGB8 && format != lvk::Format_RGBA_UN8 &&
           format != lvk::Format_RGBA_SRGB8) {
@@ -452,7 +463,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       }
       std::vector<uint8_t> pixelsRGBA(dim.width * dim.height * 4);
       std::vector<uint8_t> pixelsRGB(dim.width * dim.height * 3);
-      ctx_->download(tex, {.dimensions = {dim.width, dim.height}}, pixelsRGBA.data());
+      ctx_->download(view.colorTexture, {.dimensions = {dim.width, dim.height}}, pixelsRGBA.data());
       if (format == lvk::Format_BGRA_UN8 || format == lvk::Format_BGRA_SRGB8) {
         // swap R-B
         for (uint32_t i = 0; i < pixelsRGBA.size(); i += 4) {

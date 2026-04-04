@@ -1329,7 +1329,7 @@ VULKAN_APP_MAIN {
       .normal = glm::transpose(glm::inverse(modelMatrix)),
   };
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     bool resetHashMap = false;
@@ -1338,7 +1338,7 @@ VULKAN_APP_MAIN {
 
     buffer.cmdUpdateBuffer(res.ubPerFrame_,
                            UniformsPerFrame{
-                               .proj = glm::perspective(float(45.0f * (M_PI / 180.0f)), aspectRatio, 0.5f, 500.0f),
+                               .proj = glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f),
                                .view = app.camera_.getViewMatrix(),
                            });
     buffer.cmdUpdateBuffer(res.ubPerObject_, 0, sizeof(perObject), &perObject);
@@ -1410,7 +1410,7 @@ VULKAN_APP_MAIN {
           .smin = spatialHashMinCellSize_,
           .maxSamples = (uint32_t)spatialHashMaxSamples_,
           .hashMapSize = kHashMapSize,
-          .resolutionY = (float)height,
+          .resolutionY = views[0].viewport.height,
           .enableFiltering = enableFiltering_ ? 1 : 0,
       };
       buffer.cmdPushConstants(pc);

@@ -440,8 +440,11 @@ VULKAN_APP_MAIN {
   double accTime = 0;
   uint32_t bufferIndex = 0;
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
+
+    const uint32_t width = views[0].scissorRect.width;
+    const uint32_t height = views[0].scissorRect.height;
 
     if (!g_Pause)
       accTime += app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
@@ -476,7 +479,7 @@ VULKAN_APP_MAIN {
     }
 
     const PerFrame perFrame = {
-        .proj = glm::perspective(glm::radians(90.0f), aspectRatio, 0.1f, 100.0f),
+        .proj = glm::perspective(glm::radians(90.0f), views[0].aspectRatio, 0.1f, 100.0f),
         .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, -8.0f)),
     };
 

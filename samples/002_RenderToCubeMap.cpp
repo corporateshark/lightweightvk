@@ -222,11 +222,11 @@ VULKAN_APP_MAIN {
         .debugName = "Pipeline: triangle",
     });
 
-    app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+    app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
       LVK_PROFILER_FUNCTION();
 
       const float fov = float(45.0f * (M_PI / 180.0f));
-      const mat4 proj = glm::perspectiveLH(fov, aspectRatio, 0.1f, 500.0f);
+      const mat4 proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
       const mat4 model = glm::rotate(mat4(1.0f), (float)app.getSimulatedTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
 
@@ -270,8 +270,8 @@ VULKAN_APP_MAIN {
                                {.textures = {texture_}});
       {
         buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
-        buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
-        buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
+        buffer.cmdBindViewport(views[0].viewport);
+        buffer.cmdBindScissorRect(views[0].scissorRect);
         buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
         buffer.cmdBindDepthState({});
         buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);

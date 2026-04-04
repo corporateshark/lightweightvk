@@ -524,7 +524,7 @@ VULKAN_APP_MAIN {
       .debugName = "Pipeline: shadow",
   });
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     const float fov = glm::radians(45.0f);
@@ -537,7 +537,7 @@ VULKAN_APP_MAIN {
         .shadowMap = shadowMap.index(),
     };
     const PerFrame perFrame = {
-        .proj = glm::perspective(fov, aspectRatio, 0.1f, 100.0f),
+        .proj = glm::perspective(fov, views[0].aspectRatio, 0.1f, 100.0f),
         .view = app.camera_.getViewMatrix(),
     };
     const PerFrameShadow perFrameShadow = {
@@ -616,8 +616,8 @@ VULKAN_APP_MAIN {
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
-      buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
-      buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
+      buffer.cmdBindViewport(views[0].viewport);
+      buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
       drawMesh(bufPerFrame);

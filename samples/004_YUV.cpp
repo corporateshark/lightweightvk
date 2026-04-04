@@ -176,7 +176,7 @@ VULKAN_APP_MAIN {
   });
 #endif // !ANDROID
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
 #if defined(ANDROID)
     // cycle through demos on touch release
     if (app.imguiClearMouseNextFrame_ && !res_.demos.empty()) {

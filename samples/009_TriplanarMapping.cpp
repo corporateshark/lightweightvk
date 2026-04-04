@@ -387,12 +387,12 @@ VULKAN_APP_MAIN {
   });
 #endif // !ANDROID
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     const float fov = float(45.0f * (M_PI / 180.0f));
     const PerFrame perFrame = {
-        .proj = glm::perspectiveLH(fov, aspectRatio, 0.1f, 100.0f),
+        .proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 100.0f),
         // place the "camera" behind the objects, the distance depends on the total number of objects
         .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, sqrtf(kNumObjects / 16) * 14.0f * t)),
         .texture0 = texture0_.index(),
@@ -426,8 +426,8 @@ VULKAN_APP_MAIN {
         framebuffer);
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
-      buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
-      buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
+      buffer.cmdBindViewport(views[0].viewport);
+      buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
       buffer.cmdBindIndexBuffer(ib0_, lvk::IndexFormat_UI16);

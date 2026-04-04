@@ -661,15 +661,18 @@ VULKAN_APP_MAIN {
     VULKAN_APP_EXIT();
   }
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
+
+    const uint32_t width = views[0].scissorRect.width;
+    const uint32_t height = views[0].scissorRect.height;
 
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
     buffer.cmdUpdateBuffer(res.ubPerFrame_,
                            UniformsPerFrame{
                                .viewInverse = glm::inverse(app.camera_.getViewMatrix()),
-                               .projInverse = glm::inverse(glm::perspective(float(45.0f * (M_PI / 180.0f)), aspectRatio, 0.5f, 500.0f)),
+                               .projInverse = glm::inverse(glm::perspective(float(45.0f * (M_PI / 180.0f)), views[0].aspectRatio, 0.5f, 500.0f)),
                            });
 
     // Pass 1: ray-trace the scene

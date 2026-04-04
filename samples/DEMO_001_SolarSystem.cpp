@@ -1333,12 +1333,6 @@ Scene createSolarSystemScene(VulkanApp& app) {
   return scene;
 }
 
-struct RenderView final {
-  mat4 proj;
-  mat4 view;
-  lvk::Viewport viewport;
-};
-
 struct RenderOp final {
   lvk::RenderPipelineHandle pipeline;
   lvk::RenderPipelineHandle pipelineW;
@@ -1674,8 +1668,10 @@ VULKAN_APP_MAIN {
   modelMatrices.resize(scene.meshes.size());
   normalMatrices.resize(scene.meshes.size());
 
-  app.run([&](uint32_t width, uint32_t height, float aspectRatio, float deltaSeconds) {
+  app.run([&](lvk::Span<const RenderView> appViews, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
+
+    const float aspectRatio = appViews[0].aspectRatio;
 
     scene.updateAnimations(g_Paused ? 0.0 : deltaSeconds);
     scene.root.updateGlobalFromLocal(mat4(1.0f));
@@ -1718,12 +1714,12 @@ VULKAN_APP_MAIN {
         const mat4 T1 = glm::translate(glm::mat4(1.0f), vec3(-1, 0, 0) * IoD * 0.5f);
         const float halfW = float(w) / 2.0f;
         return {
-            {proj0, view * T0, lvk::Viewport{0, 0, halfW, float(h)}},
-            {proj1, view * T1, lvk::Viewport{0, 0, halfW, float(h)}},
+            {proj0, view * T0, lvk::Viewport{0, 0, halfW, float(h)}, lvk::ScissorRect{0, 0, (uint32_t)halfW, (uint32_t)h}},
+            {proj1, view * T1, lvk::Viewport{0, 0, halfW, float(h)}, lvk::ScissorRect{0, 0, (uint32_t)halfW, (uint32_t)h}},
         };
       }
       const mat4 proj = glm::perspective(fov, aspectRatio, nearPlane, farPlane);
-      return {{proj, view, lvk::Viewport{0, 0, float(w), float(h)}}};
+      return {{proj, view, lvk::Viewport{0, 0, float(w), float(h)}, lvk::ScissorRect{0, 0, (uint32_t)w, (uint32_t)h}}};
     }(app.width_, app.height_, aspectRatio, view);
 
     lvk::ICommandBuffer& buf = ctx->acquireCommandBuffer();
@@ -1762,7 +1758,7 @@ VULKAN_APP_MAIN {
                             fb);
       for (const RenderView& v : views) {
         buf.cmdBindViewport(v.viewport);
-        buf.cmdBindScissorRect({(uint32_t)v.viewport.x, (uint32_t)v.viewport.y, (uint32_t)v.viewport.width, (uint32_t)v.viewport.height});
+        buf.cmdBindScissorRect(v.scissorRect);
 
         // all opaque/transparent pipelines share the same push constants - bind them up front
         buf.cmdBindRenderPipeline(renderQueueOpaque[0].pipeline);
