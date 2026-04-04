@@ -24,12 +24,12 @@ struct Vertex {
 struct PerFrame {
   float4x4 proj;
   float4x4 view;
-  uint texture;
 };
 
 struct PushConstants {
   PerFrame* perFrame;
   Vertex* vb;
+  uint texture;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -84,7 +84,7 @@ void meshMain(
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input : VertexOutput) : SV_Target
 {
-  float alpha = textureBindless2D(pc.perFrame->texture, 0, input.uv).r;
+  float alpha = textureBindless2D(pc.texture, 0, input.uv).r;
   return float4(input.color, alpha);
 }
 )";
@@ -105,12 +105,12 @@ layout(std430, buffer_reference) readonly buffer VertexBuffer {
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 proj;
   mat4 view;
-  uint texture;
 };
 
 layout(push_constant) uniform constants {
   PerFrame perFrame;
   VertexBuffer vb;
+  uint texture;
 } pc;
 
 layout (location=0) out vec3 colors[4];
@@ -157,15 +157,16 @@ layout (location=0) out vec4 out_FragColor;
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 proj;
   mat4 view;
-  uint texture;
 };
 
 layout(push_constant) uniform constants {
-	PerFrame perFrame;
+  PerFrame perFrame;
+  uvec2 vb;
+  uint texture;
 } pc;
 
 void main() {
-  float alpha = textureBindless2D(pc.perFrame.texture, 0, uv).r;
+  float alpha = textureBindless2D(pc.texture, 0, uv).r;
   out_FragColor = vec4(color, alpha);
 };
 )";
@@ -312,7 +313,6 @@ struct Vertex {
 struct PerFrame {
   mat4 proj;
   mat4 view;
-  uint32_t texture;
 };
 
 void generateParticleTexture(uint8_t* image, int size) {
@@ -463,7 +463,6 @@ VULKAN_APP_MAIN {
     const PerFrame perFrame = {
         .proj = glm::perspective(glm::radians(90.0f), aspectRatio, 0.1f, 100.0f),
         .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, -8.0f)),
-        .texture = texture_.index(),
     };
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
@@ -487,9 +486,11 @@ VULKAN_APP_MAIN {
       const struct {
         uint64_t perFrame;
         uint64_t vb;
+        uint32_t texture;
       } bindings = {
           .perFrame = ctx->gpuAddress(bufPerFrame),
           .vb = ctx->gpuAddress(vb0_[bufferIndex]),
+          .texture = texture_.index(),
       };
       buffer.cmdPushConstants(bindings);
       if (!vertices.empty()) {
