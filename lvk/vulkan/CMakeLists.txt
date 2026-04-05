@@ -10,6 +10,10 @@ project(LVKVulkan CXX C)
 file(GLOB SRC_FILES LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.c)
 file(GLOB HEADER_FILES LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h)
 
+if(NOT LVK_WITH_OPENXR)
+  list(REMOVE_ITEM SRC_FILES "XrUtils.cpp")
+endif()
+
 add_library(LVKVulkan STATIC ${SRC_FILES} ${HEADER_FILES})
 
 lvk_setup_target(LVKVulkan)
@@ -114,6 +118,13 @@ if(LVK_USE_CUSTOM_MOLTENVK)
   target_link_libraries(LVKVulkan PUBLIC "${LVK_CUSTOM_MOLTENVK_PATH}/dylib/macOS/libMoltenVK.dylib")
 else()
   target_link_libraries(LVKVulkan PUBLIC Vulkan::Vulkan)
+endif()
+
+if(LVK_WITH_OPENXR)
+  target_compile_definitions(LVKVulkan PRIVATE "XR_USE_GRAPHICS_API_VULKAN=1")
+  target_compile_definitions(LVKVulkan PUBLIC  "LVK_WITH_OPENXR=1")
+  target_link_libraries(LVKVulkan PUBLIC OpenXR::openxr_loader)
+  target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/openxr-sdk/include")
 endif()
 
 target_include_directories(LVKVulkan PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/")

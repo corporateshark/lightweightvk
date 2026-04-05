@@ -309,12 +309,5 @@ if(LVK_WITH_SAMPLES)
   # cmake-format: on
 endif()
 
-if(LVK_WITH_OPENXR)
-  target_compile_definitions(LVKVulkan PRIVATE "XR_USE_GRAPHICS_API_VULKAN=1")
-  target_compile_definitions(LVKLibrary PUBLIC "LVK_WITH_OPENXR=1")
-  target_link_libraries(LVKLibrary PUBLIC OpenXR::openxr_loader)
-  target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/openxr-sdk/include")
-endif()
-
 # ImGui
 target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/imgui")
