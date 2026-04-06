@@ -86,3 +86,42 @@ const char* lvk::xrSessionStateToString(XrSessionState state) {
   }
 }
 // clang-format on
+
+std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
+                                                          XrSystemId xrSystemId,
+                                                          PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                          const lvk::ContextConfig& ctxCfg) {
+  std::unique_ptr<lvk::VulkanContext> ctx = std::make_unique<lvk::VulkanContext>(ctxCfg, nullptr);
+
+  lvk::HWDeviceDesc devices[16];
+  const uint32_t numDevices = ctx->queryDevices(devices, 16);
+  LVK_ASSERT_MSG(numDevices > 0, "No GPU found");
+
+  // get the physical device OpenXR wants
+  VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
+  XR_CHECK(xrGetVulkanGraphicsDevice(xrInstance, xrSystemId, ctx->getVkInstance(), &vkPhysicalDevice));
+
+  // find the matching device index
+  const uint32_t selectedDevice = [&devices, numDevices, vkPhysicalDevice]() -> uint32_t {
+    for (uint32_t i = 0; i != numDevices; i++) {
+      if (devices[i].guid == (uintptr_t)vkPhysicalDevice) {
+        return i;
+      }
+    }
+    return 0;
+  }();
+
+  if (selectedDevice >= numDevices) {
+    LVK_ASSERT_MSG(false, "Invalid device index");
+    return nullptr;
+  }
+
+  const lvk::Result res = ctx->initContext(devices[selectedDevice]);
+  LVK_ASSERT(res.isOk());
+
+  if (ctx->getVkPhysicalDevice() != vkPhysicalDevice) {
+    LLOGW("LVK selected a different physical device than OpenXR requested\n");
+  }
+
+  return ctx;
+}

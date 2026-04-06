@@ -33,4 +33,8 @@ namespace lvk {
 const char* xrResultToString(XrResult result);
 const char* xrSessionStateToString(XrSessionState state);
 
+std::unique_ptr<lvk::IContext> createVulkanContextXR(XrInstance xrInstance,
+                                                     XrSystemId xrSystemId,
+                                                     PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                     const lvk::ContextConfig& ctxCfg);
 } // namespace lvk
