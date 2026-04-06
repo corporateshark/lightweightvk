@@ -19,6 +19,10 @@
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
+#if LVK_WITH_OPENXR
+#include <lvk/vulkan/XrUtils.h>
+#endif // LVK_WITH_OPENXR
+
 // clang-format off
 #if defined(ANDROID)
 #  include <android_native_app_glue.h>
@@ -80,6 +84,9 @@ struct VulkanAppConfig {
   uint64_t screenshotFrameNumber = 0; // frames start from 1
   const char* screenshotFileName = "screenshot.png";
   lvk::ContextConfig contextConfig;
+#if LVK_WITH_OPENXR
+  bool enableOpenXR = false;
+#endif // LVK_WITH_OPENXR
 };
 
 class VulkanApp {
@@ -106,6 +113,16 @@ class VulkanApp {
     callbacksKey.push_back(cb);
   }
 #endif // ANDROID
+#if LVK_WITH_OPENXR
+  lvk::TextureHandle xrSwapchainTexture(uint32_t eye, uint32_t imageIndex) const {
+    LVK_ASSERT(eye < 2 && imageIndex < xrSwapchains_[eye].textures.size());
+    return xrSwapchains_[eye].textures[imageIndex];
+  }
+  lvk::TextureHandle xrDepthSwapchainTexture(uint32_t eye, uint32_t imageIndex) const {
+    LVK_ASSERT(eye < 2 && imageIndex < xrDepthSwapchains_[eye].textures.size());
+    return xrDepthSwapchains_[eye].textures[imageIndex];
+  }
+#endif // LVK_WITH_OPENXR
  public:
   std::string folderThirdParty_;
   std::string folderContentRoot_;
@@ -142,4 +159,52 @@ class VulkanApp {
 
   uint64_t frameCount_ = 0;
   double simulatedTime_ = 0.0;
+
+#if LVK_WITH_OPENXR
+  void initOpenXR();
+  void initXrSession();
+  void initXrSwapchains();
+  void destroyXrSwapchains();
+  void pollXrEvents();
+  bool renderXrFrame(DrawFrameFunc& drawFrame);
+
+  static mat4 xrCreateProjectionMatrix(const XrFovf& fov, float nearZ, float farZ);
+  static mat4 xrCreateViewMatrix(const XrPosef& pose);
+
+  // OpenXR state
+  XrInstance xrInstance_ = XR_NULL_HANDLE;
+  XrSystemId xrSystemId_ = XR_NULL_SYSTEM_ID;
+  XrSession xrSession_ = XR_NULL_HANDLE;
+  XrSpace xrAppSpace_ = XR_NULL_HANDLE;
+  XrSessionState xrSessionState_ = XR_SESSION_STATE_UNKNOWN;
+  bool xrSessionRunning_ = false;
+  bool xrShouldQuit_ = false;
+  double xrLastTimeStamp_ = 0;
+
+  // extension strings storage (must outlive ContextConfig)
+  std::string xrVulkanExtsInstance_;
+  std::string xrVulkanExtsDevice_;
+
+  // per-eye swapchain data
+  struct XrSwapchainData {
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    int64_t format = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<XrSwapchainImageVulkanKHR> images;
+    std::vector<lvk::TextureHandle> textures;
+  };
+  XrSwapchainData xrSwapchains_[2] = {}; // left and right eye
+
+  struct XrDepthSwapchainData {
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<XrSwapchainImageVulkanKHR> images;
+    std::vector<lvk::TextureHandle> textures;
+  };
+  XrDepthSwapchainData xrDepthSwapchains_[2] = {};
+
+  std::vector<XrViewConfigurationView> xrConfigViews_;
+#endif // LVK_WITH_OPENXR
 };
