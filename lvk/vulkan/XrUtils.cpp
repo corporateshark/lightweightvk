@@ -89,8 +89,25 @@ const char* lvk::xrSessionStateToString(XrSessionState state) {
 
 std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
                                                           XrSystemId xrSystemId,
-                                                          PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                          PFN_xrGetInstanceProcAddr xrGetInstanceProcAddr,
                                                           const lvk::ContextConfig& ctxCfg) {
+  LVK_ASSERT(xrGetInstanceProcAddr);
+
+  PFN_xrGetVulkanGraphicsRequirementsKHR xrGetVulkanGraphicsRequirements = nullptr;
+  PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice = nullptr;
+
+  XR_ASSERT(xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsRequirements));
+  XR_ASSERT(xrGetInstanceProcAddr(xrInstance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&xrGetVulkanGraphicsDevice));
+
+  LVK_ASSERT(xrGetVulkanGraphicsRequirements);
+  LVK_ASSERT(xrGetVulkanGraphicsDevice);
+
+  // get Vulkan graphics requirements (must be called before creating Vulkan device per spec)
+  XrGraphicsRequirementsVulkanKHR graphicsReqs = {.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR};
+  XR_ASSERT(xrGetVulkanGraphicsRequirements(xrInstance, xrSystemId, &graphicsReqs));
+
+  LVK_ASSERT_MSG(graphicsReqs.minApiVersionSupported <= XR_MAKE_VERSION(1, 3, 0), "Unsupported Vulkan version required by OpenXR runtime");
+
   std::unique_ptr<lvk::VulkanContext> ctx = std::make_unique<lvk::VulkanContext>(ctxCfg, nullptr);
 
   lvk::HWDeviceDesc devices[16];
@@ -99,7 +116,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextXR(XrInstance xrInstance,
 
   // get the physical device OpenXR wants
   VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
-  XR_CHECK(xrGetVulkanGraphicsDevice(xrInstance, xrSystemId, ctx->getVkInstance(), &vkPhysicalDevice));
+  XR_ASSERT(xrGetVulkanGraphicsDevice(xrInstance, xrSystemId, ctx->getVkInstance(), &vkPhysicalDevice));
 
   // find the matching device index
   const uint32_t selectedDevice = [&devices, numDevices, vkPhysicalDevice]() -> uint32_t {

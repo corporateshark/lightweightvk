@@ -19,7 +19,7 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
-#define XR_CHECK(func)                                                                                                              \
+#define XR_ASSERT(func)                                                                                                             \
   {                                                                                                                                 \
     const XrResult xrResult_ = func;                                                                                                \
     if (XR_FAILED(xrResult_)) {                                                                                                     \
@@ -35,6 +35,6 @@ const char* xrSessionStateToString(XrSessionState state);
 
 std::unique_ptr<lvk::IContext> createVulkanContextXR(XrInstance xrInstance,
                                                      XrSystemId xrSystemId,
-                                                     PFN_xrGetVulkanGraphicsDeviceKHR xrGetVulkanGraphicsDevice,
+                                                     PFN_xrGetInstanceProcAddr xrGetInstanceProcAddr,
                                                      const lvk::ContextConfig& ctxCfg);
 } // namespace lvk
