@@ -355,9 +355,13 @@ void generateParticleTexture(uint8_t* image, int size) {
 
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
+#if defined(LVK_DEMO_WITH_OPENXR)
+      .enableOpenXR = true,
+#else
       .width = -90,
       .height = -90,
       .resizable = true,
+#endif // LVK_DEMO_WITH_OPENXR
   };
   VULKAN_APP_DECLARE(app, cfg);
 
@@ -376,7 +380,7 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::BufferHandle> bufPerFrame = ctx->createBuffer({
       .usage = lvk::BufferUsageBits_Storage,
       .storage = lvk::StorageType_HostVisible,
-      .size = sizeof(PerFrame),
+      .size = sizeof(PerFrame) * 2, // unified for both XR and non-XR variants
       .debugName = "Buffer: per frame",
   });
 
@@ -406,7 +410,11 @@ VULKAN_APP_MAIN {
       .smMesh = mesh_,
       .smFrag = frag_,
       .color = {{
+#if defined(LVK_DEMO_WITH_OPENXR)
+          .format = ctx->getFormat(app.xrSwapchainTexture(0, 0)),
+#else
           .format = ctx->getSwapchainFormat(),
+#endif
           .blendEnabled = true,
           .rgbBlendOp = lvk::BlendOp_Add,
           .alphaBlendOp = lvk::BlendOp_Add,
@@ -419,7 +427,7 @@ VULKAN_APP_MAIN {
       .debugName = "Pipeline: mesh",
   });
 
-#if !defined(ANDROID)
+#if !defined(ANDROID) && !defined(LVK_DEMO_WITH_OPENXR)
   app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
     if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
       g_Gravity.x += 0.001f;
@@ -431,7 +439,7 @@ VULKAN_APP_MAIN {
       g_Pause = !g_Pause;
     }
   });
-#endif // !ANDROID
+#endif // !ANDROID && !LVK_DEMO_WITH_OPENXR
 
   std::vector<Vertex> vertices;
   vertices.reserve(kMaxParticles);
@@ -440,18 +448,41 @@ VULKAN_APP_MAIN {
   double accTime = 0;
   uint32_t bufferIndex = 0;
 
+#if defined(LVK_DEMO_WITH_OPENXR)
+  g_Points.useViewerFacingExplosions = true;
+#endif
+
   app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
+    // simulation
+#if defined(LVK_DEMO_WITH_OPENXR)
+    accTime += deltaSeconds;
+#else
     if (!g_Pause)
       accTime += app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
+#endif
 
-    if (accTime >= kTimeQuantum) {
+    while (accTime >= kTimeQuantum) {
       accTime -= kTimeQuantum;
+#if defined(LVK_DEMO_WITH_OPENXR)
+      const mat4 headPose = glm::inverse(views[0].view);
+      g_Points.viewerPos = vec3(headPose[3]);
+#endif
       g_Points.nextFrame();
       if (random(50) <= 1) {
-        // shoot a new firework
+#if defined(LVK_DEMO_WITH_OPENXR)
+        // launch 20m ahead of the viewer along the XZ forward direction, with lateral spread
+        const mat4 hp = glm::inverse(views[0].view);
+        const vec3 viewerPos = vec3(hp[3]);
+        const vec3 fwd3 = vec3(hp * vec4(0.0f, 0.0f, -1.0f, 0.0f));
+        const vec2 fwd = glm::normalize(vec2(fwd3.x, fwd3.z));
+        const vec2 perp = vec2(-fwd.y, fwd.x);
+        const vec2 launchXZ = vec2(viewerPos.x, viewerPos.z) + fwd * 20.0f + perp * ((random(100) - 50) / 10.0f);
+        const vec3 position(launchXZ.x, viewerPos.y - 5.0f, launchXZ.y);
+#else
         const vec3 position((random(100) - 50) / 10, -5, 0);
+#endif
         const vec3 velocity((random(100) - 50) / 500.0f, 0.25f + (random(200)) / 500.0f, (random(100) - 50) / 500.0f);
         const vec3 color(0.5f, 0.8f, 0.9f);
         Particle flare(position, velocity, color, 20);
@@ -475,35 +506,41 @@ VULKAN_APP_MAIN {
       }
     }
 
-    const PerFrame perFrame = {
-        .proj = glm::perspective(glm::radians(90.0f), views[0].aspectRatio, 0.1f, 100.0f),
-        .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, -8.0f)),
-    };
-
+    // upload PerFrame for all views
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
-    buffer.cmdUpdateBuffer(bufPerFrame, perFrame);
+    for (uint32_t i = 0; i != views.size(); i++) {
+#if defined(LVK_DEMO_WITH_OPENXR)
+      const PerFrame perFrame = {.proj = views[i].proj, .view = views[i].view};
+#else
+      const PerFrame perFrame = {
+          .proj = glm::perspective(glm::radians(90.0f), views[i].aspectRatio, 0.1f, 100.0f),
+          .view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, -8.0f)),
+      };
+#endif
+      buffer.cmdUpdateBuffer(bufPerFrame, perFrame, i * sizeof(PerFrame));
+    }
 
-    const lvk::Framebuffer framebuffer = {
-        .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
-    };
-    buffer.cmdBeginRendering(
-        lvk::RenderPass{
-            .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}}},
-        },
-        framebuffer);
-    {
+    // render all views
+    for (uint32_t i = 0; i != views.size(); i++) {
+      buffer.cmdBeginRendering(
+          lvk::RenderPass{
+              .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
+          },
+          lvk::Framebuffer{
+              .color = {{.texture = views[i].colorTexture}},
+          });
+
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
-      buffer.cmdBindViewport(views[0].viewport);
-      buffer.cmdBindScissorRect(views[0].scissorRect);
+      buffer.cmdBindViewport(views[i].viewport);
+      buffer.cmdBindScissorRect(views[i].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
-      buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_AlwaysPass, .isDepthWriteEnabled = false});
       const struct {
         uint64_t perFrame;
         uint64_t vb;
         uint32_t texture;
       } bindings = {
-          .perFrame = ctx->gpuAddress(bufPerFrame),
+          .perFrame = ctx->gpuAddress(bufPerFrame, i * sizeof(PerFrame)),
           .vb = ctx->gpuAddress(vb0_[bufferIndex]),
           .texture = texture_.index(),
       };
@@ -512,7 +549,15 @@ VULKAN_APP_MAIN {
         buffer.cmdDrawMeshTasks({(uint32_t)vertices.size(), 1, 1});
       }
       buffer.cmdPopDebugGroupLabel();
+
+      buffer.cmdEndRendering();
     }
+
+#if !defined(LVK_DEMO_WITH_OPENXR)
+    // ImGui overlay (non-XR only)
+    const lvk::Framebuffer framebuffer = {.color = {{.texture = views[0].colorTexture}}};
+    buffer.cmdBeginRendering(
+        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
     app.imgui_->beginFrame(framebuffer);
     ImGui::SetNextWindowPos({0, 0});
     ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
@@ -521,8 +566,10 @@ VULKAN_APP_MAIN {
     app.drawFPS();
     app.imgui_->endFrame(buffer);
     buffer.cmdEndRendering();
-
-    ctx->submit(buffer, ctx->getCurrentSwapchainTexture());
+    ctx->submit(buffer, views[0].colorTexture);
+#else
+    ctx->submit(buffer);
+#endif
   });
 
   VULKAN_APP_EXIT();

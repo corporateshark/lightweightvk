@@ -55,10 +55,14 @@ macro(ADD_DEMO app) # optional arg `demo_has_slang`
 
     # default value for the optional arg
     set(demo_has_slang FALSE)
+    set(demo_has_openxr FALSE)
 
     # check if a second arg was provided
     if(${ARGC} GREATER 1)
         set(demo_has_slang ${ARGV1})
+    endif()
+    if(${ARGC} GREATER 2)
+        set(demo_has_openxr ${ARGV2})
     endif()
 
     if(LVK_WITH_SLANG AND demo_has_slang)
@@ -70,6 +74,16 @@ macro(ADD_DEMO app) # optional arg `demo_has_slang`
       target_link_libraries(${app}_Slang PRIVATE fast_obj_lib)
       target_link_libraries(${app}_Slang PRIVATE LVKVulkanApp)
       target_compile_definitions(${app}_Slang PRIVATE "LVK_DEMO_WITH_SLANG=1")
+    endif()
+    if(LVK_WITH_OPENXR AND demo_has_openxr)
+      add_executable(${app}_OpenXR "${app}.cpp")
+      lvk_set_cxxstd(${app}_OpenXR 20)
+      lvk_set_folder(${app}_OpenXR ${PROJECT_NAME})
+      target_link_libraries(${app}_OpenXR PRIVATE LVKLibrary)
+      target_link_libraries(${app}_OpenXR PRIVATE meshoptimizer)
+      target_link_libraries(${app}_OpenXR PRIVATE fast_obj_lib)
+      target_link_libraries(${app}_OpenXR PRIVATE LVKVulkanApp)
+      target_compile_definitions(${app}_OpenXR PRIVATE "LVK_DEMO_WITH_OPENXR=1")
     endif()
   endif()
 
@@ -160,7 +174,7 @@ ADD_DEMO("004_YUV" LVK_WITH_SLANG)
 if(WIN32 OR UNIX AND NOT (APPLE))
   # Windows and Linux
   ADD_DEMO("005_MeshShaders" LVK_WITH_SLANG)
-  ADD_DEMO("008_MeshShaderFireworks" LVK_WITH_SLANG)
+  ADD_DEMO("008_MeshShaderFireworks" LVK_WITH_SLANG LVK_WITH_OPENXR)
 endif()
 ADD_DEMO("006_SwapchainHDR" LVK_WITH_SLANG)
 ADD_DEMO("007_DynamicRenderingLocalRead" LVK_WITH_SLANG)
