@@ -443,9 +443,6 @@ VULKAN_APP_MAIN {
   app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
-    const uint32_t width = views[0].scissorRect.width;
-    const uint32_t height = views[0].scissorRect.height;
-
     if (!g_Pause)
       accTime += app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
 
@@ -497,8 +494,8 @@ VULKAN_APP_MAIN {
         framebuffer);
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
-      buffer.cmdBindViewport({0.0f, 0.0f, (float)width, (float)height, 0.0f, +1.0f});
-      buffer.cmdBindScissorRect({0, 0, (uint32_t)width, (uint32_t)height});
+      buffer.cmdBindViewport(views[0].viewport);
+      buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_AlwaysPass, .isDepthWriteEnabled = false});
       const struct {
