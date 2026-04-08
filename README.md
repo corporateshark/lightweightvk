@@ -44,6 +44,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 | VK_KHR_ray_tracing_pipeline   | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_KHR_ray_query              | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
+| OpenXR 1.1                    | :heavy_check_mark:         |                            |                            |                            |
 
 On MacOS, `KosmicKrisp` or `MoltenVK 1.4+`, and `VulkanSDK 1.4.341+` are required.
 
@@ -99,7 +100,7 @@ cmake .. -G "Xcode"
 ```
 cd build
 cmake .. -DLVK_WITH_SAMPLES_ANDROID=ON
-cd android/Tiny                         # or any other sample
+cd android/001_HelloTriangle            # or any other sample
 ./gradlew assembleDebug                 # or assembleRelease
 ```
 You can also open the project in Android Studio and build it from there.
