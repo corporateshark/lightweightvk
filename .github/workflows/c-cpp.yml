@@ -88,13 +88,22 @@ jobs:
         matrix:
           config:
           - {
-              name: "Windows - MSVC 2022 (glslang)",
+              name: "Windows - MSVC 2022 (glslang, GLFW)",
               os: windows-latest,
               build_type: "Debug",
               cc: "cl",
               cxx: "cl",
               generators: "Visual Studio 17 2022",
-              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_WITH_GLFW=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+            }
+          - {
+              name: "Windows - MSVC 2022 (glslang, SDL3)",
+              os: windows-latest,
+              build_type: "Debug",
+              cc: "cl",
+              cxx: "cl",
+              generators: "Visual Studio 17 2022",
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
 #          - {
 #              name: "Windows - MSVC 2022 (Slang)",
@@ -106,13 +115,22 @@ jobs:
 #              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_SLANG=ON"
 #            }
           - {
-              name: "Ubuntu - Clang",
+              name: "Ubuntu - Clang (GLFW)",
               os: ubuntu-latest,
               build_type: "Debug",
               cc: "clang-18",
               cxx: "clang++-18",
               generators: "Unix Makefiles",
-              cmake_args: "-DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+              cmake_args: "-DLVK_WITH_GLFW=ON -DLVK_WITH_SDL3=OFF -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+            }
+          - {
+              name: "Ubuntu - Clang (SDL3)",
+              os: ubuntu-latest,
+              build_type: "Debug",
+              cc: "clang-18",
+              cxx: "clang++-18",
+              generators: "Unix Makefiles",
+              cmake_args: "-DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
           - {
               name: "Ubuntu - Clang (Wayland)",
