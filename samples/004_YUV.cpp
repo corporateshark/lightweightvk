@@ -158,6 +158,7 @@ VULKAN_APP_MAIN {
   createDemo(ctx, app.folderContentRoot_.c_str(), "YUV 420p", lvk::Format_YUV_420p, "igl-samples/output_frame_900.420p.yuv");
 
 #if !defined(ANDROID)
+#if LVK_WITH_GLFW
   app.addMouseButtonCallback([](auto* window, int button, int action, int mods) {
     if (action == GLFW_PRESS && !res_.demos.empty()) {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
@@ -174,6 +175,25 @@ VULKAN_APP_MAIN {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
     }
   });
+#elif LVK_WITH_SDL3
+  app.addMouseButtonCallback([](auto* window, SDL_MouseButtonEvent* event) {
+    if (event->down && !res_.demos.empty()) {
+      currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
+    }
+  });
+  app.addKeyCallback([](auto* window, SDL_KeyboardEvent* event) {
+    if (event->key == SDLK_ESCAPE && event->down) {
+      SDL_Event quitEvent = {.type = SDL_EVENT_QUIT};
+      SDL_PushEvent(&quitEvent);
+    } else if (event->key == SDLK_T && event->down) {
+      currentDemo_ = 0;
+      if (!res_.demos.empty())
+        res_.demos.pop_back();
+    } else if (event->down && !res_.demos.empty()) {
+      currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
+    }
+  });
+#endif
 #endif // !ANDROID
 
   app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {

@@ -20,6 +20,10 @@
 #include "imgui/backends/imgui_impl_glfw.cpp"
 #endif // LVK_WITH_GLFW
 
+#if LVK_WITH_SDL3
+#include "imgui/backends/imgui_impl_sdl3.cpp"
+#endif // LVK_WITH_SDL3
+
 #include <math.h>
 
 #include <vector>
@@ -140,6 +144,11 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
     ImGui_ImplGlfw_InitForOther(window_, true);
   }
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  if (window_) {
+    ImGui_ImplSDL3_InitForOther(window);
+  }
+#endif // LVK_WITH_SDL3
 
   updateFont(defaultFontTTF, fontSizePixels);
 
@@ -160,6 +169,11 @@ ImGuiRenderer::~ImGuiRenderer() {
     ImGui_ImplGlfw_Shutdown();
   }
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+  if (window_) {
+    ImGui_ImplSDL3_Shutdown();
+  }
+#endif // LVK_WITH_SDL3
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::DestroyContext();
 #endif // LVK_WITH_IMPLOT
@@ -199,11 +213,16 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
     pipeline_ = createNewPipelineState(desc);
     pipelineColorFormat_ = colorFormat;
   }
-#if LVK_WITH_GLFW
+#if LVK_WITH_GLFW || LVK_WITH_SDL3
   if (window_) {
+#if LVK_WITH_GLFW
     ImGui_ImplGlfw_NewFrame();
-  } else
 #endif // LVK_WITH_GLFW
+#if LVK_WITH_SDL3
+    ImGui_ImplSDL3_NewFrame();
+#endif // LVK_WITH_SDL3
+  } else
+#endif // LVK_WITH_GLFW || LVK_WITH_SDL3
   {
     const lvk::Dimensions dim = ctx_.getDimensions(desc.color[0].texture);
     io.DisplaySize = ImVec2((float)dim.width, (float)dim.height);
