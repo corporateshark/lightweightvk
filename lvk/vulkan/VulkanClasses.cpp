@@ -7055,6 +7055,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
 
   VkPhysicalDeviceFeatures deviceFeatures10 = {
+      .fullDrawIndexUint32 = VK_TRUE,
       .independentBlend = vkFeatures10_.features.independentBlend, // enable if supported
       .geometryShader = vkFeatures10_.features.geometryShader, // enable if supported
       .tessellationShader = vkFeatures10_.features.tessellationShader, // enable if supported
