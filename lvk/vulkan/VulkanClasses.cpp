@@ -7103,8 +7103,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .hostQueryReset = vkFeatures12_.hostQueryReset, // enable if supported
       .timelineSemaphore = VK_TRUE,
       .bufferDeviceAddress = VK_TRUE,
-      .vulkanMemoryModel = vkFeatures12_.vulkanMemoryModel, // enable if supported
-      .vulkanMemoryModelDeviceScope = vkFeatures12_.vulkanMemoryModelDeviceScope, // enable if supported
+      .vulkanMemoryModel = VK_TRUE,
+      .vulkanMemoryModelDeviceScope = VK_TRUE,
+      .vulkanMemoryModelAvailabilityVisibilityChains = vkFeatures12_.vulkanMemoryModelAvailabilityVisibilityChains, // enable if supported
   };
   VkPhysicalDeviceVulkan13Features deviceFeatures13 = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
