@@ -250,6 +250,8 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
   case lvk::Format_BC7_RGBA:
     return VK_FORMAT_BC7_UNORM_BLOCK;
+  case lvk::Format_BC7_SRGBA:
+    return VK_FORMAT_BC7_SRGB_BLOCK;
   case lvk::Format_Z_UN16:
     return VK_FORMAT_D16_UNORM;
   case lvk::Format_Z_UN24:
@@ -337,6 +339,8 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_Z_UN16;
   case VK_FORMAT_BC7_UNORM_BLOCK:
     return Format_BC7_RGBA;
+  case VK_FORMAT_BC7_SRGB_BLOCK:
+    return Format_BC7_SRGBA;
   case VK_FORMAT_X8_D24_UNORM_PACK32:
     return Format_Z_UN24;
   case VK_FORMAT_D24_UNORM_S8_UINT:

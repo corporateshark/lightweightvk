@@ -561,6 +561,7 @@ enum Format : uint8_t {
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
   Format_BC7_RGBA,
+  Format_BC7_SRGBA,
 
   Format_Z_UN16,
   Format_Z_UN24,
