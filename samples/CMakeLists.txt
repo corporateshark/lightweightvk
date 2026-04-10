@@ -43,47 +43,50 @@ if(ANDROID)
   target_link_libraries(LVKVulkanApp PUBLIC android)
 endif()
 
-macro(ADD_DEMO app) # optional arg `demo_has_slang`
-  if(NOT ANDROID)
-    add_executable(${app} "${app}.cpp")
-    lvk_set_cxxstd(${app} 20)
-    lvk_set_folder(${app} ${PROJECT_NAME})
-    target_link_libraries(${app} PRIVATE LVKLibrary)
-    target_link_libraries(${app} PRIVATE meshoptimizer)
-    target_link_libraries(${app} PRIVATE fast_obj_lib)
-    target_link_libraries(${app} PRIVATE LVKVulkanApp)
+macro(ADD_DEMO_TARGET app target_name defs)
+  add_executable(${target_name} "${app}.cpp")
+  lvk_set_cxxstd(${target_name} 20)
+  lvk_set_folder(${target_name} ${PROJECT_NAME})
+  target_link_libraries(${target_name} PRIVATE LVKLibrary)
+  target_link_libraries(${target_name} PRIVATE meshoptimizer)
+  target_link_libraries(${target_name} PRIVATE fast_obj_lib)
+  target_link_libraries(${target_name} PRIVATE LVKVulkanApp)
+  if(NOT "${defs}" STREQUAL "")
+    target_compile_definitions(${target_name} PRIVATE ${defs})
+  endif()
+endmacro()
 
-    # default value for the optional arg
+macro(ADD_DEMO app) # optional args: `demo_has_slang` `demo_has_openxr`
+  if(NOT ANDROID)
+    # default values for optional args
     set(demo_has_slang FALSE)
     set(demo_has_openxr FALSE)
 
-    # check if a second arg was provided
     if(${ARGC} GREATER 1)
-        set(demo_has_slang ${ARGV1})
+      set(demo_has_slang ${ARGV1})
     endif()
     if(${ARGC} GREATER 2)
-        set(demo_has_openxr ${ARGV2})
+      set(demo_has_openxr ${ARGV2})
     endif()
 
+    # GLSL
+    ADD_DEMO_TARGET(${app} ${app} "")
+
+    # Slang
     if(LVK_WITH_SLANG AND demo_has_slang)
-      add_executable(${app}_Slang "${app}.cpp")
-      lvk_set_cxxstd(${app}_Slang 20)
-      lvk_set_folder(${app}_Slang ${PROJECT_NAME})
-      target_link_libraries(${app}_Slang PRIVATE LVKLibrary)
-      target_link_libraries(${app}_Slang PRIVATE meshoptimizer)
-      target_link_libraries(${app}_Slang PRIVATE fast_obj_lib)
-      target_link_libraries(${app}_Slang PRIVATE LVKVulkanApp)
-      target_compile_definitions(${app}_Slang PRIVATE "LVK_DEMO_WITH_SLANG=1")
+      ADD_DEMO_TARGET(${app} ${app}_Slang "LVK_DEMO_WITH_SLANG=1")
     endif()
+
+    # OpenXR
     if(LVK_WITH_OPENXR AND demo_has_openxr)
-      add_executable(${app}_OpenXR "${app}.cpp")
-      lvk_set_cxxstd(${app}_OpenXR 20)
-      lvk_set_folder(${app}_OpenXR ${PROJECT_NAME})
-      target_link_libraries(${app}_OpenXR PRIVATE LVKLibrary)
-      target_link_libraries(${app}_OpenXR PRIVATE meshoptimizer)
-      target_link_libraries(${app}_OpenXR PRIVATE fast_obj_lib)
-      target_link_libraries(${app}_OpenXR PRIVATE LVKVulkanApp)
-      target_compile_definitions(${app}_OpenXR PRIVATE "LVK_DEMO_WITH_OPENXR=1")
+      ADD_DEMO_TARGET(${app} ${app}_OpenXR "LVK_DEMO_WITH_OPENXR=1")
+      lvk_set_folder(${app}_OpenXR "${PROJECT_NAME} OpenXR")
+    endif()
+
+    # Slang + OpenXR
+    if(LVK_WITH_SLANG AND demo_has_slang AND LVK_WITH_OPENXR AND demo_has_openxr)
+      ADD_DEMO_TARGET(${app} ${app}_Slang_OpenXR "LVK_DEMO_WITH_SLANG=1;LVK_DEMO_WITH_OPENXR=1")
+      lvk_set_folder(${app}_Slang_OpenXR "${PROJECT_NAME} OpenXR")
     endif()
   endif()
 
