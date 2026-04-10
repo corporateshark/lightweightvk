@@ -2312,10 +2312,16 @@ void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStage
                        VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
-void lvk::CommandBuffer::bufferBarrier(BufferHandle handle, VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage) {
+void lvk::CommandBuffer::bufferBarrier(BufferHandle handle,
+                                       VkPipelineStageFlags2 srcStage,
+                                       VkPipelineStageFlags2 dstStage,
+                                       VkDeviceSize offset,
+                                       VkDeviceSize size) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(handle);
+
+  LVK_ASSERT(buf);
 
   VkBufferMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
@@ -2326,8 +2332,8 @@ void lvk::CommandBuffer::bufferBarrier(BufferHandle handle, VkPipelineStageFlags
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .buffer = buf->vkBuffer_,
-      .offset = 0,
-      .size = VK_WHOLE_SIZE,
+      .offset = offset,
+      .size = size,
   };
 
   if (srcStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {

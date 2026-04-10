@@ -456,7 +456,11 @@ class CommandBuffer final : public ICommandBuffer {
 
  private:
   void useComputeTexture(TextureHandle texture, VkPipelineStageFlags2 dstStage);
-  void bufferBarrier(BufferHandle handle, VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage);
+  void bufferBarrier(BufferHandle handle,
+                     VkPipelineStageFlags2 srcStage,
+                     VkPipelineStageFlags2 dstStage,
+                     VkDeviceSize offset = 0,
+                     VkDeviceSize size = VK_WHOLE_SIZE);
 
  private:
   friend class VulkanContext;
