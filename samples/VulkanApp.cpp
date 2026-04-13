@@ -1184,6 +1184,10 @@ bool VulkanApp::renderXrFrame(DrawFrameFunc& drawFrame) {
   const float deltaSeconds = static_cast<float>(now - xrLastTimeStamp_);
   xrLastTimeStamp_ = now;
 
+  if (fpsCounter_.tick(deltaSeconds)) {
+    LLOGL("FPS: %.1f\n", fpsCounter_.getFPS());
+  }
+
   const XrFrameBeginInfo frameBeginInfo = {.type = XR_TYPE_FRAME_BEGIN_INFO};
   XR_ASSERT(xrBeginFrame(xrSession_, &frameBeginInfo));
 
