@@ -470,12 +470,10 @@ VULKAN_APP_MAIN {
     LVK_PROFILER_FUNCTION();
 
     // simulation
-#if defined(LVK_DEMO_WITH_OPENXR)
-    accTime += deltaSeconds;
-#else
-    if (!g_Pause)
-      accTime += app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
-#endif
+    if (!g_Pause) {
+      const float dt = app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
+      accTime += dt;
+    }
 
     while (accTime >= kTimeQuantum) {
       accTime -= kTimeQuantum;
@@ -570,8 +568,7 @@ VULKAN_APP_MAIN {
 #if !defined(LVK_DEMO_WITH_OPENXR)
     // ImGui overlay (non-XR only)
     const lvk::Framebuffer framebuffer = {.color = {{.texture = views[0].colorTexture}}};
-    buffer.cmdBeginRendering(
-        lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
+    buffer.cmdBeginRendering(lvk::RenderPass{.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}}, framebuffer);
     app.imgui_->beginFrame(framebuffer);
     ImGui::SetNextWindowPos({0, 0});
     ImGui::Begin("Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
