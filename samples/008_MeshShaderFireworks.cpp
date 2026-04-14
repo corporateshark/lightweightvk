@@ -177,10 +177,15 @@ float random(float x) {
   return g_rng.randomInRange(0.0f, x);
 }
 
+float randomRange(float lo, float hi) {
+  return g_rng.randomInRange(lo, hi);
+}
+
 const int kMaxParticles = 50000;
 const int kStackSize = 50000;
 
 vec3 g_Gravity = {0, -0.001, 0};
+float g_AirResistance = 0.98f;
 bool g_Pause = false;
 
 enum ParticleStateMessage {
@@ -222,6 +227,7 @@ struct Particle {
 
   ParticleStateMessage update() {
     pos += velocity;
+    velocity *= g_AirResistance;
     velocity += g_Gravity;
     TTL--;
 
@@ -461,6 +467,7 @@ VULKAN_APP_MAIN {
   const float kTimeQuantum = 0.02f;
   double accTime = 0;
   uint32_t bufferIndex = 0;
+  float launchTimer = 0.0f;
 
 #if defined(LVK_DEMO_WITH_OPENXR)
   g_Points.useViewerFacingExplosions = true;
@@ -473,6 +480,7 @@ VULKAN_APP_MAIN {
     if (!g_Pause) {
       const float dt = app.cfg_.screenshotFrameNumber ? kTimeQuantum : deltaSeconds;
       accTime += dt;
+      launchTimer += dt;
     }
 
     while (accTime >= kTimeQuantum) {
@@ -482,7 +490,8 @@ VULKAN_APP_MAIN {
       g_Points.viewerPos = vec3(headPose[3]);
 #endif
       g_Points.nextFrame();
-      if (random(50) <= 1) {
+      if (launchTimer >= randomRange(0.7f, 1.8f)) {
+        launchTimer = 0.0f;
 #if defined(LVK_DEMO_WITH_OPENXR)
         // launch 20m ahead of the viewer along the XZ forward direction, with lateral spread
         const mat4 hp = glm::inverse(views[0].view);
@@ -490,10 +499,10 @@ VULKAN_APP_MAIN {
         const vec3 fwd3 = vec3(hp * vec4(0.0f, 0.0f, -1.0f, 0.0f));
         const vec2 fwd = glm::normalize(vec2(fwd3.x, fwd3.z));
         const vec2 perp = vec2(-fwd.y, fwd.x);
-        const vec2 launchXZ = vec2(viewerPos.x, viewerPos.z) + fwd * 20.0f + perp * ((random(100) - 50) / 10.0f);
+        const vec2 launchXZ = vec2(viewerPos.x, viewerPos.z) + fwd * 20.0f + perp * randomRange(-5.0f, 5.0f);
         const vec3 position(launchXZ.x, viewerPos.y - 5.0f, launchXZ.y);
 #else
-        const vec3 position((random(100) - 50) / 10, -5, 0);
+        const vec3 position(randomRange(-5.0f, 5.0f), -6.0f, randomRange(-2.0f, 2.0f));
 #endif
         const vec3 velocity((random(100) - 50) / 500.0f, 0.25f + (random(200)) / 500.0f, (random(100) - 50) / 500.0f);
         const vec3 color(0.5f, 0.8f, 0.9f);
