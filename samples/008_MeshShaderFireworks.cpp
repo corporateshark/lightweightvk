@@ -188,6 +188,36 @@ vec3 g_Gravity = {0, -0.001, 0};
 float g_AirResistance = 0.98f;
 bool g_Pause = false;
 
+// Color palettes for fireworks
+struct ColorPalette {
+  vec3 primary;
+  vec3 secondary;
+  vec3 sparkle;
+};
+
+const ColorPalette g_Palettes[] = {
+    {{1.0f, 0.3f, 0.1f}, {1.0f, 0.6f, 0.2f}, {1.0f, 1.0f, 0.4f}}, // Classic Red-Orange
+    {{0.2f, 0.4f, 1.0f}, {0.4f, 0.7f, 1.0f}, {0.4f, 0.9f, 1.0f}}, // Electric Blue
+    {{0.1f, 0.9f, 0.3f}, {0.3f, 1.0f, 0.5f}, {0.3f, 1.0f, 0.8f}}, // Emerald Green
+    {{0.7f, 0.2f, 0.9f}, {0.9f, 0.4f, 1.0f}, {1.0f, 0.4f, 1.0f}}, // Royal Purple
+    {{1.0f, 0.8f, 0.2f}, {1.0f, 0.9f, 0.5f}, {1.0f, 1.0f, 0.5f}}, // Golden
+    {{1.0f, 0.2f, 0.6f}, {1.0f, 0.5f, 0.8f}, {1.0f, 0.5f, 1.0f}}, // Magenta-Pink
+    {{0.1f, 0.9f, 0.9f}, {0.3f, 1.0f, 1.0f}, {0.4f, 1.0f, 1.0f}}, // Cyan-Teal
+    {{0.7f, 0.2f, 0.1f}, {0.9f, 0.5f, 0.1f}, {1.0f, 0.5f, 0.3f}}, // Red
+};
+
+enum ExplosionType {
+  ExplosionType_Sphere,
+  ExplosionType_Ring,
+  ExplosionType_DoubleRing,
+  ExplosionType_Willow,
+  ExplosionType_Chrysanthemum,
+  ExplosionType_Crackle,
+  ExplosionType_Palm,
+  ExplosionType_Crossette,
+  NumExplosionTypes,
+};
+
 enum ParticleStateMessage {
   PSM_None = 0,
   PSM_Kill = 1,
@@ -213,17 +243,10 @@ struct Particle {
   bool fadingOut = false;
   bool emission = false;
 
-  Particle() = default;
-
-  Particle(vec3 pos, vec3 vel, vec3 color, int ttl, bool fadingOut = false)
-  : pos(pos)
-  , velocity(vel)
-  , baseColor(color)
-  , currentColor(color)
-  , TTL(ttl)
-  , initialLT(ttl)
-  , alive(true)
-  , fadingOut(fadingOut) {}
+  float brightness = 1.0f;
+  int explosionType = ExplosionType_Sphere;
+  int paletteIndex = 0;
+  int secondaryExplosionTimer = -1;
 
   ParticleStateMessage update() {
     pos += velocity;
@@ -233,7 +256,15 @@ struct Particle {
 
     if (fadingOut) {
       const float t = static_cast<float>(TTL) / initialLT;
-      currentColor = baseColor * t;
+      currentColor = baseColor * t * t * brightness; // quadratic fade
+    }
+
+    if (secondaryExplosionTimer > 0) {
+      secondaryExplosionTimer--;
+      if (secondaryExplosionTimer == 0) {
+        spawnExplosion = true;
+        return PSM_Kill;
+      }
     }
 
     if (TTL < 0)
@@ -263,16 +294,26 @@ struct ParticleSystem {
           break;
         case PSM_Kill:
           if (particles[i].spawnExplosion)
-            addExplosion(particles[i].pos);
+            addExplosion(particles[i].pos, particles[i].explosionType, particles[i].paletteIndex);
           particles[i].alive = false;
           totalParticles--;
           break;
         case PSM_Emission:
-          addParticle(Particle(particles[i].pos,
-                               particles[i].velocity * (random(10) / 10.0f),
-                               particles[i].currentColor * 0.9f,
-                               particles[i].TTL >> 2,
-                               true));
+          if (random(1.0f) < 0.7f) {
+            const vec3 trailColor = particles[i].currentColor * 0.6f;
+            const int trailTTL = particles[i].TTL >> 3;
+            addParticle({
+                .pos = particles[i].pos,
+                .velocity = particles[i].velocity * randomRange(0.02f, 0.1f),
+                .baseColor = trailColor,
+                .currentColor = trailColor,
+                .TTL = trailTTL,
+                .initialLT = trailTTL,
+                .alive = true,
+                .fadingOut = true,
+                .brightness = 0.5f,
+            });
+          }
           break;
         }
       } else if (queuedParticles > 0) {
@@ -288,13 +329,38 @@ struct ParticleSystem {
     if (queuedParticles < kStackSize)
       particlesStack[queuedParticles++] = particle;
   }
-  void addExplosion(vec3 pos) {
-    const vec3 FlarePal[3] = {
-        {0.2, 0.30, 0.8},
-        {0.7, 0.25, 0.3},
-        {0.1, 0.80, 0.2},
-    };
 
+  void addSphereExplosion(vec3 pos, const ColorPalette& pal, int count, float speed, int lifetime) {
+    for (int i = 0; i < count; i++) {
+      const float theta = random(float(M_PI) * 2.0f);
+      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float r = speed * powf(random(1.0f), 0.33f);
+
+      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+
+      vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
+      color += vec3(randomRange(-0.1f, 0.1f));
+      color = glm::clamp(color, vec3(0.0f), vec3(1.0f));
+
+      const int ttl = lifetime + int(random(30));
+      const bool core = random(1.0f) < 0.15f;
+      const vec3 finalColor = core ? pal.sparkle : color;
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = finalColor,
+          .currentColor = finalColor,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .fadingOut = true,
+          .emission = random(1.0f) < 0.3f,
+          .brightness = core ? 1.5f : 1.0f,
+      });
+    }
+  }
+
+  void addRingExplosion(vec3 pos, const ColorPalette& pal, int count, float speed, int lifetime, float tiltX = 0, float tiltZ = 0) {
     // optionally build an orthonormal basis perpendicular to the viewer direction
     vec3 right(1, 0, 0);
     vec3 up(0, 1, 0);
@@ -308,18 +374,296 @@ struct ParticleSystem {
       up = glm::cross(viewDir, right);
     }
 
-    const int paletteIndex = static_cast<int>(random(3));
+    for (int i = 0; i < count; i++) {
+      const float angle = (float(i) / count) * float(M_PI) * 2.0f + random(0.2f);
+      const float r = speed * randomRange(0.9f, 1.1f);
 
-    for (int i = 0; i < 300; i++) {
-      const float radius = random(1) / 10.0f;
-      const float angle = random(M_PI * 2.0f);
-      const vec3 velocity = right * (radius * cosf(angle)) + up * (radius * sinf(angle)) + viewDir * (random(100) - 50) / 5000.0f;
-      const vec3 color = FlarePal[paletteIndex] + vec3(random(1) / 5, random(1) / 5, random(1) / 5);
+      vec3 velocity = right * (r * cosf(angle)) + up * (r * sinf(angle)) + viewDir * random(0.02f);
 
-      Particle particle(pos, velocity, color, 90 + random(20), true);
-      particle.emission = true;
+      // apply tilt on top of the basis
+      const float cx = cosf(tiltX);
+      const float sx = sinf(tiltX);
+      const float cz = cosf(tiltZ);
+      const float sz = sinf(tiltZ);
+      const vec3 v1(velocity.x * cx - velocity.y * sx, velocity.x * sx + velocity.y * cx, velocity.z);
+      velocity = vec3(v1.x, v1.y, v1.z * cz - v1.y * sz);
 
-      addParticle(particle);
+      const vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
+
+      const int ttl = lifetime + int(random(20));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = color,
+          .currentColor = color,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .fadingOut = true,
+          .emission = true,
+      });
+    }
+  }
+
+  void addWillowExplosion(vec3 pos, const ColorPalette& pal, int count) {
+    for (int i = 0; i < count; i++) {
+      const float theta = random(float(M_PI) * 2.0f);
+      const float phi = randomRange(0.3f, float(M_PI) * 0.7f);
+      const float r = randomRange(0.06f, 0.12f);
+
+      const vec3 velocity(r * sinf(phi) * cosf(theta), r * cosf(phi) + 0.05f, r * sinf(phi) * sinf(theta));
+      const vec3 color = glm::mix(pal.primary, pal.sparkle, random(0.5f));
+
+      const int ttl = 150 + int(random(50));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = color,
+          .currentColor = color,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .fadingOut = true,
+          .emission = true,
+          .brightness = randomRange(0.8f, 1.2f),
+      });
+    }
+  }
+
+  void addChrysanthemumExplosion(vec3 pos, const ColorPalette& pal, int count) {
+    for (int i = 0; i < count; i++) {
+      const float theta = random(float(M_PI) * 2.0f);
+      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float r = randomRange(0.08f, 0.14f);
+
+      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+      const vec3 color = (random(1.0f) < 0.3f) ? pal.sparkle : pal.primary;
+
+      const int ttl = 100 + int(random(40));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = color,
+          .currentColor = color,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .fadingOut = true,
+          .emission = true,
+      });
+    }
+
+    for (int i = 0; i < 30; i++) {
+      const float theta = random(float(M_PI) * 2.0f);
+      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float r = randomRange(0.03f, 0.05f);
+
+      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+
+      const int sparkleTTL = 30 + int(random(20));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = pal.sparkle,
+          .currentColor = pal.sparkle,
+          .TTL = sparkleTTL,
+          .initialLT = sparkleTTL,
+          .alive = true,
+          .fadingOut = true,
+          .brightness = 2.0f,
+      });
+    }
+  }
+
+  void addCrackleExplosion(vec3 pos, const ColorPalette& pal, int count) {
+    addSphereExplosion(pos, pal, count / 2, 0.08f, 60);
+
+    for (int i = 0; i < 25; i++) {
+      const float theta = random(float(M_PI) * 2.0f);
+      const float phi = acosf(randomRange(-1.0f, 1.0f));
+      const float r = randomRange(0.06f, 0.1f);
+
+      const vec3 velocity(r * sinf(phi) * cosf(theta), r * sinf(phi) * sinf(theta), r * cosf(phi));
+
+      const int ttl = 50 + int(random(30));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = pal.sparkle,
+          .currentColor = pal.sparkle,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .spawnExplosion = true,
+          .brightness = 1.5f,
+          .explosionType = ExplosionType_Sphere,
+          .paletteIndex = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes))),
+      });
+    }
+  }
+
+  void addPalmExplosion(vec3 pos, const ColorPalette& pal, int count) {
+    for (int i = 0; i < count; i++) {
+      const float angle = random(float(M_PI) * 2.0f);
+      const float spread = randomRange(0.02f, 0.06f);
+      const float upward = randomRange(0.1f, 0.15f);
+
+      const vec3 velocity(spread * cosf(angle), upward, spread * sinf(angle));
+      const vec3 color = glm::mix(pal.primary, pal.secondary, random(1.0f));
+
+      const int ttl = 120 + int(random(40));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = color,
+          .currentColor = color,
+          .TTL = ttl,
+          .initialLT = ttl,
+          .alive = true,
+          .fadingOut = true,
+          .emission = true,
+      });
+    }
+
+    for (int i = 0; i < 50; i++) {
+      const float angle = random(float(M_PI) * 2.0f);
+      const float spread = randomRange(0.03f, 0.08f);
+
+      const vec3 velocity(spread * cosf(angle), 0.08f + random(0.04f), spread * sinf(angle));
+
+      const int tipTTL = 80 + int(random(30));
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = pal.sparkle,
+          .currentColor = pal.sparkle,
+          .TTL = tipTTL,
+          .initialLT = tipTTL,
+          .alive = true,
+          .fadingOut = true,
+          .brightness = 1.3f,
+      });
+    }
+  }
+
+  void addCrossetteExplosion(vec3 pos, const ColorPalette& pal, int count) {
+    for (int i = 0; i < count; i++) {
+      const float theta = (float(i) / count) * float(M_PI) * 2.0f;
+      const float r = randomRange(0.08f, 0.12f);
+
+      const vec3 velocity(r * cosf(theta), random(0.04f), r * sinf(theta));
+
+      addParticle({
+          .pos = pos,
+          .velocity = velocity,
+          .baseColor = pal.primary,
+          .currentColor = pal.primary,
+          .TTL = 80,
+          .initialLT = 80,
+          .alive = true,
+          .spawnExplosion = true,
+          .fadingOut = true,
+          .emission = true,
+          .explosionType = ExplosionType_Sphere,
+          .paletteIndex = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes))),
+          .secondaryExplosionTimer = 30 + int(random(20)),
+      });
+    }
+  }
+
+  void addExplosion(vec3 pos, int type = -1, int paletteIdx = -1) {
+    if (type < 0)
+      type = static_cast<int>(random(NumExplosionTypes));
+    if (paletteIdx < 0)
+      paletteIdx = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes)));
+
+    const ColorPalette& pal = g_Palettes[paletteIdx % LVK_ARRAY_NUM_ELEMENTS(g_Palettes)];
+
+    switch (type) {
+    case ExplosionType_Sphere:
+      addSphereExplosion(pos, pal, 350, 0.1f, 80);
+      break;
+    case ExplosionType_Ring:
+      addRingExplosion(pos, pal, 120, 0.12f, 100, random(1.0f), random(1.0f));
+      break;
+    case ExplosionType_DoubleRing:
+      addRingExplosion(pos, pal, 100, 0.1f, 90, 0.5f, 0.0f);
+      addRingExplosion(pos, pal, 100, 0.1f, 90, -0.5f, 0.8f);
+      addSphereExplosion(pos, {pal.sparkle, pal.sparkle, pal.sparkle}, 50, 0.04f, 40);
+      break;
+    case ExplosionType_Willow:
+      addWillowExplosion(pos, pal, 400);
+      break;
+    case ExplosionType_Chrysanthemum:
+      addChrysanthemumExplosion(pos, pal, 500);
+      break;
+    case ExplosionType_Crackle:
+      addCrackleExplosion(pos, pal, 300);
+      break;
+    case ExplosionType_Palm:
+      addPalmExplosion(pos, pal, 250);
+      break;
+    case ExplosionType_Crossette:
+      addCrossetteExplosion(pos, pal, 12);
+      addSphereExplosion(pos, pal, 100, 0.05f, 40);
+      break;
+    }
+
+    // flash at explosion center
+    for (int i = 0; i < 20; i++) {
+      const int flashTTL = 5 + int(random(5));
+      addParticle({
+          .pos = pos,
+          .velocity = vec3(randomRange(-0.01f, 0.01f), randomRange(-0.01f, 0.01f), randomRange(-0.01f, 0.01f)),
+          .baseColor = vec3(1.0f),
+          .currentColor = vec3(1.0f),
+          .TTL = flashTTL,
+          .initialLT = flashTTL,
+          .alive = true,
+          .fadingOut = true,
+          .brightness = 3.0f,
+      });
+    }
+  }
+
+  void launchFirework(vec3 position) {
+    const int explosionType = static_cast<int>(random(NumExplosionTypes));
+    const int paletteIdx = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes)));
+    const ColorPalette& pal = g_Palettes[paletteIdx];
+
+    const vec3 velocity(randomRange(-0.03f, 0.03f), randomRange(0.22f, 0.32f), randomRange(-0.03f, 0.03f));
+
+    const int flareTTL = 30 + int(random(20));
+    addParticle({
+        .pos = position,
+        .velocity = velocity,
+        .baseColor = pal.sparkle,
+        .currentColor = pal.sparkle,
+        .TTL = flareTTL,
+        .initialLT = flareTTL,
+        .alive = true,
+        .flare = true,
+        .spawnExplosion = true,
+        .brightness = 1.5f,
+        .explosionType = explosionType,
+        .paletteIndex = paletteIdx,
+    });
+
+    const vec3 trailColor = pal.primary * 0.5f;
+    for (int i = 0; i < 5; i++) {
+      const int trailTTL = 10 + int(random(10));
+      addParticle({
+          .pos = position,
+          .velocity = velocity * randomRange(0.1f, 0.3f),
+          .baseColor = trailColor,
+          .currentColor = trailColor,
+          .TTL = trailTTL,
+          .initialLT = trailTTL,
+          .alive = true,
+          .flare = true,
+          .fadingOut = true,
+          .brightness = 0.7f,
+      });
     }
   }
 };
@@ -504,12 +848,7 @@ VULKAN_APP_MAIN {
 #else
         const vec3 position(randomRange(-5.0f, 5.0f), -6.0f, randomRange(-2.0f, 2.0f));
 #endif
-        const vec3 velocity((random(100) - 50) / 500.0f, 0.25f + (random(200)) / 500.0f, (random(100) - 50) / 500.0f);
-        const vec3 color(0.5f, 0.8f, 0.9f);
-        Particle flare(position, velocity, color, 20);
-        flare.flare = true;
-        flare.spawnExplosion = true;
-        g_Points.addParticle(flare);
+        g_Points.launchFirework(position);
       }
       vertices.clear();
       for (int i = 0; i != kMaxParticles; i++) {
