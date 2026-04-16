@@ -1495,6 +1495,20 @@ VULKAN_APP_MAIN {
           ImGui::Unindent(indentSize);
           imGuiPopFlagsAndStyles();
           ImGui::End();
+#else
+          const float screenWidth = ImGui::GetIO().DisplaySize.x;
+          const float screenHeight = ImGui::GetIO().DisplaySize.y;
+          const float buttonWidth = screenWidth * 0.1f;
+          const float buttonHeight = buttonWidth * 0.5f;
+          ImGui::SetNextWindowPos(ImVec2(10.0f, screenHeight - 2.0f * buttonHeight - 30.0f), ImGuiCond_Always);
+          ImGui::Begin("##movement", nullptr,
+                       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysAutoResize |
+                           ImGuiWindowFlags_NoNavInputs);
+          ImGui::Button("Forward", ImVec2(buttonWidth, buttonHeight));
+          app.positioner_.movement_.forward_ = ImGui::IsItemActive();
+          ImGui::Button("Backward", ImVec2(buttonWidth, buttonHeight));
+          app.positioner_.movement_.backward_ = ImGui::IsItemActive();
+          ImGui::End();
 #endif // !defined(ANDROID)
         }
         app.drawFPS();
