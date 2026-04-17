@@ -8,7 +8,7 @@ The main goals of LightweightVK:
 1. **Lean.** Minimalistic API without bloat (no `std::vector`, `std::unordered_map` etc in the API).
 2. **Bindless.** Utilize Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address features for modern bindless-only API design. Ray tracing features are fully integrated with the bindless-only design.
 3. **Agile.** A playground for experiments to enable quick exploration of ideas and adoption of Vulkan API changes.
-4. **Multilingual.** In addition to raw SPIR-V, there's built-in support for `Glslang` and `Slang` shaders, which is invaluable for rapid prototyping.
+4. **Multilingual.** In addition to raw SPIR-V, there's built-in support for `Glslang` (GLSL) and `Slang` shaders, which is invaluable for rapid prototyping.
 
 Designed for rapid prototyping of modern Vulkan-based renderers.
 
