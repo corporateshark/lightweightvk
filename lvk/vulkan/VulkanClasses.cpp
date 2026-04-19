@@ -2698,7 +2698,7 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
 }
 
-void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset) {
+void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) {
   LVK_PROFILER_FUNCTION();
 
   if (!LVK_VERIFY(!buffer.empty())) {
@@ -2709,16 +2709,16 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
 
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
-  vkCmdBindVertexBuffers2(wrapper_->cmdBuf_, index, 1, &buf->vkBuffer_, &bufferOffset, nullptr, nullptr);
+  vkCmdBindVertexBuffers2(wrapper_->cmdBuf_, index, 1, &buf->vkBuffer_, &bufferOffset, &bufferSize, nullptr);
 }
 
-void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t indexBufferOffset) {
+void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
   const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, indexBufferOffset, type);
+  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
