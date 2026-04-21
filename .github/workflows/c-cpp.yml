@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            sudo apt-get install -y gcc-15 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt remove cmake -y
             sudo pip install --break-system-packages cmake==4.0.0
             which make
@@ -141,14 +141,15 @@ jobs:
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_WAYLAND=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
-#          - {
-#              name: "Ubuntu - GCC",
-#              os: ubuntu-latest,
-#              build_type: "Debug",
-#              cc: "gcc-14",
-#              cxx: "g++-14",
-#              generators: "Unix Makefiles"
-#            }
+          - {
+              name: "Ubuntu - GCC (SDL3)",
+              os: ubuntu-latest,
+              build_type: "Debug",
+              cc: "gcc-15",
+              cxx: "g++-15",
+              generators: "Unix Makefiles",
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=OFF -DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+            }
       runs-on: ${{ matrix.config.os }}
 
       steps:
@@ -166,7 +167,7 @@ jobs:
           name: Install Ubuntu packages
           run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
+            sudo apt-get install -y gcc-15 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
             sudo apt remove cmake -y
             sudo pip install --break-system-packages cmake==4.0.0
 
@@ -271,7 +272,7 @@ jobs:
           shell: bash
           run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            sudo apt-get install -y gcc-15 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-validationlayers
             sudo apt remove cmake -y
             sudo pip install --break-system-packages cmake==4.0.0
