@@ -9,8 +9,10 @@ set(PROJECT_NAME "LVK Samples")
 
 if(MSVC)
   add_definitions(-D_CONSOLE)
-else()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   add_compile_options(-Wno-deprecated-volatile)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  add_compile_options(-Wno-init-list-lifetime)
 endif()
 
 if(WIN32)
