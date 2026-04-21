@@ -1108,13 +1108,13 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
   }
 
   char debugNameImageView[320] = {0};
-  snprintf(debugNameImageView,
-           sizeof(debugNameImageView) - 1,
-           "Image View: '%s' imageViewForFramebuffer[%u][%u][%u]",
-           debugName_,
-           level,
-           layer,
-           viewMask);
+  (void)snprintf(debugNameImageView,
+                 sizeof(debugNameImageView) - 1,
+                 "Image View: '%s' imageViewForFramebuffer[%u][%u][%u]",
+                 debugName_,
+                 level,
+                 layer,
+                 viewMask);
 
   const uint32_t numViews = viewMask ?
 #if defined(_MSC_VER)
@@ -1324,12 +1324,12 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 
     if (!ctx_.has_KHR_swapchain_maintenance1_) {
       char debugNameFence[256] = {0};
-      snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
+      (void)snprintf(debugNameFence, sizeof(debugNameFence) - 1, "Fence: swapchain %u", i);
       acquireFence_[i] = lvk::createFence(device_, debugNameFence, true);
     }
 
-    snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
-    snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
+    (void)snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: swapchain %u", i);
+    (void)snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: swapchain %u", i);
     VulkanImage image = {
         .vkImage_ = swapchainImages[i],
         .vkUsageFlags_ = usageFlags,
@@ -1529,8 +1529,8 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     char fenceName[256] = {0};
     char semaphoreName[256] = {0};
     if (debugName) {
-      snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
-      snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
+      (void)snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
+      (void)snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
     }
     buf.semaphore_ = lvk::createSemaphore(device, semaphoreName);
     buf.fence_ = lvk::createFence(device, fenceName);
@@ -3827,7 +3827,7 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(uint32_t sizeNeeded) {
   stagingBufferSize_ = sizeNeeded;
 
   char debugName[256] = {0};
-  snprintf(debugName, sizeof(debugName) - 1, "Buffer: staging buffer %u", stagingBufferCounter_++);
+  (void)snprintf(debugName, sizeof(debugName) - 1, "Buffer: staging buffer %u", stagingBufferCounter_++);
 
   stagingBuffer_ = {&ctx_,
                     ctx_.createBuffer(stagingBufferSize_,
@@ -4379,8 +4379,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   char debugNameImageView[256] = {0};
 
   if (hasDebugName) {
-    snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: %s", desc.debugName);
-    snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: %s", desc.debugName);
+    (void)snprintf(debugNameImage, sizeof(debugNameImage) - 1, "Image: %s", desc.debugName);
+    (void)snprintf(debugNameImageView, sizeof(debugNameImageView) - 1, "Image View: %s", desc.debugName);
   }
 
   VkImageCreateFlags vkCreateFlags = 0;
@@ -4438,7 +4438,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
 
   if (hasDebugName) {
     // store debug name
-    snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
+    (void)snprintf(image.debugName_, sizeof(image.debugName_) - 1, "%s", desc.debugName);
   }
 
   const uint32_t numPlanes = lvk::getNumImagePlanes(desc.format);
@@ -4724,7 +4724,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
-    snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
+    (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
       .buildRangeInfo =
@@ -4797,7 +4797,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
 
   char debugNameBuffer[256] = {0};
   if (desc.debugName) {
-    snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
+    (void)snprintf(debugNameBuffer, sizeof(debugNameBuffer) - 1, "Buffer: %s", desc.debugName);
   }
   lvk::AccelerationStructure accelStruct = {
       .isTLAS = true,
@@ -5113,7 +5113,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
     VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ci, nullptr, &layout));
     char pipelineLayoutName[256] = {0};
     if (rps->desc_.debugName) {
-      snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rps->desc_.debugName);
+      (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rps->desc_.debugName);
     }
     VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)layout, pipelineLayoutName));
   }
@@ -5250,7 +5250,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ciPipelineLayout, nullptr, &rtps->pipelineLayout_));
     char pipelineLayoutName[256] = {0};
     if (rtps->debugName_) {
-      snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rtps->debugName_);
+      (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", rtps->debugName_);
     }
     VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)rtps->pipelineLayout_, pipelineLayoutName));
   }
@@ -5463,7 +5463,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
       VK_ASSERT(vkCreatePipelineLayout(vkDevice_, &ci, nullptr, &cps->pipelineLayout_));
       char pipelineLayoutName[256] = {0};
       if (cps->desc_.debugName) {
-        snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", cps->desc_.debugName);
+        (void)snprintf(pipelineLayoutName, sizeof(pipelineLayoutName) - 1, "Pipeline Layout: %s", cps->desc_.debugName);
       }
       VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)cps->pipelineLayout_, pipelineLayoutName));
     }
