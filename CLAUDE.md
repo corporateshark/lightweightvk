@@ -143,7 +143,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 1. **Bindless-only**: Utilizes Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address
 2. **Minimal API surface**: No STL containers in public API
 3. **Ray tracing integration**: Fully integrated with bindless design
-4. **Cross-platform**: Windows, Linux, macOS (via MoltenVK or KosmicKrisp), Android
+4. **Cross-platform**: Windows, Linux, macOS (via KosmicKrisp), Android
 
 ### Sample Applications
 Located in `samples/`, 17 demos covering:

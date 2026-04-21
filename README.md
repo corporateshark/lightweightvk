@@ -32,7 +32,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 
  * Linux
  * Windows
- * MacOS (via MoltenVK or KosmicKrisp)
+ * MacOS (via KosmicKrisp)
  * Android
 
 ## API Support
@@ -46,7 +46,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
 | VK_EXT_mesh_shader            | :heavy_check_mark:         | :heavy_check_mark:         |                            | :heavy_check_mark:         |
 | OpenXR 1.1                    | :heavy_check_mark:         |                            |                            |                            |
 
-On MacOS, `KosmicKrisp` or `MoltenVK 1.4+`, and `VulkanSDK 1.4.341+` are required.
+On MacOS, `KosmicKrisp` and `VulkanSDK 1.4.341+` are required.
 
 ## Build
 
@@ -79,8 +79,6 @@ cmake .. -G "Unix Makefiles"
 ### MacOS
 
 :heavy_exclamation_mark: Be sure that `VulkanSDK 1.4.341+` for MacOS is installed https://vulkan.lunarg.com/sdk/home#mac
-
-:heavy_exclamation_mark: Not all demos work on MacOS due to missing features and bugs in SPIRV-Cross https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7512
 
 ```
 cd build

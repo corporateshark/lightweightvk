@@ -13,7 +13,7 @@ See `CLAUDE.md` for build commands, coding style, naming conventions, commit con
 ## Testing Guidelines
 - No unit test framework; GitHub Actions CI validates builds and runs selected samples headless (.github/workflows/c-cpp.yml).
 - Local sanity test: build, then run at least `001_HelloTriangle` and `005_MeshShaders` with `--headless` and capture a screenshot/log.
-- Keep samples runnable on Linux/macOS/Windows; note Mac limitations (MoltenVK 1.4+, VulkanSDK 1.4.341+).
+- Keep samples runnable on Linux/macOS/Windows; note Mac limitations (KosmicKrisp, VulkanSDK 1.4.341+).
 
 ## Pull Requests
 - Clear description, motivation, and platform notes; link issues if applicable.
@@ -21,5 +21,5 @@ See `CLAUDE.md` for build commands, coding style, naming conventions, commit con
 - Ensure CI passes across matrices.
 
 ## Security & Configuration Tips
-- Requirements: Vulkan SDK 1.4.341+ (CI), MoltenVK on macOS; Android needs `ANDROID_NDK`, `JAVA_HOME`, and `adb` in `PATH`.
+- Requirements: Vulkan SDK 1.4.341+ (CI), KosmicKrisp on macOS; Android needs `ANDROID_NDK`, `JAVA_HOME`, and `adb` in `PATH`.
 - GPUs must support Vulkan 1.3 (see README for details).
