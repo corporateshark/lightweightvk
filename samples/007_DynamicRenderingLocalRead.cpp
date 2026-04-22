@@ -21,7 +21,10 @@ const char* codeSlangDeferred = R"(
 struct PerFrame {
   float4x4 mvp;
   float4x4 model;
+  float4 cameraPos;
   uint texture0;
+  uint texture1;
+  uint texture2;
 };
 
 struct PushConstants {
@@ -66,21 +69,28 @@ struct DeferredVSOutput {
   float2 uv       : TEXCOORD0;
   float3 normal   : NORMAL;
   float3 worldPos : TEXCOORD1;
-  uint textureId  : TEXCOORD2;
+  float3 eyeDir   : TEXCOORD2;
+  uint textureId  : TEXCOORD3;
+  uint normalId   : TEXCOORD4;
+  uint heightId   : TEXCOORD5;
 };
 
 [shader("vertex")]
 DeferredVSOutput vertexMain(uint vertexId : SV_VertexID) {
   DeferredVSOutput out;
-  
+
   float3 pos = positions[vertexId];
-  
-  out.pos = pc.perFrame->mvp * float4(pos, 1.0);
-  out.uv  = uvs[vertexId];
+  float3 worldPos = (pc.perFrame->model * float4(pos, 1.0)).xyz;
+
+  out.pos       = pc.perFrame->mvp * float4(pos, 1.0);
+  out.uv        = uvs[vertexId];
   out.normal    = toFloat3x3(pc.perFrame->model) * normals[vertexId];
-  out.worldPos  = (pc.perFrame->model * float4(pos, 1.0)).xyz;
+  out.worldPos  = worldPos;
+  out.eyeDir    = pc.perFrame->cameraPos.xyz - worldPos;
   out.textureId = pc.perFrame->texture0;
-  
+  out.normalId  = pc.perFrame->texture1;
+  out.heightId  = pc.perFrame->texture2;
+
   return out;
 }
 
@@ -91,15 +101,64 @@ struct DeferredFSOutput {
   float4 worldPos  : SV_Target3;
 };
 
+static const float kHeightScale   = 0.03;
+static const int   kParallaxSteps = 16;
+
+// derivative-based orthonormal TBN (rows = T, B, N): http://www.thetenthplanet.de/archives/1180
+float3x3 cotangentFrame(float3 N, float3 p, float2 uv) {
+  float3 dp1 = ddx(p);
+  float3 dp2 = ddy(p);
+  float2 duv1 = ddx(uv);
+  float2 duv2 = ddy(uv);
+  float3 dp2perp = cross(dp2, N);
+  float3 dp1perp = cross(N, dp1);
+  float3 T = normalize(dp2perp * duv1.x + dp1perp * duv2.x);
+  float3 B = normalize(dp2perp * duv1.y + dp1perp * duv2.y);
+  return float3x3(T, B, N);
+}
+
+float2 parallaxUV(float2 uv, float3 viewTS, uint heightId) {
+  const float layerStep = 1.0 / float(kParallaxSteps);
+  float2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+
+  float2 currentUV    = uv;
+  float  currentLayer = 0.0;
+  float  currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+
+  [loop] for (int i = 0; i < kParallaxSteps && currentLayer < currentDepth; ++i) {
+    currentUV -= deltaUV;
+    currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+    currentLayer += layerStep;
+  }
+
+  float2 prevUV      = currentUV + deltaUV;
+  float  afterDepth  = currentDepth - currentLayer;
+  float  beforeDepth = (1.0 - textureBindless2D(heightId, 0, prevUV).r) - (currentLayer - layerStep);
+  float  weight      = afterDepth / (afterDepth - beforeDepth);
+  return lerp(currentUV, prevUV, weight);
+}
+
 [shader("fragment")]
 DeferredFSOutput fragmentMain(DeferredVSOutput input) {
   DeferredFSOutput out;
-  
+
+  float3 N = normalize(input.normal);
+  float3 V = normalize(input.eyeDir);
+  float3x3 TBN = cotangentFrame(N, input.worldPos, input.uv);
+
+  // rows of TBN are T, B, N so mul(TBN, V) = (T.V, B.V, N.V) — world -> tangent
+  float3 viewTS = mul(TBN, V);
+  float2 uv = parallaxUV(input.uv, viewTS, input.heightId);
+
+  float3 nm = textureBindless2D(input.normalId, 0, uv).xyz * 2.0 - 1.0;
+  // mul(nm, TBN) = nm.x*T + nm.y*B + nm.z*N — tangent -> world
+  float3 n  = normalize(mul(nm, TBN));
+
   out.fragColor = float4(0, 0, 0, 1);
-  out.albedo   = 2.0 * textureBindless2D(input.textureId, 0, input.uv);
-  out.normal   = float4(normalize(input.normal) * 0.5 + 0.5, 1.0);
+  out.albedo   = 10.0 * textureBindless2D(input.textureId, 0, uv);
+  out.normal   = float4(n * 0.5 + 0.5, 1.0);
   out.worldPos = float4(input.worldPos, 1.0);
-  
+
   return out;
 }
 )";
@@ -144,6 +203,9 @@ layout (location=0) out vec2 out_UV;
 layout (location=1) out vec3 out_Normal;
 layout (location=2) out vec3 out_WorldPos;
 layout (location=3) out flat uint out_TextureId;
+layout (location=4) out flat uint out_NormalId;
+layout (location=5) out flat uint out_HeightId;
+layout (location=6) out vec3 out_EyeDir;
 
 const vec3 positions[24] = vec3[24](
   vec3(-1.0, -1.0,  1.0), vec3( 1.0, -1.0,  1.0), vec3( 1.0,  1.0,  1.0), vec3(-1.0,  1.0,  1.0), // +Z
@@ -175,7 +237,10 @@ const vec2 uvs[24] = vec2[24](
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 mvp;
   mat4 model;
+  vec4 cameraPos;
   uint texture0;
+  uint texture1;
+  uint texture2;
 };
 
 layout(push_constant) uniform constants {
@@ -184,13 +249,17 @@ layout(push_constant) uniform constants {
 
 void main() {
   vec3 pos = positions[gl_VertexIndex];
-  
+  vec3 worldPos = (pc.model * vec4(pos, 1.0)).xyz;
+
   gl_Position = pc.mvp * vec4(pos, 1.0);
-  
+
   out_UV = uvs[gl_VertexIndex];
   out_Normal = mat3(pc.model) * normals[gl_VertexIndex];
-  out_WorldPos = (pc.model * vec4(pos, 1.0)).xyz;
+  out_WorldPos = worldPos;
+  out_EyeDir = pc.cameraPos.xyz - worldPos;
   out_TextureId = pc.texture0;
+  out_NormalId = pc.texture1;
+  out_HeightId = pc.texture2;
 }
 )";
 
@@ -199,15 +268,66 @@ layout (location=0) in vec2 in_UV;
 layout (location=1) in vec3 in_Normal;
 layout (location=2) in vec3 in_WorldPos;
 layout (location=3) in flat uint in_TextureId;
+layout (location=4) in flat uint in_NormalId;
+layout (location=5) in flat uint in_HeightId;
+layout (location=6) in vec3 in_EyeDir;
 
 layout (location=0) out vec4 out_FragColor; // unused
 layout (location=1) out vec4 out_Albedo;
 layout (location=2) out vec4 out_Normal;
 layout (location=3) out vec4 out_WorldPos;
 
+const float kHeightScale   = 0.03;
+const int   kParallaxSteps = 16;
+
+// derivative-based orthonormal TBN: http://www.thetenthplanet.de/archives/1180
+mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
+  vec3 dp1 = dFdx(p);
+  vec3 dp2 = dFdy(p);
+  vec2 duv1 = dFdx(uv);
+  vec2 duv2 = dFdy(uv);
+  vec3 dp2perp = cross(dp2, N);
+  vec3 dp1perp = cross(N, dp1);
+  vec3 T = normalize(dp2perp * duv1.x + dp1perp * duv2.x);
+  vec3 B = normalize(dp2perp * duv1.y + dp1perp * duv2.y);
+  return mat3(T, B, N);
+}
+
+// steep parallax + one-step occlusion refinement; viewTS points surface -> eye
+vec2 parallaxUV(vec2 uv, vec3 viewTS, uint heightId) {
+  const float layerStep = 1.0 / float(kParallaxSteps);
+  vec2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+
+  vec2  currentUV    = uv;
+  float currentLayer = 0.0;
+  float currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+
+  for (int i = 0; i < kParallaxSteps && currentLayer < currentDepth; ++i) {
+    currentUV -= deltaUV;
+    currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+    currentLayer += layerStep;
+  }
+
+  vec2  prevUV      = currentUV + deltaUV;
+  float afterDepth  = currentDepth - currentLayer;
+  float beforeDepth = (1.0 - textureBindless2D(heightId, 0, prevUV).r) - (currentLayer - layerStep);
+  float weight      = afterDepth / (afterDepth - beforeDepth);
+  return mix(currentUV, prevUV, weight);
+}
+
 void main() {
-  out_Albedo   = 2.0 * textureBindless2D(in_TextureId, 0, in_UV);
-  out_Normal   = vec4(normalize(in_Normal) * 0.5 + 0.5, 1.0);
+  vec3 N = normalize(in_Normal);
+  vec3 V = normalize(in_EyeDir);
+  mat3 TBN = cotangentFrame(N, in_WorldPos, in_UV);
+
+  vec3 viewTS = V * TBN; // world -> tangent (= transpose(TBN) * V for orthonormal TBN)
+  vec2 uv = parallaxUV(in_UV, viewTS, in_HeightId);
+
+  vec3 nm = textureBindless2D(in_NormalId, 0, uv).xyz * 2.0 - 1.0;
+  vec3 n  = normalize(TBN * nm);
+
+  out_Albedo   = 10.0 * textureBindless2D(in_TextureId, 0, uv);
+  out_Normal   = vec4(n * 0.5 + 0.5, 1.0);
   out_WorldPos = vec4(in_WorldPos, 1.0);
 }
 )";
@@ -304,32 +424,45 @@ VULKAN_APP_MAIN {
         .debugName = "WorldPositions",
     });
 
-    lvk::Holder<lvk::TextureHandle> texture;
+    lvk::Holder<lvk::TextureHandle> texMatAlbedo;
+    lvk::Holder<lvk::TextureHandle> texMatNormal;
+    lvk::Holder<lvk::TextureHandle> texMatHeight;
 
     {
       using namespace std::filesystem;
-      path dir = app.folderContentRoot_;
-      int32_t texWidth = 0;
-      int32_t texHeight = 0;
-      int32_t channels = 0;
-      uint8_t* pixels = stbi_load(
-          (dir / path("src/bistro/BuildingTextures/wood_polished_01_diff.png")).string().c_str(), &texWidth, &texHeight, &channels, 4);
-      SCOPE_EXIT {
-        stbi_image_free(pixels);
+      const path dir = path(app.folderThirdParty_) / path("ktx-software/tests/srcimages/Iron_Bars/");
+      struct MatSlot {
+        const char* fileName;
+        lvk::Holder<lvk::TextureHandle>* out;
       };
-      if (!pixels) {
-        LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
-        LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
-        std::terminate();
+      const MatSlot slots[] = {
+          {"Iron_Bars_001_basecolor.jpg", &texMatAlbedo},
+          {"Iron_Bars_001_normal.jpg", &texMatNormal},
+          {"Iron_Bars_001_height.png", &texMatHeight},
+      };
+      for (const MatSlot& s : slots) {
+        int32_t texWidth = 0;
+        int32_t texHeight = 0;
+        int32_t channels = 0;
+        uint8_t* pixels = stbi_load((dir / path(s.fileName)).string().c_str(), &texWidth, &texHeight, &channels, 4);
+        SCOPE_EXIT {
+          stbi_image_free(pixels);
+        };
+        if (!pixels) {
+          LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+          LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+          std::terminate();
+        }
+        *s.out = ctx->createTexture({
+            .type = lvk::TextureType_2D,
+            .format = lvk::Format_RGBA_UN8,
+            .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
+            .usage = lvk::TextureUsageBits_Sampled,
+            .data = pixels,
+            .generateMipmaps = true,
+            .debugName = s.fileName,
+        });
       }
-      texture = ctx->createTexture({
-          .type = lvk::TextureType_2D,
-          .format = lvk::Format_RGBA_UN8,
-          .dimensions = {(uint32_t)texWidth, (uint32_t)texHeight},
-          .usage = lvk::TextureUsageBits_Sampled,
-          .data = pixels,
-          .debugName = "wood_polished_01_diff.png",
-      });
     }
 
 #if defined(LVK_DEMO_WITH_SLANG)
@@ -386,7 +519,10 @@ VULKAN_APP_MAIN {
     struct PerFrame {
       mat4 mvp;
       mat4 model;
+      vec4 cameraPos;
       uint32_t texture;
+      uint32_t textureNormal;
+      uint32_t textureHeight;
     };
 
     lvk::Holder<lvk::BufferHandle> perFrameBuffer = ctx->createBuffer({
@@ -404,10 +540,14 @@ VULKAN_APP_MAIN {
       const mat4 proj = glm::perspectiveLH(fov, views[0].aspectRatio, 0.1f, 500.0f);
       const mat4 view = glm::translate(mat4(1.0f), vec3(0.0f, 0.0f, 5.0f));
       const mat4 model = glm::rotate(mat4(1.0f), (float)app.getSimulatedTime(), glm::normalize(vec3(1.0f, 1.0f, 1.0f)));
+      const vec4 cameraPos = glm::inverse(view) * vec4(0.0f, 0.0f, 0.0f, 1.0f);
       const PerFrame bindingsDeferred = {
           .mvp = proj * view * model,
           .model = model,
-          .texture = texture.index(),
+          .cameraPos = cameraPos,
+          .texture = texMatAlbedo.index(),
+          .textureNormal = texMatNormal.index(),
+          .textureHeight = texMatHeight.index(),
       };
       const lvk::Framebuffer framebuffer = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()},

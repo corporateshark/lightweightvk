@@ -25,7 +25,9 @@ if external_storage_path is not None:
     paths = [(os.path.join("third-party", "content"),
               os.path.join(external_storage_path, "LVK", "content").replace("\\", "/")),
              (os.path.join("third-party", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data"),
-              os.path.join(external_storage_path, "LVK", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data").replace("\\", "/"))]
+              os.path.join(external_storage_path, "LVK", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data").replace("\\", "/")),
+             (os.path.join("third-party", "deps", "src", "ktx-software", "tests", "srcimages", "Iron_Bars"),
+              os.path.join(external_storage_path, "LVK", "deps", "src", "ktx-software", "tests", "srcimages", "Iron_Bars").replace("\\", "/"))]
     for (desktop_path, android_path) in paths:
         try:
             print('Copying {} to {} ...'.format(desktop_path, android_path))
