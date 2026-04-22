@@ -1433,7 +1433,7 @@ VULKAN_APP_MAIN {
               .color = {{.loadOp = lvk::LoadOp_Clear, .storeOp = lvk::StoreOp_Store, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}},
           },
           fbMain_,
-          {.textures = {tex, fbOffscreen.color[0].texture}});
+          {.sampledImages = {tex, fbOffscreen.color[0].texture}});
       {
         buffer.cmdBindRenderPipeline(res.renderPipelineState_Fullscreen_);
         buffer.cmdPushDebugGroupLabel("Swapchain Output", 0xff0000ff);

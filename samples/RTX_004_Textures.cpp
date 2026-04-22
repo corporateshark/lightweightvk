@@ -537,7 +537,7 @@ VULKAN_APP_MAIN {
     buffer.cmdUpdateTLAS(res.TLAS, res.instancesBuffer);
     buffer.cmdBindRayTracingPipeline(res.pipeline);
     buffer.cmdPushConstants(pc);
-    buffer.cmdTraceRays(width, height, 1, {.textures = {res.storageImage}});
+    buffer.cmdTraceRays(width, height, 1, {.storageImages = {res.storageImage}});
     buffer.cmdCopyImage(res.storageImage, ctx_->getCurrentSwapchainTexture(), ctx_->getDimensions(ctx_->getCurrentSwapchainTexture()));
     lvk::Framebuffer framebuffer = {
         .color = {{.texture = ctx_->getCurrentSwapchainTexture()}},

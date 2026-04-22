@@ -267,7 +267,7 @@ VULKAN_APP_MAIN {
                                     .clearColor = {1.0f, 1.0f, 1.0f, 1.0f},
                                 }}},
                                {.color = {{.texture = ctx->getCurrentSwapchainTexture()}}},
-                               {.textures = {texture_}});
+                               {.sampledImages = {texture_}});
       {
         buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);
         buffer.cmdBindViewport(views[0].viewport);

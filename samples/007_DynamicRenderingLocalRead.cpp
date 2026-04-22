@@ -595,7 +595,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color = {{.loadOp = lvk::LoadOp_Load, .storeOp = lvk::StoreOp_Store}}},
           framebufferGUI,
-          {.textures = {texAlbedo, texNormal, texWorldPos}});
+          {.sampledImages = {texAlbedo, texNormal, texWorldPos}});
       app.imgui_->beginFrame(framebufferGUI);
       const ImGuiViewport* v = ImGui::GetMainViewport();
       const float size = 0.175f * v->WorkSize.x;

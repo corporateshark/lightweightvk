@@ -2186,10 +2186,12 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHa
 
     // transition only non-multisampled images - MSAA images cannot be accessed from shaders
     if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
+      LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
+                     "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
       const VkImageAspectFlags flags = img.getImageAspectFlags();
       // set the result of the previous render pass
       img.transitionLayout(wrapper_->cmdBuf_,
-                           img.isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
+                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                            VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
     }
   }
@@ -2253,9 +2255,10 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
 
   LVK_ASSERT(!isRendering_);
 
-  for (size_t i = 0; i != deps.textures.size(); i++) {
-    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-  }
+  // TODO: pass extra dst stage VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+  cmdTransitionToShaderReadOnly(deps.sampledImages);
+  cmdTransitionToGeneral(deps.storageImages);
+
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -2309,24 +2312,6 @@ void lvk::CommandBuffer::cmdPopDebugGroupLabel() const {
     return;
   }
   vkCmdEndDebugUtilsLabelEXT(wrapper_->cmdBuf_);
-}
-
-void lvk::CommandBuffer::useComputeTexture(TextureHandle handle, VkPipelineStageFlags2 dstStage) {
-  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  LVK_ASSERT(!handle.empty());
-  lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
-
-  (void)dstStage; // TODO: add extra dstStage
-
-  if (!tex.isStorageImage() && !tex.isSampledImage()) {
-    LVK_ASSERT_MSG(false, "Did you forget to specify TextureUsageBits::Storage or TextureUsageBits::Sampled on your texture?");
-    return;
-  }
-
-  tex.transitionLayout(wrapper_->cmdBuf_,
-                       tex.isStorageImage() ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                       VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
 void lvk::CommandBuffer::bufferBarrier(BufferHandle handle,
@@ -2388,7 +2373,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
-  cmdTransitionToShaderReadOnly(deps.textures);
+  cmdTransitionToShaderReadOnly(deps.sampledImages);
+  cmdTransitionToGeneral(deps.storageImages);
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
@@ -3024,9 +3010,10 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
-  for (size_t i = 0; i != deps.textures.size(); i++) {
-    useComputeTexture(deps.textures[i], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
-  }
+  // TODO: pass extra dst stage VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
+  cmdTransitionToShaderReadOnly(deps.sampledImages);
+  cmdTransitionToGeneral(deps.storageImages);
+
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],
                   VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,

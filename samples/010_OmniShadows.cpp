@@ -612,7 +612,7 @@ VULKAN_APP_MAIN {
         },
         framebuffer,
         {
-            .textures = {shadowMap},
+            .sampledImages = {shadowMap},
         });
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Mesh_);

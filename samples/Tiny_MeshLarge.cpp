@@ -1379,7 +1379,7 @@ void render(double delta) {
               .depth = 1u,
           },
           {
-              .textures = {tex},
+              .storageImages = {tex},
           });
     }
     GPU_TIMESTAMP(GPUTimestamp_EndComputePass);
@@ -1392,7 +1392,7 @@ void render(double delta) {
     lvk::TextureHandle tex = kNumSamplesMSAA > 1 ? fbOffscreen_.color[0].resolveTexture : fbOffscreen_.color[0].texture;
 
     // This will clear the framebuffer
-    buffer.cmdBeginRendering(renderPassMain_, fbMain_, {.textures = {tex}});
+    buffer.cmdBeginRendering(renderPassMain_, fbMain_, {.sampledImages = {tex}});
     {
       buffer.cmdBindRenderPipeline(renderPipelineState_Fullscreen_);
       buffer.cmdPushDebugGroupLabel("Swapchain Output", 0xff0000ff);
