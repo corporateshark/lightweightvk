@@ -378,8 +378,9 @@ class CommandBuffer final : public ICommandBuffer {
     return getVkCommandBuffer();
   }
 
-  void transitionToShaderReadOnly(TextureHandle surface) const override;
-  void transitionToRenderingLocalRead(TextureHandle surface) const override;
+  void cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures) const override;
+  void cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const override;
+  void cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 

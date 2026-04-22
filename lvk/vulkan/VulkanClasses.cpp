@@ -127,13 +127,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFl
   char typeName[128] = {};
   void* messageID = nullptr;
 
-  #if defined(LVK_WITH_MINILOG)
+#if defined(LVK_WITH_MINILOG)
   minilog::eLogLevel level = minilog::Log;
   if (isError) {
     lvk::VulkanContext* ctx = static_cast<lvk::VulkanContext*>(userData);
     level = ctx->config_.terminateOnValidationError ? minilog::FatalError : minilog::Warning;
   }
-  #endif // LVK_WITH_MINILOG
+#endif // LVK_WITH_MINILOG
 
   if (!isError && !isWarning && cbData->pMessageIdName) {
     if (strcmp(cbData->pMessageIdName, "Loader Message") == 0) {
@@ -2146,36 +2146,53 @@ lvk::CommandBuffer::~CommandBuffer() {
   LVK_ASSERT(!isRendering_);
 }
 
-void lvk::CommandBuffer::transitionToShaderReadOnly(TextureHandle handle) const {
-  LVK_PROFILER_FUNCTION();
+void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures) const {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
-  const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+  for (TextureHandle handle : textures) {
+    LVK_ASSERT(!handle.empty());
+    lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
 
-  LVK_ASSERT(!img.isSwapchainImage_);
+    tex.transitionLayout(wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_GENERAL,
+                         VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+  }
+}
 
-  // transition only non-multisampled images - MSAA images cannot be accessed from shaders
-  if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
+void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  for (TextureHandle handle : textures) {
+    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+
+    LVK_ASSERT(!img.isSwapchainImage_);
+    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+                   "Input attachment texture must have VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT (lvk::TextureUsageBits_InputAttachment)");
+
     const VkImageAspectFlags flags = img.getImageAspectFlags();
-    // set the result of the previous render pass
     img.transitionLayout(wrapper_->cmdBuf_,
-                         img.isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
+                         VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
                          VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
   }
 }
 
-void lvk::CommandBuffer::transitionToRenderingLocalRead(TextureHandle handle) const {
-  LVK_PROFILER_FUNCTION();
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures) const {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
-  const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+  for (TextureHandle handle : textures) {
+    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
 
-  LVK_ASSERT(!img.isSwapchainImage_);
-  LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
-                 "Input attachment texture must have VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT (lvk::TextureUsageBits_InputAttachment)");
+    LVK_ASSERT(!img.isSwapchainImage_);
 
-  const VkImageAspectFlags flags = img.getImageAspectFlags();
-  img.transitionLayout(wrapper_->cmdBuf_,
-                       VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
-                       VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    // transition only non-multisampled images - MSAA images cannot be accessed from shaders
+    if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
+      const VkImageAspectFlags flags = img.getImageAspectFlags();
+      // set the result of the previous render pass
+      img.transitionLayout(wrapper_->cmdBuf_,
+                           img.isSampledImage() ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL,
+                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    }
+  }
 }
 
 void lvk::CommandBuffer::cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) {
@@ -2371,9 +2388,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
-  for (size_t i = 0; i != deps.textures.size(); i++) {
-    transitionToShaderReadOnly(deps.textures[i]);
-  }
+  cmdTransitionToShaderReadOnly(deps.textures);
+
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2433,11 +2449,11 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   {
     uint32_t i = 0;
     if (LVK_VERIFY(deps.inputAttachments.size() <= LVK_MAX_COLOR_ATTACHMENTS)) {
+      cmdTransitionToRenderingLocalRead(deps.inputAttachments);
       for (; i != deps.inputAttachments.size(); i++) {
         const lvk::TextureHandle handle = deps.inputAttachments[i];
         const lvk::VulkanImage* tex = ctx_->texturesPool_.get(handle);
         LVK_ASSERT(tex);
-        transitionToRenderingLocalRead(handle);
         inputAttachments_.imageInfos[i] = {
             .sampler = VK_NULL_HANDLE,
             .imageView = tex->imageView_,
@@ -2532,7 +2548,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     if (fb.depthStencil.resolveTexture) {
       LVK_ASSERT(depthTexture.vkSamples_ > 1);
       LVK_ASSERT(depthTexture.vkSamples_ == samples);
-      LVK_ASSERT_MSG(depthAttachment.storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE, "Multisampled attachments should have store op DONT_CARE");
+      LVK_ASSERT_MSG(depthAttachment.storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                     "Multisampled attachments should have store op DONT_CARE");
       const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
