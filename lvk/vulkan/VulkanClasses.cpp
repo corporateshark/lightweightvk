@@ -2150,8 +2150,17 @@ lvk::CommandBuffer::~CommandBuffer() {
   LVK_ASSERT(!isRendering_);
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures) const {
+void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage dstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  StageAccess extraDstAccess = {};
+
+  if (dstStage == lvk::Stage_Comp) {
+    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  }
+  if (dstStage >= lvk::Stage_RayGen && dstStage <= lvk::Stage_Callable) {
+    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+  }
 
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
@@ -2159,7 +2168,8 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& 
 
     tex.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_GENERAL,
-                         VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+                         VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         extraDstAccess);
   }
 }
 
@@ -2180,8 +2190,17 @@ void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const lvk::Span<Textu
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures) const {
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage dstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  StageAccess extraDstAccess = {};
+
+  if (dstStage == lvk::Stage_Comp) {
+    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  }
+  if (dstStage >= lvk::Stage_RayGen && dstStage <= lvk::Stage_Callable) {
+    extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+  }
 
   for (TextureHandle handle : textures) {
     const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
@@ -2196,7 +2215,8 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHa
       // set the result of the previous render pass
       img.transitionLayout(wrapper_->cmdBuf_,
                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                           extraDstAccess);
     }
   }
 }
@@ -2259,9 +2279,8 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
 
   LVK_ASSERT(!isRendering_);
 
-  // TODO: pass extra dst stage VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
-  cmdTransitionToShaderReadOnly(deps.sampledImages);
-  cmdTransitionToGeneral(deps.storageImages);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
+  cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2377,8 +2396,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
-  cmdTransitionToShaderReadOnly(deps.sampledImages);
-  cmdTransitionToGeneral(deps.storageImages);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, {});
+  cmdTransitionToGeneral(deps.storageImages, {});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
@@ -3015,8 +3034,8 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
   LVK_ASSERT(!isRendering_);
 
   // TODO: pass extra dst stage VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
-  cmdTransitionToShaderReadOnly(deps.sampledImages);
-  cmdTransitionToGeneral(deps.storageImages);
+  cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
+  cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],
