@@ -835,10 +835,9 @@ class ICommandBuffer {
  public:
   virtual ~ICommandBuffer() = default;
 
-  virtual void cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  virtual void cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  // no extraDstStage parameter: this is only used within a render pass
-  virtual void cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const = 0;
+  virtual void cmdTransitionLayout(const lvk::Span<TextureHandle>& textures,
+                                   VkImageLayout newLayout,
+                                   const lvk::StageAccess& extraDstAccess) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;

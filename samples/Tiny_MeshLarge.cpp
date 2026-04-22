@@ -1300,7 +1300,7 @@ void render(double delta) {
       buffer.cmdPopDebugGroupLabel();
     }
     buffer.cmdEndRendering();
-    buffer.cmdTransitionToShaderReadOnly({fbShadowMap_.depthStencil.texture}, {});
+    buffer.cmdTransitionLayout({fbShadowMap_.depthStencil.texture}, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, {});
     buffer.cmdGenerateMipmap(fbShadowMap_.depthStencil.texture);
     isShadowMapDirty_ = false;
   }
