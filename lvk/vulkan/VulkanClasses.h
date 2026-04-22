@@ -79,7 +79,10 @@ struct VulkanImage final {
                                             const char* debugName = nullptr) const;
 
   void generateMipmap(VkCommandBuffer commandBuffer) const;
-  void transitionLayout(VkCommandBuffer commandBuffer, VkImageLayout newImageLayout, const VkImageSubresourceRange& subresourceRange) const;
+  void transitionLayout(VkCommandBuffer commandBuffer,
+                        VkImageLayout newImageLayout,
+                        const VkImageSubresourceRange& subresourceRange,
+                        StageAccess extraDstStage = {}) const;
 
   [[nodiscard]] VkImageAspectFlags getImageAspectFlags() const;
 

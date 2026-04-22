@@ -897,7 +897,8 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
 
 void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
                                         VkImageLayout newImageLayout,
-                                        const VkImageSubresourceRange& subresourceRange) const {
+                                        const VkImageSubresourceRange& subresourceRange,
+                                        StageAccess extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   const VkImageLayout oldImageLayout =
@@ -911,6 +912,9 @@ void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
 
   StageAccess src = getPipelineStageAccess(oldImageLayout);
   StageAccess dst = getPipelineStageAccess(newImageLayout);
+
+  dst.stage |= extraDstStage.stage;
+  dst.access |= extraDstStage.access;
 
   if (isDepthAttachment() && isResolveAttachment) {
     // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#renderpass-resolve-operations

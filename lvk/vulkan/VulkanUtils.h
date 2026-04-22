@@ -64,8 +64,8 @@ struct IGlobalSession;
 typedef struct glslang_resource_s glslang_resource_t;
 
 struct StageAccess {
-  VkPipelineStageFlags2 stage;
-  VkAccessFlags2 access;
+  VkPipelineStageFlags2 stage = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 access = VK_ACCESS_2_NONE;
 };
 
 namespace lvk {
