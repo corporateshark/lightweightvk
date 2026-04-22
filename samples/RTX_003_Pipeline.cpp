@@ -290,7 +290,7 @@ const char* codeRayGen = R"(
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_shader_16bit_storage : require
 
-layout (set = 0, binding = 2, rgba8) uniform image2D kTextures2DInOut[];
+layout (set = 0, binding = 2) writeonly uniform image2D kTextures2DInOut[];
 layout (set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
 )" UBOS_AND_PUSH_CONSTANTS
                          R"(
