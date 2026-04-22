@@ -301,6 +301,18 @@ jobs:
             cd build
             cmake --build . --parallel ${{ steps.cpu-cores.outputs.count }}
 
+        # ktx-software tracks tests/srcimages/**/*.{jpg,png} via git-LFS, and the workflow-level
+        # GIT_LFS_SKIP_SMUDGE=true leaves them as pointer stubs after `bootstrap.py` clones the repo.
+        # 007_DynamicRenderingLocalRead loads the Iron_Bars PBR set from there — materialize it explicitly.
+        - name: Fetch Iron_Bars textures (git-LFS)
+          shell: bash
+          env:
+            GIT_LFS_SKIP_SMUDGE: 0
+          run: |
+            cd third-party/deps/src/ktx-software
+            git lfs install --local
+            git lfs pull --include="tests/srcimages/Iron_Bars/**"
+
         - name: Run tests
           run: |
             mkdir -p screenshots
@@ -311,9 +323,8 @@ jobs:
             ./build/samples/003_RenderToCubeMapSinglePass    $ARGS --screenshot-frame 83   --screenshot-file screenshots/003_RenderToCubeMapSinglePass.png   --log-file 003_RenderToCubeMapSinglePass.txt
             ./build/samples/004_YUV                          $ARGS --screenshot-frame 1    --screenshot-file screenshots/004_YUV.png                         --log-file 004_YUV.txt
             ./build/samples/005_MeshShaders                  $ARGS --screenshot-frame 1    --screenshot-file screenshots/005_MeshShaders.png                 --log-file 005_MeshShaders.txt
-            # 007_DynamicRenderingLocalRead: requires Bistro textures from deploy_content.py
-            #./build/samples/007_DynamicRenderingLocalRead    $ARGS --screenshot-frame 1    --screenshot-file screenshots/007_DynamicRenderingLocalRead.png   --log-file 007_DynamicRenderingLocalRead.txt
-            ./build/samples/008_MeshShaderFireworks           $ARGS --screenshot-frame 312 --screenshot-file screenshots/008_MeshShaderFireworks.png         --log-file 008_MeshShaderFireworks.txt
+            ./build/samples/007_DynamicRenderingLocalRead    $ARGS --screenshot-frame 30   --screenshot-file screenshots/007_DynamicRenderingLocalRead.png   --log-file 007_DynamicRenderingLocalRead.txt
+            ./build/samples/008_MeshShaderFireworks          $ARGS --screenshot-frame 312  --screenshot-file screenshots/008_MeshShaderFireworks.png         --log-file 008_MeshShaderFireworks.txt
             # 009_TriplanarMapping: requires Bistro textures from deploy_content.py
             #./build/samples/009_TriplanarMapping             $ARGS --screenshot-frame 1    --screenshot-file screenshots/009_TriplanarMapping.png            --log-file 009_TriplanarMapping.txt
             ./build/samples/010_OmniShadows                  $ARGS --screenshot-frame 42   --screenshot-file screenshots/010_OmniShadows.png                 --log-file 010_OmniShadows.txt
