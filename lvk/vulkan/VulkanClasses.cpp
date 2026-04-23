@@ -53,6 +53,12 @@ static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructure
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
 static_assert(lvk::LVK_WHOLE_SIZE == VK_WHOLE_SIZE);
+// ray-tracing stages must remain contiguous; `Stage_RayGen..Stage_Callable` is used as a range test
+static_assert(lvk::Stage_AnyHit == lvk::Stage_RayGen + 1);
+static_assert(lvk::Stage_ClosestHit == lvk::Stage_RayGen + 2);
+static_assert(lvk::Stage_Miss == lvk::Stage_RayGen + 3);
+static_assert(lvk::Stage_Intersection == lvk::Stage_RayGen + 4);
+static_assert(lvk::Stage_Callable == lvk::Stage_RayGen + 5);
 
 namespace {
 
