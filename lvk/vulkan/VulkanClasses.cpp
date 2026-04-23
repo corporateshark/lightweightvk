@@ -2156,15 +2156,15 @@ lvk::CommandBuffer::~CommandBuffer() {
   LVK_ASSERT(!isRendering_);
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage dstStage) const {
+void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   StageAccess extraDstAccess = {};
 
-  if (dstStage == lvk::Stage_Comp) {
+  if (extraDstStage == lvk::Stage_Comp) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
   }
-  if (dstStage >= lvk::Stage_RayGen && dstStage <= lvk::Stage_Callable) {
+  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
 
@@ -2196,15 +2196,15 @@ void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const lvk::Span<Textu
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage dstStage) const {
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   StageAccess extraDstAccess = {};
 
-  if (dstStage == lvk::Stage_Comp) {
+  if (extraDstStage == lvk::Stage_Comp) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
   }
-  if (dstStage >= lvk::Stage_RayGen && dstStage <= lvk::Stage_Callable) {
+  if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
 
@@ -3039,7 +3039,6 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
-  // TODO: pass extra dst stage VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
   cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
 
