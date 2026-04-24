@@ -105,6 +105,15 @@ jobs:
               generators: "Visual Studio 17 2022",
               cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
+          - {
+              name: "Windows - MSVC 2026 (glslang, GLFW)",
+              os: windows-2025-vs2026,
+              build_type: "Debug",
+              cc: "cl",
+              cxx: "cl",
+              generators: "Visual Studio 18 2026",
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=ON -DLVK_WITH_GLFW=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+            }
 #          - {
 #              name: "Windows - MSVC 2022 (Slang)",
 #              os: windows-latest,
