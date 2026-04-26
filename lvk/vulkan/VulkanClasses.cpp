@@ -7102,7 +7102,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .drawIndirectCount = vkFeatures12_.drawIndirectCount, // enable if supported
       .storageBuffer8BitAccess = vkFeatures12_.storageBuffer8BitAccess, // enable if supported
       .uniformAndStorageBuffer8BitAccess = vkFeatures12_.uniformAndStorageBuffer8BitAccess, // enable if supported
-      .shaderFloat16 = vkFeatures12_.shaderFloat16, // enable if supported
+      .shaderFloat16 = VK_TRUE,
       .shaderInt8 = vkFeatures12_.shaderInt8, // enable if supported
       .descriptorIndexing = VK_TRUE,
       .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
