@@ -52,33 +52,40 @@ struct MeshOutput {
   float2 uv    : TEXCOORD0;
 };
 
+// One workgroup processes 32 particles: 32 lanes × 1 quad/lane = 128 verts, 64 prims.
+// The C++ side dispatches ceil(N/32) workgroups and pads the vertex buffer so lanes don't read past the end.
 [shader("mesh")]
-[numthreads(1, 1, 1)]
+[numthreads(32, 1, 1)]
 [outputtopology("triangle")]
 void meshMain(
-  uint3 groupID : SV_GroupID,
-  out vertices MeshOutput verts[4],
-  out indices uint3 triangles[2]
+  uint3 groupID       : SV_GroupID,
+  uint3 groupThreadID : SV_GroupThreadID,
+  out vertices MeshOutput verts[128],
+  out indices uint3 triangles[64]
 ) {
-  SetMeshOutputCounts(4, 2);
-  
-  float4x4 proj = pc.perFrame->proj;
-  float4x4 view = pc.perFrame->view;
-  Vertex v = pc.vb[groupID.x];
-  float4 center = view * float4(v.position, 1.0);
-  
-  float2 size  = v.flare > 0.5 ? float2(0.08, 0.4) : float2(0.2, 0.2);
-  float3 color = v.flare > 0.5 ? 0.5 * v.color : v.color;
-  
+  SetMeshOutputCounts(128, 64);
+
+  const uint particleIdx = groupID.x * 32 + groupThreadID.x;
+  const uint vertOff = groupThreadID.x * 4;
+  const uint triOff = groupThreadID.x * 2;
+
+  const float4x4 proj = pc.perFrame->proj;
+  const float4x4 view = pc.perFrame->view;
+  const Vertex v = pc.vb[particleIdx];
+  const float4 center = view * float4(v.position, 1.0);
+
+  const float2 size  = v.flare > 0.5 ? float2(0.08, 0.4) : float2(0.2, 0.2);
+  const float3 color = v.flare > 0.5 ? 0.5 * v.color : v.color;
+
   for (uint i = 0; i < 4; i++) {
-    float4 offset = float4(size * offs[i], 0, 0);
-    verts[i].position = proj * (center + offset);
-    verts[i].color = color;
-    verts[i].uv = (offs[i] + 1.0) * 0.5; // convert from [-1, 1] to [0, 1]
+    const float4 offset = float4(size * offs[i], 0, 0);
+    verts[vertOff + i].position = proj * (center + offset);
+    verts[vertOff + i].color = color;
+    verts[vertOff + i].uv = (offs[i] + 1.0) * 0.5; // convert from [-1, 1] to [0, 1]
   }
-  
-  triangles[0] = uint3(0, 1, 2);
-  triangles[1] = uint3(2, 1, 3);
+
+  triangles[triOff + 0] = uint3(vertOff + 0, vertOff + 1, vertOff + 2);
+  triangles[triOff + 1] = uint3(vertOff + 2, vertOff + 1, vertOff + 3);
 }
 
 [shader("fragment")]
@@ -90,8 +97,10 @@ float4 fragmentMain(VertexOutput input : VertexOutput) : SV_Target
 )";
 
 const char* codeMesh = R"(
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-layout(triangles, max_vertices = 4, max_primitives = 2) out;
+// One workgroup processes 32 particles: 32 lanes × 1 quad/lane = 128 verts, 64 prims.
+// The C++ side dispatches ceil(N/32) workgroups and pads the vertex buffer so lanes don't read past the end.
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = 128, max_primitives = 64) out;
 
 struct Vertex {
   float x, y, z;
@@ -113,8 +122,8 @@ layout(push_constant) uniform constants {
   uint texture;
 } pc;
 
-layout (location=0) out vec3 colors[4];
-layout (location=1) out vec2 uvs[4];
+layout (location=0) out vec3 colors[128];
+layout (location=1) out vec2 uvs[128];
 
 const vec2 offs[4] = vec2[4](
   vec2(-1.0, -1.0),
@@ -124,28 +133,31 @@ const vec2 offs[4] = vec2[4](
 );
 
 void main() {
-  SetMeshOutputsEXT(4, 2);
+  SetMeshOutputsEXT(128, 64);
 
-  mat4 proj = pc.perFrame.proj;
-  mat4 view = pc.perFrame.view;
-  Vertex v = pc.vb.vertices[gl_WorkGroupID.x];
-  vec4 center = view * vec4(v.x, v.y, v.z, 1.0);
+  const uint particleIdx = gl_WorkGroupID.x * 32 + gl_LocalInvocationID.x;
+  const uint vertOff = gl_LocalInvocationID.x * 4;
+  const uint triOff = gl_LocalInvocationID.x * 2;
 
-  vec2 size  = v.flare > 0.5 ? vec2(0.08, 0.4) : vec2(0.2, 0.2);
-  vec3 color = v.flare > 0.5 ? 0.5 * vec3(v.r, v.g, v.b) : vec3(v.r, v.g, v.b);
+  const mat4 proj = pc.perFrame.proj;
+  const mat4 view = pc.perFrame.view;
+  const Vertex v = pc.vb.vertices[particleIdx];
+  const vec4 center = view * vec4(v.x, v.y, v.z, 1.0);
+
+  const vec2 size  = v.flare > 0.5 ? vec2(0.08, 0.4) : vec2(0.2, 0.2);
+  const vec3 color = v.flare > 0.5 ? 0.5 * vec3(v.r, v.g, v.b) : vec3(v.r, v.g, v.b);
 
   for (uint i = 0; i != 4; i++) {
-    vec4 offset = vec4(size * offs[i], 0, 0);
-    gl_MeshVerticesEXT[i].gl_Position = proj * (center + offset);
-    colors[i] = color;    
-    uvs[i] = (offs[i] + 1.0) * 0.5; // convert from [-1, 1] to [0, 1]
+    const vec4 offset = vec4(size * offs[i], 0, 0);
+    gl_MeshVerticesEXT[vertOff + i].gl_Position = proj * (center + offset);
+    colors[vertOff + i] = color;
+    uvs[vertOff + i] = (offs[i] + 1.0) * 0.5; // convert from [-1, 1] to [0, 1]
   }
 
-  // two triangles forming a quad
-  gl_MeshPrimitivesEXT[0].gl_CullPrimitiveEXT = false;
-  gl_MeshPrimitivesEXT[1].gl_CullPrimitiveEXT = false;
-  gl_PrimitiveTriangleIndicesEXT[0] = uvec3(0, 1, 2);
-  gl_PrimitiveTriangleIndicesEXT[1] = uvec3(2, 1, 3);
+  gl_MeshPrimitivesEXT[triOff + 0].gl_CullPrimitiveEXT = false;
+  gl_MeshPrimitivesEXT[triOff + 1].gl_CullPrimitiveEXT = false;
+  gl_PrimitiveTriangleIndicesEXT[triOff + 0] = uvec3(vertOff + 0, vertOff + 1, vertOff + 2);
+  gl_PrimitiveTriangleIndicesEXT[triOff + 1] = uvec3(vertOff + 2, vertOff + 1, vertOff + 3);
 }
 )";
 
@@ -183,6 +195,8 @@ float randomRange(float lo, float hi) {
 
 const int kMaxParticles = 50000;
 const int kStackSize = 50000;
+const int kParticlesPerWorkgroup = 32; // must match local_size_x / [numthreads()] in the mesh shader
+const int kMaxParticlesPadded = ((kMaxParticles + kParticlesPerWorkgroup - 1) / kParticlesPerWorkgroup) * kParticlesPerWorkgroup;
 
 vec3 g_Gravity = {0, -0.001, 0};
 float g_AirResistance = 0.98f;
@@ -722,7 +736,7 @@ VULKAN_APP_MAIN {
     vb = ctx->createBuffer({
         .usage = lvk::BufferUsageBits_Storage,
         .storage = lvk::StorageType_Device,
-        .size = sizeof(Vertex) * kMaxParticles,
+        .size = sizeof(Vertex) * kMaxParticlesPadded,
         .debugName = "Buffer: vertices",
     });
   }
@@ -861,6 +875,10 @@ VULKAN_APP_MAIN {
         }
       }
       if (!vertices.empty()) {
+        // Pad to a multiple of kParticlesPerWorkgroup so per-lane reads stay in bounds.
+        // Dummy entries have color.rgb=0 and are invisible under additive blending.
+        const size_t paddedSize = (vertices.size() + kParticlesPerWorkgroup - 1) & ~size_t(kParticlesPerWorkgroup - 1);
+        vertices.resize(paddedSize, Vertex{.pos = vec3(0), .color = vec4(0)});
         bufferIndex = (bufferIndex + 1) % LVK_ARRAY_NUM_ELEMENTS(vb0_);
         ctx->upload(vb0_[bufferIndex], vertices.data(), sizeof(Vertex) * vertices.size());
       }
@@ -906,7 +924,7 @@ VULKAN_APP_MAIN {
       };
       buffer.cmdPushConstants(bindings);
       if (!vertices.empty()) {
-        buffer.cmdDrawMeshTasks({(uint32_t)vertices.size(), 1, 1});
+        buffer.cmdDrawMeshTasks({(uint32_t)(vertices.size() / kParticlesPerWorkgroup), 1, 1});
       }
       buffer.cmdPopDebugGroupLabel();
 
