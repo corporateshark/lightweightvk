@@ -102,7 +102,7 @@ struct DeferredFSOutput {
 };
 
 static const float kHeightScale   = 0.03;
-static const int   kParallaxSteps = 16;
+static const int   kParallaxSteps = 8;
 
 // derivative-based orthonormal TBN (rows = T, B, N): http://www.thetenthplanet.de/archives/1180
 float3x3 cotangentFrame(float3 N, float3 p, float2 uv) {
@@ -117,25 +117,46 @@ float3x3 cotangentFrame(float3 N, float3 p, float2 uv) {
   return float3x3(T, B, N);
 }
 
+// Steep parallax + binary-search refinement; viewTS points surface -> eye.
+// Linear search brackets the intersection in <=8 fetches; 3 binary halvings refine it;
+// a final secant lerp gives precision equivalent to an 8 * 2^3 = 64-step linear search.
 float2 parallaxUV(float2 uv, float3 viewTS, uint heightId) {
   const float layerStep = 1.0 / float(kParallaxSteps);
-  float2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+  const float2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
 
-  float2 currentUV    = uv;
-  float  currentLayer = 0.0;
-  float  currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+  float2 cur = uv;
+  float  curLayer = 0.0;
+  float  curDepth = 1.0 - textureBindless2D(heightId, 0, cur).r;
 
-  [loop] for (int i = 0; i < kParallaxSteps && currentLayer < currentDepth; ++i) {
-    currentUV -= deltaUV;
-    currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
-    currentLayer += layerStep;
+  // track the previous (above-surface) sample inside the loop so no extra fetch is needed after
+  float2 prevCur = cur;
+  float  prevLayer = curLayer;
+  float  prevDepth = curDepth;
+
+  [loop] for (int i = 0; i < kParallaxSteps && curLayer < curDepth; ++i) {
+    prevCur = cur; prevLayer = curLayer; prevDepth = curDepth;
+    cur -= deltaUV;
+    curLayer += layerStep;
+    curDepth = 1.0 - textureBindless2D(heightId, 0, cur).r;
   }
 
-  float2 prevUV      = currentUV + deltaUV;
-  float  afterDepth  = currentDepth - currentLayer;
-  float  beforeDepth = (1.0 - textureBindless2D(heightId, 0, prevUV).r) - (currentLayer - layerStep);
-  float  weight      = afterDepth / (afterDepth - beforeDepth);
-  return lerp(currentUV, prevUV, weight);
+  [unroll] for (int k = 0; k < 3; ++k) {
+    const float2 midCur = 0.5 * (prevCur + cur);
+    const float  midLayer = 0.5 * (prevLayer + curLayer);
+    const float  midDepth = 1.0 - textureBindless2D(heightId, 0, midCur).r;
+    const bool advance = midLayer < midDepth; // mid is above the surface — push prev forward
+    prevCur   = advance ? midCur   : prevCur;
+    prevLayer = advance ? midLayer : prevLayer;
+    prevDepth = advance ? midDepth : prevDepth;
+    cur       = advance ? cur      : midCur;
+    curLayer  = advance ? curLayer : midLayer;
+    curDepth  = advance ? curDepth : midDepth;
+  }
+
+  const float after  = curDepth - curLayer;
+  const float before = prevDepth - prevLayer;
+  const float weight = after / (after - before);
+  return lerp(cur, prevCur, weight);
 }
 
 [shader("fragment")]
@@ -278,7 +299,7 @@ layout (location=2) out vec4 out_Normal;
 layout (location=3) out vec4 out_WorldPos;
 
 const float kHeightScale   = 0.03;
-const int   kParallaxSteps = 16;
+const int   kParallaxSteps = 8;
 
 // derivative-based orthonormal TBN: http://www.thetenthplanet.de/archives/1180
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
@@ -293,26 +314,46 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   return mat3(T, B, N);
 }
 
-// steep parallax + one-step occlusion refinement; viewTS points surface -> eye
+// Steep parallax + binary-search refinement; viewTS points surface -> eye.
+// Linear search brackets the intersection in <=8 fetches; 3 binary halvings refine it;
+// a final secant lerp gives precision equivalent to an 8 * 2^3 = 64-step linear search.
 vec2 parallaxUV(vec2 uv, vec3 viewTS, uint heightId) {
   const float layerStep = 1.0 / float(kParallaxSteps);
-  vec2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+  const vec2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
 
-  vec2  currentUV    = uv;
-  float currentLayer = 0.0;
-  float currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
+  vec2  cur = uv;
+  float curLayer = 0.0;
+  float curDepth = 1.0 - textureBindless2D(heightId, 0, cur).r;
 
-  for (int i = 0; i < kParallaxSteps && currentLayer < currentDepth; ++i) {
-    currentUV -= deltaUV;
-    currentDepth = 1.0 - textureBindless2D(heightId, 0, currentUV).r;
-    currentLayer += layerStep;
+  // track the previous (above-surface) sample inside the loop so no extra fetch is needed after
+  vec2  prevCur = cur;
+  float prevLayer = curLayer;
+  float prevDepth = curDepth;
+
+  for (int i = 0; i < kParallaxSteps && curLayer < curDepth; ++i) {
+    prevCur = cur; prevLayer = curLayer; prevDepth = curDepth;
+    cur -= deltaUV;
+    curLayer += layerStep;
+    curDepth = 1.0 - textureBindless2D(heightId, 0, cur).r;
   }
 
-  vec2  prevUV      = currentUV + deltaUV;
-  float afterDepth  = currentDepth - currentLayer;
-  float beforeDepth = (1.0 - textureBindless2D(heightId, 0, prevUV).r) - (currentLayer - layerStep);
-  float weight      = afterDepth / (afterDepth - beforeDepth);
-  return mix(currentUV, prevUV, weight);
+  for (int k = 0; k < 3; ++k) {
+    const vec2  midCur = 0.5 * (prevCur + cur);
+    const float midLayer = 0.5 * (prevLayer + curLayer);
+    const float midDepth = 1.0 - textureBindless2D(heightId, 0, midCur).r;
+    const bool advance = midLayer < midDepth; // mid is above the surface — push prev forward
+    prevCur   = advance ? midCur   : prevCur;
+    prevLayer = advance ? midLayer : prevLayer;
+    prevDepth = advance ? midDepth : prevDepth;
+    cur       = advance ? cur      : midCur;
+    curLayer  = advance ? curLayer : midLayer;
+    curDepth  = advance ? curDepth : midDepth;
+  }
+
+  const float after  = curDepth - curLayer;
+  const float before = prevDepth - prevLayer;
+  const float weight = after / (after - before);
+  return mix(cur, prevCur, weight);
 }
 
 void main() {
