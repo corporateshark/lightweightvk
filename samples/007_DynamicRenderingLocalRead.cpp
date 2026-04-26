@@ -122,7 +122,8 @@ float3x3 cotangentFrame(float3 N, float3 p, float2 uv) {
 // a final secant lerp gives precision equivalent to an 8 * 2^3 = 64-step linear search.
 float2 parallaxUV(float2 uv, float3 viewTS, uint heightId) {
   const float layerStep = 1.0 / float(kParallaxSteps);
-  const float2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+  const float invViewZ = 1.0 / max(viewTS.z, 0.01);
+  const float2 deltaUV = viewTS.xy * (invViewZ * kHeightScale * layerStep);
 
   float2 cur = uv;
   float  curLayer = 0.0;
@@ -319,7 +320,8 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
 // a final secant lerp gives precision equivalent to an 8 * 2^3 = 64-step linear search.
 vec2 parallaxUV(vec2 uv, vec3 viewTS, uint heightId) {
   const float layerStep = 1.0 / float(kParallaxSteps);
-  const vec2 deltaUV = (viewTS.xy / max(viewTS.z, 0.01)) * (kHeightScale / float(kParallaxSteps));
+  const float invViewZ = 1.0 / max(viewTS.z, 0.01);
+  const vec2 deltaUV = viewTS.xy * (invViewZ * kHeightScale * layerStep);
 
   vec2  cur = uv;
   float curLayer = 0.0;
