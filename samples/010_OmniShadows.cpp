@@ -147,32 +147,32 @@ VertexStageOutput vertexMain(uint vertexID   : SV_VertexID,
   return out;
 }
 
-float shadowFactor(float3 fragToLight) {
-  // our Y axis is inverted
-  fragToLight.y = -fragToLight.y;
-  
-  // sample from the depth cube map and re-transform back to original value
-  float closestDepth = pc.perLight->shadowFar * textureBindlessCube(pc.perLight->shadowMap, 0, fragToLight).r;
+// 9-tap PCF: center plus 8 cube-corner offsets.
+// All fetches are issued before any compare so the Adreno (sy) wait fires once for the burst.
+float shadowFactorPCF(float3 fragToLight) {
+  const float k = length(fragToLight) * 0.0015;
+  const float shadowFar = pc.perLight->shadowFar;
+  const uint shadowMap = pc.perLight->shadowMap;
 
-  // get current linear depth as the length between the fragment and light position
-  float currentDepth = length(fragToLight);
+  // Y axis is inverted between the shadow pass and main pass coordinate systems
+  const float3 base = float3(fragToLight.x, -fragToLight.y, fragToLight.z);
+  static const float3 offsets[9] = {
+      float3( 0,  0,  0),
+      float3( 1,  1,  1), float3( 1,  1, -1), float3( 1, -1,  1), float3( 1, -1, -1),
+      float3(-1,  1,  1), float3(-1,  1, -1), float3(-1, -1,  1), float3(-1, -1, -1),
+  };
 
-  // now test for shadows
-  float bias = 0.1;
+  float depths[9];
+  [unroll] for (int i = 0; i < 9; i++) {
+    depths[i] = textureBindlessCube(shadowMap, 0, base + k * offsets[i]).r;
+  }
 
-  return currentDepth - bias > closestDepth ? 0.0 : 1.0;
-}
-
-float shadowFactorPCF3x3x3(float3 fragToLight) {
-  float factor = shadowFactor(fragToLight);
-  float k = length(fragToLight) * 0.0015;
-
-  for (int x = -1; x != 2; x++)
-    for (int y = -1; y != 2; y++)
-      for (int z = -1; z != 2; z++)
-        factor += shadowFactor(fragToLight + k * float3(x, y, z));
-
-  return factor / 28.0;
+  const float curD = length(fragToLight) - 0.1;
+  float factor = 0.0;
+  [unroll] for (int i = 0; i < 9; i++) {
+    factor += curD > shadowFar * depths[i] ? 0.0 : 1.0;
+  }
+  return factor / 9.0;
 }
 
 float attenuation(float distToLight, float radius) {
@@ -185,7 +185,7 @@ float4 fragmentMain(VertexStageOutput input) : SV_Target {
   float3 fragToLight = input.worldPos.xyz - pc.perLight->lightPos.xyz;
   float NdotL = max(dot(normalize(input.normal), normalize(-fragToLight)), 0.0);
   
-  float3 finalColor = input.color * NdotL * shadowFactorPCF3x3x3(fragToLight) * attenuation(length(fragToLight), 50.0);
+  float3 finalColor = input.color * NdotL * shadowFactorPCF(fragToLight) * attenuation(length(fragToLight), 50.0);
   
   // add ambient so shadows are not completely black
   return float4(max(finalColor, input.color * 0.3), 1.0);
@@ -336,32 +336,32 @@ layout(push_constant) uniform constants {
    PerLight perLight;
 } pc;
 
-float shadowFactor(vec3 fragToLight) {
-  // our Y axis is inverted
-  fragToLight.y = -fragToLight.y;
-  
-  // sample from the depth cube map and re-transform back to original value
-  float closestDepth = pc.perLight.shadowFar * textureBindlessCube(pc.perLight.shadowMap, 0, fragToLight).r;
+// 9-tap PCF: center plus 8 cube-corner offsets.
+// All fetches are issued before any compare so the Adreno (sy) wait fires once for the burst.
+float shadowFactorPCF(vec3 fragToLight) {
+  const float k = length(fragToLight) * 0.0015;
+  const float shadowFar = pc.perLight.shadowFar;
+  const uint shadowMap = pc.perLight.shadowMap;
 
-  // get current linear depth as the length between the fragment and light position
-  float currentDepth = length(fragToLight);
+  // Y axis is inverted between the shadow pass and main pass coordinate systems
+  const vec3 base = vec3(fragToLight.x, -fragToLight.y, fragToLight.z);
+  const vec3 offsets[9] = vec3[9](
+      vec3( 0,  0,  0),
+      vec3( 1,  1,  1), vec3( 1,  1, -1), vec3( 1, -1,  1), vec3( 1, -1, -1),
+      vec3(-1,  1,  1), vec3(-1,  1, -1), vec3(-1, -1,  1), vec3(-1, -1, -1)
+  );
 
-  // now test for shadows
-  float bias = 0.1;
+  float depths[9];
+  for (int i = 0; i < 9; i++) {
+    depths[i] = textureBindlessCube(shadowMap, 0, base + k * offsets[i]).r;
+  }
 
-  return currentDepth - bias > closestDepth ? 0.0 : 1.0;
-}
-
-float shadowFactorPCF3x3x3(vec3 fragToLight) {
-  float factor = shadowFactor(fragToLight);
-  float k = length(fragToLight) * 0.0015;
-
-  for (int x = -1; x != 2; x++)
-    for (int y = -1; y != 2; y++)
-      for (int z = -1; z != 2; z++)
-        factor += shadowFactor(fragToLight + k * vec3(x, y, z));
-
-  return factor / 28.0;
+  const float curD = length(fragToLight) - 0.1;
+  float factor = 0.0;
+  for (int i = 0; i < 9; i++) {
+    factor += curD > shadowFar * depths[i] ? 0.0 : 1.0;
+  }
+  return factor / 9.0;
 }
 
 float attenuation(float distToLight, float radius) {
@@ -373,7 +373,7 @@ void main() {
   vec3 fragToLight = v_WorldPos.xyz - pc.perLight.lightPos.xyz;
   float NdotL = max(dot(normalize(v_Normal), normalize(-fragToLight)), 0.0);
   
-  vec3 finalColor = v_Color * NdotL * shadowFactorPCF3x3x3(fragToLight) * attenuation(length(fragToLight), 50.0);
+  vec3 finalColor = v_Color * NdotL * shadowFactorPCF(fragToLight) * attenuation(length(fragToLight), 50.0);
   
   // add ambient so shadows are not completely black
   out_FragColor = vec4(max(finalColor, v_Color * 0.3), 1.0);
