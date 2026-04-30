@@ -390,6 +390,10 @@ struct ShaderModuleState final {
       .codeSize = 0,
       .pCode = nullptr,
   };
+  // populated only on devices that lack VK_KHR_maintenance5 (see workaround_noMaintenance5_) - the
+  // shader module identifier path in VkPipelineShaderStageCreateInfo isn't usable, so we keep a
+  // real VkShaderModule alive for the lifetime of this state and bind it via .module
+  VkShaderModule sm = VK_NULL_HANDLE;
   uint32_t pushConstantsSize = 0;
 };
 
@@ -950,6 +954,9 @@ class VulkanContext final : public IContext {
   bool workaround_noYcbcrSamplerArray_ = false;
   // Adreno 840 returns no hits from a TLAS with multiple instances built with AllowUpdate - build it without and rebuild it on updates
   bool workaround_noMultiInstanceTLASUpdate_ = false;
+  // Quest 3 (Adreno 740) lacks `VK_KHR_maintenance5` - cannot use the shader module identifier path
+  // in `VkPipelineShaderStageCreateInfo`; must materialize a real `VkShaderModule` for each stage
+  bool workaround_noMaintenance5_ = false;
 
   bool has_KHR_acceleration_structure_ = false;
   bool has_KHR_ray_query_ = false;
