@@ -112,10 +112,13 @@ VkDescriptorSetLayoutBinding getDSLBinding(uint32_t binding,
                                            VkShaderStageFlags stageFlags,
                                            const VkSampler* immutableSamplers = nullptr);
 VkSpecializationInfo getPipelineShaderStageSpecializationInfo(lvk::SpecializationConstantDesc desc, VkSpecializationMapEntry* outEntries);
+// When `shaderModule` is non-VK_NULL_HANDLE, it is used in `.module` directly. Otherwise the
+// VK_KHR_maintenance5 shader-module-identifier path is used (chains `ci` into pNext, .module=NULL).
 VkPipelineShaderStageCreateInfo getPipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
                                                                  const VkShaderModuleCreateInfo& ci,
                                                                  const char* entryPoint,
-                                                                 const VkSpecializationInfo* specializationInfo);
+                                                                 const VkSpecializationInfo* specializationInfo,
+                                                                 VkShaderModule shaderModule = VK_NULL_HANDLE);
 VkBindImageMemoryInfo getBindImageMemoryInfo(const VkBindImagePlaneMemoryInfo* next, VkImage image, VkDeviceMemory memory);
 
 StageAccess getPipelineStageAccess(VkImageLayout state);

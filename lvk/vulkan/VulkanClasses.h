@@ -363,6 +363,10 @@ struct ShaderModuleState final {
       .codeSize = 0,
       .pCode = nullptr,
   };
+  // populated only on devices that lack VK_KHR_maintenance5 (see workaround_noMaintenance5_) - the
+  // shader module identifier path in VkPipelineShaderStageCreateInfo isn't usable, so we keep a
+  // real VkShaderModule alive for the lifetime of this state and bind it via .module
+  VkShaderModule sm = VK_NULL_HANDLE;
   uint32_t pushConstantsSize = 0;
 };
 
@@ -799,6 +803,9 @@ class VulkanContext final : public IContext {
   bool workaround_fixedSizeAccelStructArray_ = false;
   // Adreno GPUs do not support arrays (of any size) of combined image samplers with YCbCr immutable samplers - use one non-array sampler
   bool workaround_noYcbcrSamplerArray_ = false;
+  // Quest 3 (Adreno 740) lacks `VK_KHR_maintenance5` - cannot use the shader module identifier path
+  // in `VkPipelineShaderStageCreateInfo`; must materialize a real `VkShaderModule` for each stage
+  bool workaround_noMaintenance5_ = false;
 
   bool has_KHR_acceleration_structure_ = false;
   bool has_KHR_ray_query_ = false;
