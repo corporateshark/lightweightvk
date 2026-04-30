@@ -1075,7 +1075,18 @@ VkBindImageMemoryInfo lvk::getBindImageMemoryInfo(const VkBindImagePlaneMemoryIn
 VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
                                                                       const VkShaderModuleCreateInfo& ci,
                                                                       const char* entryPoint,
-                                                                      const VkSpecializationInfo* specializationInfo) {
+                                                                      const VkSpecializationInfo* specializationInfo,
+                                                                      VkShaderModule shaderModule) {
+  if (shaderModule) {
+    // remove this branch (and the `shaderModule` arg) once VK_KHR_maintenance5 is dropped
+    return VkPipelineShaderStageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = stage,
+        .module = shaderModule,
+        .pName = entryPoint ? entryPoint : "main",
+        .pSpecializationInfo = specializationInfo,
+    };
+  }
   return VkPipelineShaderStageCreateInfo{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .pNext = &ci,

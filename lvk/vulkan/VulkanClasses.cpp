@@ -2107,7 +2107,8 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::patchControlPoints(uint3
 }
 
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::shaderStage(VkPipelineShaderStageCreateInfo stage) {
-  if (stage.pNext) {
+  // populated stage either has a real VkShaderModule (.module) or chains a VkShaderModuleCreateInfo via .pNext
+  if (stage.pNext || stage.module) {
     LVK_ASSERT(numShaderStages_ < LVK_ARRAY_NUM_ELEMENTS(shaderStages_));
     shaderStages_[numShaderStages_++] = stage;
   }
@@ -2999,7 +3000,13 @@ void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexForma
   LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
   const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
+  if (ctx_->workaround_noMaintenance5_) {
+    // VK_KHR_maintenance5 (which exposes vkCmdBindIndexBuffer2KHR) isn't advertised on Quest 3:
+    // fall back to the original entry point; bufferSize is ignored (full buffer from offset is used)
+    vkCmdBindIndexBuffer(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, type);
+  } else {
+    vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
+  }
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
@@ -5519,22 +5526,23 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
                        compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
       .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
       .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
-      .shaderStage(taskModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si)
-                       : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
-      .shaderStage(meshModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si)
-                       : lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertModule->ci, desc.entryPointVert, &si))
-      .shaderStage(lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si))
+      .shaderStage(taskModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si, taskModule->sm)
+                              : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+      .shaderStage(meshModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si, meshModule->sm)
+                              : lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_VERTEX_BIT, vertModule->ci, desc.entryPointVert, &si, vertModule->sm))
+      .shaderStage(lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si, fragModule->sm))
       .shaderStage(tescModule ? lvk::getPipelineShaderStageCreateInfo(
-                                    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->ci, desc.entryPointTesc, &si)
+                                    VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->ci, desc.entryPointTesc, &si, tescModule->sm)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(teseModule ? lvk::getPipelineShaderStageCreateInfo(
-                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseModule->ci, desc.entryPointTese, &si)
+                                    VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseModule->ci, desc.entryPointTese, &si, teseModule->sm)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
-      .shaderStage(geomModule
-                       ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si)
-                       : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
+      .shaderStage(geomModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_GEOMETRY_BIT, geomModule->ci, desc.entryPointGeom, &si, geomModule->sm)
+                              : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .cullMode(cullModeToVkCullMode(desc.cullMode))
       .frontFace(windingModeToVkFrontFace(desc.frontFace))
       .vertexInputState(ciVertexInputState)
@@ -5644,7 +5652,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
     const ShaderModuleState* state = shaderModulesPool_.get(sm);
     if (!state || !state->ci.pCode)
       return VK_SHADER_UNUSED_KHR;
-    ciShaderStages[numShaderStages] = lvk::getPipelineShaderStageCreateInfo(flag, state->ci, "main", &siComp);
+    ciShaderStages[numShaderStages] = lvk::getPipelineShaderStageCreateInfo(flag, state->ci, "main", &siComp, state->sm);
     return numShaderStages++;
   };
 
@@ -5845,7 +5853,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(ComputePipelineHandle handle) {
     const VkComputePipelineCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .flags = 0,
-        .stage = lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, sm->ci, cps->desc_.entryPoint, &siComp),
+        .stage = lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, sm->ci, cps->desc_.entryPoint, &siComp, sm->sm),
         .layout = cps->pipelineLayout_,
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = -1,
@@ -6050,6 +6058,11 @@ void lvk::VulkanContext::destroy(lvk::ShaderModuleHandle handle) {
     return;
   }
 
+  if (state->sm) {
+    // a shader module can be destroyed while pipelines created using its shaders are still in use
+    // https://registry.khronos.org/vulkan/specs/1.3/html/chap9.html#vkDestroyShaderModule
+    vkDestroyShaderModule(vkDevice_, state->sm, nullptr);
+  }
   free((void*)state->ci.pCode);
 
   shaderModulesPool_.destroy(handle);
@@ -6481,8 +6494,15 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
 
   memcpy((void*)ci.pCode, spirv, numBytes);
 
+  VkShaderModule sm = VK_NULL_HANDLE;
+  if (workaround_noMaintenance5_) {
+    VK_ASSERT(vkCreateShaderModule(vkDevice_, &ci, nullptr, &sm));
+    VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SHADER_MODULE, (uint64_t)sm, debugName));
+  }
+
   return {
       .ci = ci,
+      .sm = sm,
       .pushConstantsSize = pushConstantsSize,
   };
 }
@@ -7336,6 +7356,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   workaround_fixedSizeAccelStructArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno") != nullptr;
   // Adreno 840 cannot handle arrays (of any size) of combined image samplers with YCbCr immutable samplers
   workaround_noYcbcrSamplerArray_ = strstr(vkPhysicalDeviceProperties2_.properties.deviceName, "Adreno (TM) 840") != nullptr;
+  // Quest 3 does not advertise VK_KHR_maintenance5: cannot rely on the shader-module-identifier pipeline path
+  // LVK must materialize a real VkShaderModule for each pipeline stage instead
+  workaround_noMaintenance5_ = !hasExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, allDeviceExtensions);
 
   LLOGL("Vulkan physical device: %s\n", vkPhysicalDeviceProperties2_.properties.deviceName);
   LLOGL("           API version: %i.%i.%i.%i\n",
@@ -7814,6 +7837,23 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .ppEnabledExtensionNames = enabledDeviceExtensionNames_.data(),
       .pEnabledFeatures = &deviceFeatures10,
   };
+  if (workaround_noMaintenance5_) {
+    // Quest 3 / Adreno 740 driver bug (Vulkan 1.3.295): the first vkCreateDevice call in a process
+    // fails with VK_ERROR_FEATURE_NOT_PRESENT when requesting non-trivial features. A prior minimal
+    // vkCreateDevice + vkDestroyDevice "warms up" the driver so the real call below succeeds.
+    const float qprio = 1.0f;
+    const VkDeviceQueueCreateInfo qInfo = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                                           .queueFamilyIndex = deviceQueues_.graphicsQueueFamilyIndex,
+                                           .queueCount = 1,
+                                           .pQueuePriorities = &qprio};
+    const VkDeviceCreateInfo warmupCi = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qInfo};
+    VkDevice warmupDev = VK_NULL_HANDLE;
+    vkCreateDevice(vkPhysicalDevice_, &warmupCi, nullptr, &warmupDev);
+    if (warmupDev) {
+      vkDestroyDevice(warmupDev, nullptr);
+    }
+  }
   VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
 
   volkLoadDevice(vkDevice_);
