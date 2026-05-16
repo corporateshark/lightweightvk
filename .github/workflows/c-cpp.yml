@@ -54,7 +54,7 @@ jobs:
 #      - name: Prepare Vulkan SDK
 #        uses: jakoch/install-vulkan-sdk-action@v1.5.2
 #        with:
-#            vulkan_version: 1.4.341.0
+#            vulkan_version: 1.4.350.0
 #            install_runtime: true
 #            cache: true
 #            stripdown: true
@@ -182,7 +182,7 @@ jobs:
         - name: Prepare Vulkan SDK
           uses: jakoch/install-vulkan-sdk-action@v1.5.2
           with:
-            vulkan_version: 1.4.341.0
+            vulkan_version: 1.4.350.0
             install_runtime: true
             cache: true
             stripdown: true
@@ -231,7 +231,7 @@ jobs:
         - name: Install Vulkan SDK
           uses: jakoch/install-vulkan-sdk-action@v1.5.2
           with:
-            vulkan_version: 1.4.341.0
+            vulkan_version: 1.4.350.0
             install_runtime: true
             cache: true
             stripdown: true
@@ -291,7 +291,7 @@ jobs:
         - name: Install Vulkan SDK
           uses: jakoch/install-vulkan-sdk-action@v1.5.2
           with:
-            vulkan_version: 1.4.341.0
+            vulkan_version: 1.4.350.0
             install_runtime: true
             cache: false
             stripdown: true
