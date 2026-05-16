@@ -964,19 +964,19 @@ bool enableShadows_ = true;
 bool enableAO_ = true;
 
 int aoSamples_ = 2;
-float aoRadius_ = 16.0f;
-float aoPower_ = 2.0f;
+float aoRadius_ = 8.0f;
+float aoPower_ = 1.0f;
 bool timeVaryingNoise = true;
 
 bool enableSpatialHash_ = true;
 #if defined(ANDROID)
-float spatialHashPixelSize_ = 10.0f;
-float spatialHashMinCellSize_ = 0.350f;
-#else
-float spatialHashPixelSize_ = 6.0f;
+float spatialHashPixelSize_ = 8.0f;
 float spatialHashMinCellSize_ = 0.250f;
+#else
+float spatialHashPixelSize_ = 4.0f;
+float spatialHashMinCellSize_ = 0.150f;
 #endif
-int spatialHashMaxSamples_ = 500;
+int spatialHashMaxSamples_ = 192;
 bool enableFiltering_ = false;
 
 uint32_t frameId = 0;
@@ -1476,8 +1476,8 @@ VULKAN_APP_MAIN {
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableAO_);
           ImGui::Checkbox("Time-varying noise", &timeVaryingNoise);
-          ImGui::SliderFloat("AO power", &aoPower_, 1.0f, 2.0f);
-          ImGui::SliderFloat("AO radius", &aoRadius_, 0.5f, 16.0f);
+          ImGui::SliderFloat("AO power", &aoPower_, 0.5f, 2.0f);
+          ImGui::SliderFloat("AO radius", &aoRadius_, 1.0f, 16.0f);
           imGuiPushFlagsAndStyles(!enableSpatialHash_);
           ImGui::SliderInt("AO samples", &aoSamples_, 1, 32);
           imGuiPopFlagsAndStyles();
@@ -1487,7 +1487,7 @@ VULKAN_APP_MAIN {
           imGuiPushFlagsAndStyles(enableSpatialHash_);
           ImGui::SliderFloat("Pixel size (sp)", &spatialHashPixelSize_, 1.0f, 10.0f);
           ImGui::SliderFloat("Min cell size", &spatialHashMinCellSize_, 0.05f, 0.5f);
-          ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 1000);
+          ImGui::SliderInt("Max samples/cell", &spatialHashMaxSamples_, 16, 250);
           ImGui::Checkbox("Trilinear filtering", &enableFiltering_);
           resetHashMap = ImGui::Button("Reset hash map");
           ImGui::Unindent(indentSize);
