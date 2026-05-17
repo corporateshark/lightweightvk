@@ -7100,6 +7100,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .storageBuffer16BitAccess = VK_TRUE,
       .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported
       .multiview = vkFeatures11_.multiview, // enable if supported
+      .variablePointersStorageBuffer = VK_TRUE,
       .samplerYcbcrConversion = VK_TRUE,
       .shaderDrawParameters = VK_TRUE,
   };
