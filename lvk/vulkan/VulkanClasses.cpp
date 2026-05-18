@@ -3435,10 +3435,14 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
 
   LVK_ASSERT(stagingBuffer);
 
+  const size_t origDstOffset = dstOffset;
+  const size_t origSize = size;
+
   while (size) {
     // get next staging buffer free offset
     MemoryRegionDesc desc = getNextFreeOffset((uint32_t)size);
     const uint32_t chunkSize = std::min((uint64_t)size, desc.size_);
+    const bool isLast = (chunkSize == size);
 
     // copy data into staging buffer
     stagingBuffer->bufferSubData(ctx_, desc.offset_, chunkSize, data);
@@ -3452,35 +3456,27 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
 
     const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
     vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, buffer.vkBuffer_, 1, &copy);
-    VkBufferMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = 0,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = buffer.vkBuffer_,
-        .offset = dstOffset,
-        .size = chunkSize,
-    };
-    VkPipelineStageFlags dstMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    // one barrier covering the full destination range
+    if (isLast) {
+      const VkBufferMemoryBarrier2 barrier = {
+          .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+          .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+          .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+          .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+          .buffer = buffer.vkBuffer_,
+          .offset = origDstOffset,
+          .size = origSize,
+      };
+      const VkDependencyInfo depInfo = {
+          .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+          .bufferMemoryBarrierCount = 1,
+          .pBufferMemoryBarriers = &barrier,
+      };
+      vkCmdPipelineBarrier2(wrapper.cmdBuf_, &depInfo);
     }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_INDEX_READ_BIT;
-    }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
-      dstMask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-      barrier.dstAccessMask |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-    }
-    if (buffer.vkUsageFlags_ & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR) {
-      dstMask |= VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-      barrier.dstAccessMask |= VK_ACCESS_MEMORY_READ_BIT;
-    }
-    vkCmdPipelineBarrier(
-        wrapper.cmdBuf_, VK_PIPELINE_STAGE_TRANSFER_BIT, dstMask, VkDependencyFlags{}, 0, nullptr, 1, &barrier, 0, nullptr);
     desc.handle_ = ctx_.immediate_->submit(wrapper);
     regions_.push_back(desc);
 
