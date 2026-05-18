@@ -3073,7 +3073,7 @@ void lvk::CommandBuffer::cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQ
 void lvk::CommandBuffer::cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) {
   VkQueryPool vkPool = *ctx_->queriesPool_.get(pool);
 
-  vkCmdWriteTimestamp(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, vkPool, query);
+  vkCmdWriteTimestamp2(wrapper_->cmdBuf_, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, vkPool, query);
 }
 
 void lvk::CommandBuffer::cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers) {
