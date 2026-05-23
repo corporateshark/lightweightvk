@@ -94,5 +94,8 @@ https://github.com/wolfpld/tracy/blob/master/LICENSE
 volk
 https://github.com/zeux/volk/blob/master/LICENSE.md
 
+Vulkan-Headers
+https://github.com/KhronosGroup/Vulkan-Headers/blob/main/LICENSE.md
+
 Vulkan Memory Allocator
 https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/blob/master/LICENSE.txt
