@@ -12,7 +12,7 @@ The main goals of LightweightVK:
 
 Designed for rapid prototyping of modern Vulkan-based renderers.
 
-There are **no plans to keep this fork in sync with upstream**, since the **API was completely redesigned** in a *bindless* manner.
+There are **no plans to keep this fork in sync with the IGL upstream**, since the **API was completely redesigned** in a *bindless* manner.
 
 Discord: https://discord.com/invite/bEyHyKCrvq
 
