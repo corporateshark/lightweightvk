@@ -1,9 +1,11 @@
 /*
-* LightweightVK
-*
-* This source code is licensed under the MIT license found in the
-* LICENSE file in the root directory of this source tree.
-*/
+ * LightweightVK
+ *
+ * Copyright (c) 2023-2026 Sergey Kosarevsky and contributors.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #pragma once
 
@@ -20,12 +22,12 @@ class ImGuiRenderer {
  public:
   explicit ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF = nullptr, float fontSizePixels = 24.0f);
   ~ImGuiRenderer();
-  
+
   void updateFont(const char* defaultFontTTF, float fontSizePixels);
 
   void beginFrame(const lvk::Framebuffer& desc);
   void endFrame(lvk::ICommandBuffer& cmdBuffer);
-  
+
  private:
   lvk::Holder<lvk::RenderPipelineHandle> createNewPipelineState(const lvk::Framebuffer& desc);
 

@@ -1,3 +1,5 @@
+# Copyright (c) 2023-2026 Sergey Kosarevsky and contributors.
+#
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -301,7 +303,7 @@ if(LVK_WITH_SDL3)
   lvk_set_folder(SDL3-static  "third-party/SDL3")
   # cmake-format: on
 endif()
-  
+
 if(LVK_WITH_SAMPLES)
   include_directories("third-party/deps/src")
   include_directories("third-party/deps/src/glm")
