@@ -91,6 +91,15 @@ https://github.com/libsdl-org/SDL/blob/main/LICENSE.txt
 Slang
 https://github.com/shader-slang/slang/blob/master/LICENSE
 
+SPIRV-Headers
+https://github.com/KhronosGroup/SPIRV-Headers/blob/main/LICENSE
+
+SPIRV-Reflect
+https://github.com/KhronosGroup/SPIRV-Reflect/blob/main/LICENSE
+
+SPIRV-Tools
+https://github.com/KhronosGroup/SPIRV-Tools/blob/main/LICENSE
+
 stb
 https://github.com/nothings/stb/blob/master/LICENSE
 
