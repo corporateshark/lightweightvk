@@ -305,7 +305,7 @@ uint32_t lvk::VertexInput::getVertexSize() const {
 
 #if LVK_WITH_GLFW
 lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& outHeight, bool resizable, bool headless) {
-  if (!glfwInit()) {
+  if (headless || !glfwInit()) {
     LVK_ASSERT_MSG(headless, "glfwInit() failed. Make sure the headless mode is enabled");
     return nullptr;
   }
