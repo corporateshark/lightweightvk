@@ -3953,8 +3953,8 @@ void lvk::VulkanStagingDevice::waitAndReset() {
 }
 
 lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window, void* display, VkSurfaceKHR surface)
-: config_(config)
-, vkSurface_(surface) {
+: vkSurface_(surface)
+, config_(config) {
   LVK_PROFILER_THREAD("MainThread");
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
