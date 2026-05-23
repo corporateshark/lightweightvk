@@ -1887,11 +1887,6 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
       .primitiveRestartEnable = VK_FALSE,
   })
-, tessellationState_({
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
-      .flags = 0,
-      .patchControlPoints = 0,
-  })
 , rasterizationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .flags = 0,
@@ -1946,6 +1941,11 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
           },
       .minDepthBounds = 0.0f,
       .maxDepthBounds = 1.0f,
+  })
+, tessellationState_({
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
+      .flags = 0,
+      .patchControlPoints = 0,
   }) {}
 
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicState state) {
