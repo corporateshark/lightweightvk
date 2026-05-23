@@ -67,6 +67,9 @@ https://github.com/ocornut/imgui/blob/master/LICENSE.txt
 implot
 https://github.com/epezent/implot/blob/master/LICENSE
 
+KTX-Software
+https://github.com/KhronosGroup/KTX-Software/blob/main/LICENSE.md
+
 ldrutils
 https://github.com/corporateshark/ldrutils/blob/master/LICENSE.md
 
