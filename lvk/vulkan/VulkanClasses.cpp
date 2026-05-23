@@ -6001,8 +6001,6 @@ lvk::Result lvk::VulkanContext::upload(lvk::TextureHandle handle,
     return Result(Result::Code::ArgumentOutOfRange);
   }
 
-  const uint32_t numLayers = std::max(range.numLayers, 1u);
-
   VkFormat vkFormat = texture->vkImageFormat_;
 
   if (texture->vkType_ == VK_IMAGE_TYPE_3D) {
@@ -6482,7 +6480,6 @@ lvk::AccelStructSizes lvk::VulkanContext::getAccelStructSizes(const AccelStructD
     return {};
   }
 
-  Result result;
   VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
   VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
   switch (desc.type) {

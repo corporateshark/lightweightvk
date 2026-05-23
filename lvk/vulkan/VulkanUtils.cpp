@@ -204,7 +204,6 @@ lvk::Result lvk::getResultFromVkResult(VkResult result) {
 }
 
 VkFormat lvk::formatToVkFormat(lvk::Format format) {
-  using TextureFormat = ::lvk::Format;
   switch (format) {
   case lvk::Format_Invalid:
     return VK_FORMAT_UNDEFINED;

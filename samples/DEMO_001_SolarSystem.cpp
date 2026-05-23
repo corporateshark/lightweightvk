@@ -1155,8 +1155,6 @@ Scene createSolarSystemScene(VulkanApp& app) {
   const vec3 X = vec3(1.0f, 0.0f, 0.0f);
   const vec3 Z = vec3(0.0f, 0.0f, 1.0f);
 
-  lvk::IContext* ctx = app.ctx_.get();
-
 #if !defined(ANDROID)
 #if LVK_WITH_GLFW
   app.addKeyCallback([](GLFWwindow* window, int key, int, int action, int) {
@@ -1669,12 +1667,6 @@ VULKAN_APP_MAIN {
     uint32_t firstInstance;
   };
 
-  auto updateIndirectBuffer = [](const std::vector<RenderOp>& ROPs) -> std::vector<DrawIndirectCommand> {
-    for (const RenderOp& ROP : ROPs) {
-    }
-    return {};
-  };
-
   std::vector<mat4> modelMatrices;
   std::vector<mat4> normalMatrices;
   modelMatrices.resize(scene.meshes.size());
@@ -1839,7 +1831,6 @@ VULKAN_APP_MAIN {
       ImGui::PopStyleVar();
       ImGui::EndDisabled();
     };
-    const float indentSize = 16.0f;
     ImGui::Begin("Keyboard hints:", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
 #if !defined(ANDROID)
     ImGui::Text("W/S/A/D - camera movement");
