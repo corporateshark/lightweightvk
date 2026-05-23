@@ -81,7 +81,7 @@ Workflow file: `.github/workflows/c-cpp.yml`. Runs on every push and PR to any b
 4. **Ubuntu - Clang (screenshot tests)** — Debug build with `LVK_DEPLOY_SCREENSHOT_TESTS=ON`, runs samples headless at 1280×720, captures screenshots, then compares against reference images using `compare_screenshots.py` (threshold 1.0). Logs and screenshots are uploaded as artifacts (3-day retention)
 5. **macOS - Clang (Xcode)** — Debug build, Tracy disabled, no screenshot tests
 
-All jobs use Vulkan SDK 1.4.341.0 and cache `third-party/deps` keyed on `bootstrap-deps.json` hash.
+All jobs use Vulkan SDK 1.4.350.0 and cache `third-party/deps` keyed on `bootstrap-deps.json` hash.
 
 To check CI status: `gh run list` or `gh run view <run-id>`.
 
