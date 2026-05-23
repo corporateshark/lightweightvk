@@ -3,4 +3,5 @@ Checks: '
 -misc-misplaced-const,
 -modernize-use-using,
 -bugprone-exception-escape,
+-readability-braces-around-statements,
 '
