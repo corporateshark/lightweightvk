@@ -85,6 +85,9 @@ https://github.com/corporateshark/minilog/blob/main/LICENSE
 OpenXR SDK
 https://github.com/KhronosGroup/OpenXR-SDK/blob/main/LICENSE
 
+SDL
+https://github.com/libsdl-org/SDL/blob/main/LICENSE.txt
+
 stb
 https://github.com/nothings/stb/blob/master/LICENSE
 
