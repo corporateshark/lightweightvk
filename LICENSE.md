@@ -40,9 +40,6 @@ Amazon Lumberyard Bistro
 https://developer.nvidia.com/orca/amazon-lumberyard-bistro
 https://casual-effects.com/data/
 
-bc7env
-https://github.com/richgel999/bc7enc/blob/master/LICENSE
-
 Bootstrap
 https://github.com/corporateshark/bootstrapping/blob/master/LICENSE
 
@@ -51,9 +48,6 @@ https://github.com/KhronosGroup/glTF-Sample-Models/blob/master/2.0/DamagedHelmet
 
 fast_obj
 https://github.com/thisistherk/fast_obj/blob/master/LICENSE
-
-fmt
-https://github.com/fmtlib/fmt/blob/master/LICENSE.rst
 
 glfw
 https://github.com/glfw/glfw/blob/master/LICENSE.md
@@ -64,9 +58,6 @@ https://github.com/g-truc/glm
 glslang
 https://github.com/KhronosGroup/glslang/blob/main/LICENSE.txt
 
-googletest
-https://github.com/google/googletest/blob/main/LICENSE
-
 IGL
 https://github.com/facebook/igl/blob/main/LICENSE.md
 
@@ -75,9 +66,6 @@ https://github.com/ocornut/imgui/blob/master/LICENSE.txt
 
 implot
 https://github.com/epezent/implot/blob/master/LICENSE
-
-ios-cmake
-https://github.com/leetal/ios-cmake/blob/master/LICENSE.md
 
 ldrutils
 https://github.com/corporateshark/ldrutils/blob/master/LICENSE.md
