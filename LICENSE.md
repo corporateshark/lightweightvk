@@ -88,6 +88,9 @@ https://github.com/KhronosGroup/OpenXR-SDK/blob/main/LICENSE
 SDL
 https://github.com/libsdl-org/SDL/blob/main/LICENSE.txt
 
+Slang
+https://github.com/shader-slang/slang/blob/master/LICENSE
+
 stb
 https://github.com/nothings/stb/blob/master/LICENSE
 
