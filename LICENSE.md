@@ -82,6 +82,9 @@ https://github.com/zeux/meshoptimizer/blob/master/LICENSE.md
 minilog
 https://github.com/corporateshark/minilog/blob/main/LICENSE
 
+OpenXR SDK
+https://github.com/KhronosGroup/OpenXR-SDK/blob/main/LICENSE
+
 stb
 https://github.com/nothings/stb/blob/master/LICENSE
 
