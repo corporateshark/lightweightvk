@@ -6189,7 +6189,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     }
     if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
       // Note how nonuniformEXT() should be used:
-      // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/nonuniform-quads.frag#L33-L39
+      // https://github.com/KhronosGroup/Vulkan-Samples/blob/main/shaders/descriptor_indexing/glsl/nonuniform-quads.frag#L38
       sourcePatched +=
           "#version 460\n"
           "#extension GL_EXT_buffer_reference_uvec2 : require\n"
