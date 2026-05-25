@@ -118,9 +118,8 @@ struct Materials {
   Material mtl[];
 };
 
-struct AOHashChecksums { uint v[]; };
-struct AOSpatialData { uint v[]; };
-struct AOHashTime { uint v[]; };
+// 64-bit slot: [63:56] frameLow | [55:32] checksum (0 = empty) | [31:16] hits | [15:0] samples
+struct AOHashSlot { uint64_t v[]; };
 
 [[vk::constant_id(0)]] const bool kEnableSpatialHash = true;
 
@@ -136,9 +135,7 @@ struct PushConstants {
   float aoRadius;
   float aoPower;
   uint frameId;
-  AOHashChecksums* hashChecksums;
-  AOSpatialData* spatialData;
-  AOHashTime* hashTime;
+  AOHashSlot* hashSlot;
   float sp;
   float smin;
   uint maxSamples;
@@ -250,6 +247,15 @@ uint tea(uint val0, uint val1) {
   return v0;
 }
 
+float3 sampleCosineHemisphere(inout uint seed, float3 tangent, float3 bitangent, float3 n) {
+  float r1 = rnd(seed);
+  float r2 = rnd(seed);
+  float sq = sqrt(1.0 - r2);
+  float phi = 2.0 * 3.141592653589 * r1;
+  float3 d = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+  return d.x * tangent + d.y * bitangent + d.z * n;
+}
+
 // PCG hash (https://www.pcg-random.org/)
 uint pcg(uint v) {
   uint state = v * 747796405u + 2891336453u;
@@ -270,30 +276,111 @@ uint xxhash32(uint p) {
   return h32 ^ (h32 >> 16u);
 }
 
+void bumpFrame(uint cellIndex, uint frameLow) {
+  uint64_t cur;
+  InterlockedCompareExchange(pc.hashSlot->v[cellIndex], 0, 0, cur);
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    if (uint(cur >> 56) == frameLow) return;
+    uint64_t fresh = ((cur << 8) >> 8) | (uint64_t(frameLow) << 56); // clear high byte, OR new frameLow
+    uint64_t prev;
+    InterlockedCompareExchange(pc.hashSlot->v[cellIndex], cur, fresh, prev);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+// CAS-loop halve of samples and hits. Seeded with prevData so we never CAS against literal 0 (Adreno link bug).
+void halve(uint cellIndex, uint64_t cur) {
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    uint s = uint(cur) & 0xFFFFu;
+    uint h = min((uint(cur) >> 16u) & 0xFFFFu, s);
+    uint newLow = ((h >> 1u) << 16u) | (s >> 1u);
+    uint64_t newSlot = (cur & 0xFFFFFFFF00000000ull) | uint64_t(newLow);
+    uint64_t prev;
+    InterlockedCompareExchange(pc.hashSlot->v[cellIndex], cur, newSlot, prev);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+// CAS-loop undo of our atomicAdd: subtract from low 32 bits only, preserve high 32.
+void undoAdd(uint cellIndex, uint64_t cur, uint hit) {
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    uint cur_hits = (uint(cur) >> 16u) & 0xFFFFu;
+    uint dec_hits = (hit > 0u && cur_hits > 0u) ? 1u : 0u;
+    uint dec = 1u | (dec_hits << 16u);
+    uint64_t newSlot = (cur & 0xFFFFFFFF00000000ull) | uint64_t(uint(cur) - dec);
+    uint64_t prev;
+    InterlockedCompareExchange(pc.hashSlot->v[cellIndex], cur, newSlot, prev);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+void accumulateAndMaybeHalve(uint cellIndex, uint hit) {
+  uint64_t addend = uint64_t((hit << 16u) + 1u);
+  uint64_t prevData;
+  InterlockedAdd(pc.hashSlot->v[cellIndex], addend, prevData);
+  uint prevSamples = uint(prevData) & 0xFFFFu;
+  // Cell already at cap when we arrived — undo so samples can't race past cap.
+  if (prevSamples >= pc.maxSamples) {
+    undoAdd(cellIndex, prevData, hit);
+    return;
+  }
+  // Only the thread landing exactly on cap halves — avoids cascading halves.
+  if (prevSamples + 1u == pc.maxSamples) halve(cellIndex, prevData);
+}
+
+bool isCellReady(uint dataLow) {
+  return (dataLow & 0xFFFFu) >= 4u;
+}
+
+// Returns -1.0 when the cell isn't ready yet, otherwise visibility in [0,1] (1 = visible).
+float cellVisibility(uint dataLow) {
+  uint samples = dataLow & 0xFFFFu;
+  uint hits = min((dataLow >> 16u) & 0xFFFFu, samples);
+  if (samples < 4u) return -1.0;
+  return float(samples - hits) / float(samples);
+}
+
+// Hash the (cell-position, cell-size, normal) tuple to a bucket base index and a 24-bit checksum.
 // Gautron 2020: "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing"
 // normalHashPCG/normalHashXXH are precomputed from the quantized normal to avoid redundant work across LODs
-uint spatialHashFindOrInsert(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+void computeBucket(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH, out uint baseCell, out uint checksum) {
   int3 p = int3(floor(position / cellSize));
   uint cs = uint(cellSize * 10000.0);
   uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
-  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u); // hashMapSize/4 buckets
-  uint baseCell = bucketIndex << 2u;                           // first cell in the bucket
-  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) +
-                  xxhash32(uint(p.z) + normalHashXXH))));
-  checksum = max(checksum, 1u);
-  // linear probing within the bucket (4 contiguous slots = 16 bytes, fits in one cache line)
+  baseCell = (hashKey & ((pc.hashMapSize >> 2u) - 1u)) << 2u;
+  checksum = max(xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH)))) & 0xFFFFFFu, 1u);
+}
+
+uint spatialHashFindOrInsert(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  uint baseCell, checksum;
+  computeBucket(position, cellSize, normalHashPCG, normalHashXXH, baseCell, checksum);
+  // Phase 1: look for our key already in the bucket - prevents a stale slot's eviction from creating a duplicate when
+  // our key is already living at a later slot in the same bucket
+  for (uint i = 0u; i < 4u; i++) {
+    if ((uint(pc.hashSlot->v[baseCell + i] >> 32) & 0xFFFFFFu) == checksum) return baseCell + i;
+  }
+  // Phase 2: install empty slot first, evict a stale cell otherwise
+  uint frameLow = pc.frameId & 0xFFu;
+  uint64_t newSlot = (uint64_t(frameLow) << 56) | (uint64_t(checksum) << 32);
+  uint64_t empty = 0ull;
+  // linear probing within the bucket (4 contiguous slots = 32 bytes, fits in one cache line)
   for (uint i = 0u; i < 4u; i++) {
     uint cellIndex = baseCell + i;
-    uint prev;
-    InterlockedCompareExchange(pc.hashChecksums->v[cellIndex], 0u, checksum, prev);
-    if (prev == 0u || prev == checksum)
+    uint64_t prev;
+    InterlockedCompareExchange(pc.hashSlot->v[cellIndex], empty, newSlot, prev);
+    if (prev == empty || (uint(prev >> 32) & 0xFFFFFFu) == checksum)
       return cellIndex;
-    if (pc.frameId - pc.hashTime->v[cellIndex] > 1) {
-      uint dummy;
-      InterlockedExchange(pc.hashChecksums->v[cellIndex], checksum, dummy);
-      InterlockedExchange(pc.spatialData->v[cellIndex], 0u, dummy);
-      InterlockedExchange(pc.hashTime->v[cellIndex], pc.frameId, dummy);
-      return cellIndex;
+    uint storedFrame = uint(prev >> 56);
+    uint age = (frameLow - storedFrame) & 0xFFu; // wraps every 256 frames; safe for any threshold << 256
+    if (age > 3u) { // tolerate a few missed bumpFrame()s (best-effort)
+      uint64_t claim;
+      InterlockedCompareExchange(pc.hashSlot->v[cellIndex], prev, newSlot, claim);
+      // won, or another thread raced ahead and installed *our* key in the same slot
+      if (claim == prev || (uint(claim >> 32) & 0xFFFFFFu) == checksum)
+        return cellIndex;
     }
   }
   return 0xFFFFFFFFu;
@@ -301,15 +388,10 @@ uint spatialHashFindOrInsert(float3 position, float cellSize, uint normalHashPCG
 
 // Read-only hash lookup - no allocation, no atomics. Returns cellIndex or 0xFFFFFFFFu if not found.
 uint spatialHashFind(float3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
-  int3 p = int3(floor(position / cellSize));
-  uint cs = uint(cellSize * 10000.0);
-  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
-  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u);
-  uint baseCell = bucketIndex << 2u;
-  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH))));
-  checksum = max(checksum, 1u);
+  uint baseCell, checksum;
+  computeBucket(position, cellSize, normalHashPCG, normalHashXXH, baseCell, checksum);
   for (uint i = 0u; i < 4u; i++) {
-    uint stored = pc.hashChecksums->v[baseCell + i];
+    uint stored = uint(pc.hashSlot->v[baseCell + i] >> 32) & 0xFFFFFFu;
     if (stored == checksum) return baseCell + i;
     if (stored == 0u) return 0xFFFFFFFFu;
   }
@@ -318,10 +400,9 @@ uint spatialHashFind(float3 position, float cellSize, uint normalHashPCG, uint n
 
 // Adaptive cell size (Gautron 2020, Eq. 2-3): projects to ~pc.sp pixels on screen, quantized to power-of-2.
 float computeCellSize(float3 worldPos) {
-  float3 camPos = -(mul(float3x3(pc.perFrame->view), pc.perFrame->view[3].xyz));
+  float3 camPos = -(transpose(float3x3(pc.perFrame->view)) * pc.perFrame->view[3].xyz);
   float dist = distance(camPos, worldPos);
-  // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
-  float h = dist / pc.perFrame->proj[1][1];
+  float h = dist / pc.perFrame->proj[1][1]; // h = dist * tan(fov/2), but fov = 2*atan(1/proj[1][1]), so tan(atan(x))=x and h = dist/proj[1][1]
   float sw = pc.sp * (h * 2.0) / pc.resolutionY;
   return exp2(floor(log2(max(sw / pc.smin, 1.0)))) * pc.smin;
 }
@@ -347,111 +428,89 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
       uint nhPCG = pcg(uint(nn.x) + pcg(uint(nn.y) + pcg(uint(nn.z))));
       uint nhXXH = xxhash32(uint(nn.x) + xxhash32(uint(nn.y) + xxhash32(uint(nn.z))));
 
+      uint frameLow = pc.frameId & 0xFFu;
       // always find LOD 0
       uint cell0 = spatialHashFindOrInsert(vtx.worldPos, swd, nhPCG, nhXXH);
-      uint data0 = (cell0 != 0xFFFFFFFFu) ? pc.spatialData->v[cell0] : 0u;
+      uint data0 = (cell0 != 0xFFFFFFFFu) ? uint(pc.hashSlot->v[cell0]) : 0u;
       uint samples0 = data0 & 0xFFFFu;
+      bool ready0 = isCellReady(data0);
 
-      if (samples0 >= 4u) {
-        // --- fast path: LOD 0 has enough data, skip coarser LODs ---
-        if (samples0 < pc.maxSamples) {
-          float r1 = rnd(seed);
-          float r2 = rnd(seed);
-          float sq = sqrt(1.0 - r2);
-          float phi = 2.0 * 3.141592653589 * r1;
-          float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-          direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
-          RayQuery<RAY_FLAG_NONE> rayQuery;
-          uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
-          uint prevData;
-          InterlockedAdd(pc.spatialData->v[cell0], (hit << 16u) + 1u, prevData);
+      // trace one ray, shared across all LODs that need a sample this frame
+      uint hit = 0u;
+      bool lod0NeedsRay = cell0 != 0xFFFFFFFFu && samples0 < pc.maxSamples;
+      if (!ready0 || lod0NeedsRay) {
+        float3 direction = sampleCosineHemisphere(seed, tangent, bitangent, n);
+        RayQuery<RAY_FLAG_NONE> rayQuery;
+        hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+      }
+
+      // accumulate to LOD 0
+      if (cell0 != 0xFFFFFFFFu) {
+        if (lod0NeedsRay) accumulateAndMaybeHalve(cell0, hit);
+        bumpFrame(cell0, frameLow);
+      }
+
+      // LOD 0 not converged: also fill coarser LODs so the fallback render has data
+      uint cachedData[4] = { data0, 0u, 0u, 0u };
+      if (!ready0) {
+        float lodSize = swd * 2.0;
+        for (int lod = 1; lod < 4; lod++) {
+          uint ci = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
+          if (ci != 0xFFFFFFFFu) {
+            cachedData[lod] = uint(pc.hashSlot->v[ci]);
+            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples)
+              accumulateAndMaybeHalve(ci, hit);
+            bumpFrame(ci, frameLow);
+          }
+          lodSize *= 2.0;
         }
-        if (pc.hashTime->v[cell0] != pc.frameId) {
-          uint dummy;
-          InterlockedExchange(pc.hashTime->v[cell0], pc.frameId, dummy);
-        }
-        if (pc.enableFiltering) {
-          // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
-          float3 cellPos = vtx.worldPos / swd - 0.5;
-          int3 base = int3(floor(cellPos));
-          float3 f = fract(cellPos);
-          float totalWeight = 0.0;
-          float totalAO = 0.0;
-          for (int dz = 0; dz < 2; dz++) {
-            for (int dy = 0; dy < 2; dy++) {
-              for (int dx = 0; dx < 2; dx++) {
-                float3 neighborPos = (float3(base + int3(dx, dy, dz)) + 0.5) * swd;
-                uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
-                if (ci != 0xFFFFFFFFu) {
-                  uint d = pc.spatialData->v[ci];
-                  uint s = d & 0xFFFFu;
-                  if (s >= 4u) {
-                    float w = (dx == 0 ? (1.0 - f.x) : f.x) *
-                              (dy == 0 ? (1.0 - f.y) : f.y) *
-                              (dz == 0 ? (1.0 - f.z) : f.z);
-                    totalWeight += w;
-                    totalAO += w * (1.0 - float(d >> 16u) / float(s));
-                  }
+      }
+
+      if (ready0 && pc.enableFiltering) {
+        // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
+        float3 cellPos = vtx.worldPos / swd - 0.5;
+        int3 base = int3(floor(cellPos));
+        float3 f = fract(cellPos);
+        float totalWeight = 0.0;
+        float totalAO = 0.0;
+        for (int dz = 0; dz < 2; dz++) {
+          for (int dy = 0; dy < 2; dy++) {
+            for (int dx = 0; dx < 2; dx++) {
+              float3 neighborPos = (float3(base + int3(dx, dy, dz)) + 0.5) * swd;
+              uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
+              if (ci != 0xFFFFFFFFu) {
+                float vis = cellVisibility(uint(pc.hashSlot->v[ci]));
+                if (vis >= 0.0) {
+                  float w = (dx == 0 ? (1.0 - f.x) : f.x) *
+                            (dy == 0 ? (1.0 - f.y) : f.y) *
+                            (dz == 0 ? (1.0 - f.z) : f.z);
+                  totalWeight += w;
+                  totalAO += w * vis;
                 }
               }
             }
           }
-          occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
-        } else {
-          occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
         }
+        occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
       } else {
-        // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
-        uint cells[4];
-        cells[0] = cell0;
-        float lodSize = swd * 2.0;
-        for (int lod = 1; lod < 4; lod++) {
-          cells[lod] = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
-          lodSize *= 2.0;
-        }
-        float r1 = rnd(seed);
-        float r2 = rnd(seed);
-        float sq = sqrt(1.0 - r2);
-        float phi = 2.0 * 3.141592653589 * r1;
-        float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
-        RayQuery<RAY_FLAG_NONE> rayQuery;
-        uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
-        // read spatialData once per LOD, cache for reuse in the render selection below
-        uint cachedData[4];
-        for (int lod = 0; lod < 4; lod++) {
-          cachedData[lod] = 0u;
-          if (cells[lod] != 0xFFFFFFFFu) {
-            cachedData[lod] = pc.spatialData->v[cells[lod]];
-            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples) {
-              uint prevData;
-              InterlockedAdd(pc.spatialData->v[cells[lod]], (hit << 16u) + 1u, prevData);
-            }
-            if (pc.hashTime->v[cells[lod]] != pc.frameId) {
-              uint dummy;
-              InterlockedExchange(pc.hashTime->v[cells[lod]], pc.frameId, dummy);
-            }
+        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
+        uint renderData = ready0 ? data0 : 0u;
+        if (!ready0) {
+          for (int lod = 3; lod >= 0; lod--) {
+            if (isCellReady(cachedData[lod]))
+              renderData = cachedData[lod];
           }
         }
-        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
-        uint renderData = 0u;
-        for (int lod = 3; lod >= 0; lod--) {
-          if ((cachedData[lod] & 0xFFFFu) >= 4u)
-            renderData = cachedData[lod];
+        if (renderData != 0u) {
+          float vis = cellVisibility(renderData);
+          if (vis >= 0.0) occlusion = vis;
         }
-        if ((renderData & 0xFFFFu) > 0u)
-          occlusion = 1.0 - float(renderData >> 16u) / float(renderData & 0xFFFFu);
       }
     } else {
       // per-pixel AO (original path, spatial hash disabled)
       float occl = 0.0;
       for(int i = 0; i < pc.aoSamples; i++) {
-        float r1 = rnd(seed);
-        float r2 = rnd(seed);
-        float sq = sqrt(1.0 - r2);
-        float phi = 2 * 3.141592653589 * r1;
-        float3 direction = float3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        float3 direction = sampleCosineHemisphere(seed, tangent, bitangent, n);
         RayQuery<RAY_FLAG_NONE> rayQuery;
         occl += traceAO(rayQuery, origin, direction);
       }
@@ -619,8 +678,10 @@ const char* kCodeFS = R"(
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_samplerless_texture_functions : require
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_ray_query : require
+#extension GL_EXT_shader_atomic_int64 : require
 
 layout(constant_id = 0) const bool kEnableSpatialHash = true;
 
@@ -633,9 +694,8 @@ layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 light;
 };
 
-layout(std430, buffer_reference) coherent buffer HashChecksums { uint v[]; };
-layout(std430, buffer_reference) coherent buffer SpatialData { uint v[]; };
-layout(std430, buffer_reference) coherent buffer HashTime { uint v[]; };
+// 64-bit slot: [63:56] frameLow | [55:32] checksum (0 = empty) | [31:16] hits | [15:0] samples
+layout(std430, buffer_reference) coherent buffer HashSlot { uint64_t v[]; };
 
 struct PerVertex {
   vec3 worldPos;
@@ -657,9 +717,7 @@ layout(push_constant) uniform constants {
   float aoRadius;
   float aoPower;
   uint frameId;
-  HashChecksums hashChecksums;
-  SpatialData spatialData;
-  HashTime hashTime;
+  HashSlot hashSlot;
   float sp;
   float smin;
   uint maxSamples;
@@ -715,6 +773,15 @@ uint tea(uint val0, uint val1) {
   return v0;
 }
 
+vec3 sampleCosineHemisphere(inout uint seed, vec3 tangent, vec3 bitangent, vec3 n) {
+  float r1 = rnd(seed);
+  float r2 = rnd(seed);
+  float sq = sqrt(1.0 - r2);
+  float phi = 2.0 * 3.141592653589 * r1;
+  vec3 d = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+  return d.x * tangent + d.y * bitangent + d.z * n;
+}
+
 // PCG hash (https://www.pcg-random.org/)
 uint pcg(uint v) {
   uint state = v * 747796405u + 2891336453u;
@@ -735,44 +802,116 @@ uint xxhash32(uint p) {
   return h32 ^ (h32 >> 16u);
 }
 
+void bumpFrame(uint cellIndex, uint frameLow) {
+  uint64_t cur = atomicCompSwap(pc.hashSlot.v[cellIndex], 0, 0);
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    if (uint(cur >> 56) == frameLow) return;
+    uint64_t fresh = (cur << 8) >> 8; // clear high byte
+    fresh |= uint64_t(frameLow) << 56;
+    uint64_t prev = atomicCompSwap(pc.hashSlot.v[cellIndex], cur, fresh);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+// CAS-loop halve of samples and hits. Seeded with prevData so we never CAS against literal 0 (Adreno link bug).
+void halve(uint cellIndex, uint64_t cur) {
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    uint s = uint(cur) & 0xFFFFu;
+    uint h = min((uint(cur) >> 16u) & 0xFFFFu, s);
+    uint newLow = ((h >> 1u) << 16u) | (s >> 1u);
+    uint64_t newSlot = (cur & 0xFFFFFFFF00000000ul) | uint64_t(newLow);
+    uint64_t prev = atomicCompSwap(pc.hashSlot.v[cellIndex], cur, newSlot);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+// CAS-loop undo of our atomicAdd: subtract from low 32 bits only, preserve high 32.
+void undoAdd(uint cellIndex, uint64_t cur, uint hit) {
+  for (uint attempt = 0u; attempt < 4u; attempt++) {
+    uint cur_hits = (uint(cur) >> 16u) & 0xFFFFu;
+    uint dec_hits = (hit > 0u && cur_hits > 0u) ? 1u : 0u;
+    uint dec = 1u | (dec_hits << 16u);
+    uint64_t newSlot = (cur & 0xFFFFFFFF00000000ul) | uint64_t(uint(cur) - dec);
+    uint64_t prev = atomicCompSwap(pc.hashSlot.v[cellIndex], cur, newSlot);
+    if (prev == cur) return;
+    cur = prev;
+  }
+}
+
+void accumulateAndMaybeHalve(uint cellIndex, uint hit) {
+  uint64_t addend = uint64_t((hit << 16u) + 1u);
+  uint64_t prevData = atomicAdd(pc.hashSlot.v[cellIndex], addend);
+  uint prevSamples = uint(prevData) & 0xFFFFu;
+  // Cell already at cap when we arrived — undo so samples can't race past cap.
+  if (prevSamples >= pc.maxSamples) {
+    undoAdd(cellIndex, prevData, hit);
+    return;
+  }
+  // Only the thread landing exactly on cap halves — avoids cascading halves.
+  if (prevSamples + 1u == pc.maxSamples) halve(cellIndex, prevData);
+}
+
+bool isCellReady(uint dataLow) {
+  return (dataLow & 0xFFFFu) >= 4u;
+}
+
+// Returns -1.0 when the cell isn't ready yet, otherwise visibility in [0,1] (1 = visible).
+float cellVisibility(uint dataLow) {
+  uint samples = dataLow & 0xFFFFu;
+  uint hits = min((dataLow >> 16u) & 0xFFFFu, samples);
+  if (samples < 4u) return -1.0;
+  return float(samples - hits) / float(samples);
+}
+
+// Hash the (cell-position, cell-size, normal) tuple to a bucket base index and a 24-bit checksum.
 // Gautron 2020: "Real-Time Ray-Traced Ambient Occlusion of Complex Scenes using Spatial Hashing"
 // normalHashPCG/normalHashXXH are precomputed from the quantized normal to avoid redundant work across LODs
-uint spatialHashFindOrInsert(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+void computeBucket(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH, out uint baseCell, out uint checksum) {
   ivec3 p = ivec3(floor(position / cellSize));
   uint cs = uint(cellSize * 10000.0);
   uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
-  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u); // hashMapSize/4 buckets
-  uint baseCell = bucketIndex << 2u;                           // first cell in the bucket
-  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) +
-                  xxhash32(uint(p.z) + normalHashXXH))));
-  checksum = max(checksum, 1u); // 0 = empty sentinel
-  // linear probing within the bucket (4 contiguous slots = 16 bytes, fits in one cache line)
+  baseCell = (hashKey & ((pc.hashMapSize >> 2u) - 1u)) << 2u;
+  checksum = max(xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH)))) & 0xFFFFFFu, 1u);
+}
+
+uint spatialHashFindOrInsert(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
+  uint baseCell, checksum;
+  computeBucket(position, cellSize, normalHashPCG, normalHashXXH, baseCell, checksum);
+  // Phase 1: look for our key already in the bucket: prevents a stale slot's eviction from creating a duplicate when 
+  // our key is already living at a later slot in the same bucket
+  for (uint i = 0u; i < 4u; i++) {
+    if ((uint(pc.hashSlot.v[baseCell + i] >> 32) & 0xFFFFFFu) == checksum) return baseCell + i;
+  }
+  // Phase 2: install — empty slot first, evict a stale cell otherwise
+  uint frameLow = pc.frameId & 0xFFu;
+  uint64_t newSlot = (uint64_t(frameLow) << 56) | (uint64_t(checksum) << 32);
+  uint64_t empty = uint64_t(0);
+  // linear probing within the bucket (4 contiguous slots = 32 bytes, fits in one cache line)
   for (uint i = 0u; i < 4u; i++) {
     uint cellIndex = baseCell + i;
-    uint prev = atomicCompSwap(pc.hashChecksums.v[cellIndex], 0u, checksum);
-    if (prev == 0u || prev == checksum)
+    uint64_t prev = atomicCompSwap(pc.hashSlot.v[cellIndex], empty, newSlot);
+    if (prev == empty || (uint(prev >> 32) & 0xFFFFFFu) == checksum)
       return cellIndex;
-    if (pc.frameId - pc.hashTime.v[cellIndex] > 1) {
-      atomicExchange(pc.hashChecksums.v[cellIndex], checksum);
-      atomicExchange(pc.spatialData.v[cellIndex], 0u);
-      atomicExchange(pc.hashTime.v[cellIndex], pc.frameId);
-      return cellIndex;
+    uint storedFrame = uint(prev >> 56);
+    uint age = (frameLow - storedFrame) & 0xFFu; // wraps every 256 frames; safe for any threshold << 256
+    if (age > 3u) { // tolerate a few missed bumpFrame()s (best-effort)
+      uint64_t claim = atomicCompSwap(pc.hashSlot.v[cellIndex], prev, newSlot);
+      // won, or another thread raced ahead and installed *our* key in the same slot
+      if (claim == prev || (uint(claim >> 32) & 0xFFFFFFu) == checksum)
+        return cellIndex;
     }
   }
   return 0xFFFFFFFFu;
 }
 
-// Read-only hash lookup - no allocation, no atomics. Returns cellIndex or 0xFFFFFFFFu if not found.
+// Read-only hash lookup: no allocation, no atomics. Returns cellIndex or 0xFFFFFFFFu if not found.
 uint spatialHashFind(vec3 position, float cellSize, uint normalHashPCG, uint normalHashXXH) {
-  ivec3 p = ivec3(floor(position / cellSize));
-  uint cs = uint(cellSize * 10000.0);
-  uint hashKey = pcg(cs + pcg(uint(p.x) + pcg(uint(p.y) + pcg(uint(p.z) + normalHashPCG))));
-  uint bucketIndex = hashKey & ((pc.hashMapSize >> 2u) - 1u);
-  uint baseCell = bucketIndex << 2u;
-  uint checksum = xxhash32(cs + xxhash32(uint(p.x) + xxhash32(uint(p.y) + xxhash32(uint(p.z) + normalHashXXH))));
-  checksum = max(checksum, 1u);
+  uint baseCell, checksum;
+  computeBucket(position, cellSize, normalHashPCG, normalHashXXH, baseCell, checksum);
   for (uint i = 0u; i < 4u; i++) {
-    uint stored = pc.hashChecksums.v[baseCell + i];
+    uint stored = uint(pc.hashSlot.v[baseCell + i] >> 32) & 0xFFFFFFu;
     if (stored == checksum) return baseCell + i;
     if (stored == 0u) return 0xFFFFFFFFu;
   }
@@ -812,106 +951,89 @@ void main() {
       uint nhPCG = pcg(uint(nn.x) + pcg(uint(nn.y) + pcg(uint(nn.z))));
       uint nhXXH = xxhash32(uint(nn.x) + xxhash32(uint(nn.y) + xxhash32(uint(nn.z))));
 
+      uint frameLow = pc.frameId & 0xFFu;
       // always find LOD 0
       uint cell0 = spatialHashFindOrInsert(vtx.worldPos, swd, nhPCG, nhXXH);
-      uint data0 = (cell0 != 0xFFFFFFFFu) ? pc.spatialData.v[cell0] : 0u;
+      uint data0 = (cell0 != 0xFFFFFFFFu) ? uint(pc.hashSlot.v[cell0]) : 0u;
       uint samples0 = data0 & 0xFFFFu;
+      bool ready0 = isCellReady(data0);
 
-      if (samples0 >= 4u) {
-        // --- fast path: LOD 0 has enough data, skip coarser LODs ---
-        if (samples0 < pc.maxSamples) {
-          // trace 1 ray, update LOD 0 only
-          float r1 = rnd(seed);
-          float r2 = rnd(seed);
-          float sq = sqrt(1.0 - r2);
-          float phi = 2.0 * 3.141592653589 * r1;
-          vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-          direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
-          rayQueryEXT rayQuery;
-          uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
-          atomicAdd(pc.spatialData.v[cell0], (hit << 16u) + 1u);
+      // trace one ray, shared across all LODs that need a sample this frame
+      uint hit = 0u;
+      bool lod0NeedsRay = cell0 != 0xFFFFFFFFu && samples0 < pc.maxSamples;
+      if (!ready0 || lod0NeedsRay) {
+        vec3 direction = sampleCosineHemisphere(seed, tangent, bitangent, n);
+        rayQueryEXT rayQuery;
+        hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
+      }
+
+      // accumulate to LOD 0
+      if (cell0 != 0xFFFFFFFFu) {
+        if (lod0NeedsRay) accumulateAndMaybeHalve(cell0, hit);
+        bumpFrame(cell0, frameLow);
+      }
+
+      // LOD 0 not converged: also fill coarser LODs so the fallback render has data
+      uint cachedData[4] = uint[4](data0, 0u, 0u, 0u);
+      if (!ready0) {
+        float lodSize = swd * 2.0;
+        for (int lod = 1; lod < 4; lod++) {
+          uint ci = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
+          if (ci != 0xFFFFFFFFu) {
+            cachedData[lod] = uint(pc.hashSlot.v[ci]);
+            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples)
+              accumulateAndMaybeHalve(ci, hit);
+            bumpFrame(ci, frameLow);
+          }
+          lodSize *= 2.0;
         }
-        if (pc.hashTime.v[cell0] != pc.frameId)
-          atomicExchange(pc.hashTime.v[cell0], pc.frameId);
-        if (pc.enableFiltering) {
-          // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
-          vec3 cellPos = vtx.worldPos / swd - 0.5;
-          ivec3 base = ivec3(floor(cellPos));
-          vec3 f = fract(cellPos);
-          float totalWeight = 0.0;
-          float totalAO = 0.0;
-          for (int dz = 0; dz < 2; dz++) {
-            for (int dy = 0; dy < 2; dy++) {
-              for (int dx = 0; dx < 2; dx++) {
-                vec3 neighborPos = (vec3(base + ivec3(dx, dy, dz)) + 0.5) * swd;
-                uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
-                if (ci != 0xFFFFFFFFu) {
-                  uint d = pc.spatialData.v[ci];
-                  uint s = d & 0xFFFFu;
-                  if (s >= 4u) {
-                    float w = (dx == 0 ? (1.0 - f.x) : f.x) *
-                              (dy == 0 ? (1.0 - f.y) : f.y) *
-                              (dz == 0 ? (1.0 - f.z) : f.z);
-                    totalWeight += w;
-                    totalAO += w * (1.0 - float(d >> 16u) / float(s));
-                  }
+      }
+
+      if (ready0 && pc.enableFiltering) {
+        // trilinear interpolation across 8 neighboring cells to smooth cell boundaries
+        vec3 cellPos = vtx.worldPos / swd - 0.5;
+        ivec3 base = ivec3(floor(cellPos));
+        vec3 f = fract(cellPos);
+        float totalWeight = 0.0;
+        float totalAO = 0.0;
+        for (int dz = 0; dz < 2; dz++) {
+          for (int dy = 0; dy < 2; dy++) {
+            for (int dx = 0; dx < 2; dx++) {
+              vec3 neighborPos = (vec3(base + ivec3(dx, dy, dz)) + 0.5) * swd;
+              uint ci = spatialHashFind(neighborPos, swd, nhPCG, nhXXH);
+              if (ci != 0xFFFFFFFFu) {
+                float vis = cellVisibility(uint(pc.hashSlot.v[ci]));
+                if (vis >= 0.0) {
+                  float w = (dx == 0 ? (1.0 - f.x) : f.x) *
+                            (dy == 0 ? (1.0 - f.y) : f.y) *
+                            (dz == 0 ? (1.0 - f.z) : f.z);
+                  totalWeight += w;
+                  totalAO += w * vis;
                 }
               }
             }
           }
-          occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
-        } else {
-          occlusion = 1.0 - float(data0 >> 16u) / float(samples0);
         }
+        occlusion = (totalWeight > 0.0) ? (totalAO / totalWeight) : 1.0;
       } else {
-        // --- slow path: LOD 0 not ready, use multi-LOD fallback ---
-        uint cells[4];
-        cells[0] = cell0;
-        float lodSize = swd * 2.0;
-        for (int lod = 1; lod < 4; lod++) {
-          cells[lod] = spatialHashFindOrInsert(vtx.worldPos, lodSize, nhPCG, nhXXH);
-          lodSize *= 2.0;
-        }
-        // trace 1 ray, update ALL LODs
-        float r1 = rnd(seed);
-        float r2 = rnd(seed);
-        float sq = sqrt(1.0 - r2);
-        float phi = 2.0 * 3.141592653589 * r1;
-        vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-        direction = direction.x * tangent + direction.y * bitangent + direction.z * n;
-        rayQueryEXT rayQuery;
-        uint hit = traceAO(rayQuery, origin, direction) > 0.0 ? 1u : 0u;
-        // read spatialData once per LOD, cache for reuse in the render selection below
-        uint cachedData[4];
-        for (int lod = 0; lod < 4; lod++) {
-          cachedData[lod] = 0u;
-          if (cells[lod] != 0xFFFFFFFFu) {
-            cachedData[lod] = pc.spatialData.v[cells[lod]];
-            if ((cachedData[lod] & 0xFFFFu) < pc.maxSamples)
-              atomicAdd(pc.spatialData.v[cells[lod]], (hit << 16u) + 1u);
-            if (pc.hashTime.v[cells[lod]] != pc.frameId)
-              atomicExchange(pc.hashTime.v[cells[lod]], pc.frameId);
+        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
+        uint renderData = ready0 ? data0 : 0u;
+        if (!ready0) {
+          for (int lod = 3; lod >= 0; lod--) {
+            if (isCellReady(cachedData[lod]))
+              renderData = cachedData[lod];
           }
         }
-        // render from finest LOD with enough samples (coarse-to-fine, reusing cached reads)
-        uint renderData = 0u;
-        for (int lod = 3; lod >= 0; lod--) {
-          if ((cachedData[lod] & 0xFFFFu) >= 4u)
-            renderData = cachedData[lod];
+        if (renderData != 0u) {
+          float vis = cellVisibility(renderData);
+          if (vis >= 0.0) occlusion = vis;
         }
-        if ((renderData & 0xFFFFu) > 0u)
-          occlusion = 1.0 - float(renderData >> 16u) / float(renderData & 0xFFFFu);
       }
     } else {
       // per-pixel AO (original path, spatial hash disabled)
       float occl = 0.0;
       for(int i = 0; i < pc.aoSamples; i++) {
-        float r1        = rnd(seed);
-        float r2        = rnd(seed);
-        float sq        = sqrt(1.0 - r2);
-        float phi       = 2 * 3.141592653589 * r1;
-        vec3  direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-        direction       = direction.x * tangent + direction.y * bitangent + direction.z * n;
+        vec3 direction = sampleCosineHemisphere(seed, tangent, bitangent, n);
         rayQueryEXT rayQuery;
         occl += traceAO(rayQuery, origin, direction);
       }
@@ -957,9 +1079,7 @@ struct {
   lvk::Holder<lvk::BufferHandle> ubPerObject_;
   std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
   lvk::Holder<lvk::AccelStructHandle> TLAS;
-  lvk::Holder<lvk::BufferHandle> sbHashChecksums_;
-  lvk::Holder<lvk::BufferHandle> sbSpatialData_;
-  lvk::Holder<lvk::BufferHandle> sbHashTime_;
+  lvk::Holder<lvk::BufferHandle> sbHashSlot_;
 } res;
 
 bool enableShadows_ = true;
@@ -1293,30 +1413,16 @@ VULKAN_APP_MAIN {
       .debugName = "Pipeline: fullscreen",
   });
 
-  // create spatial hash map buffers (zero-initialized)
+  // create spatial hash map buffer (zero-initialized)
   {
-    res.sbHashChecksums_ = ctx_->createBuffer({
+    res.sbHashSlot_ = ctx_->createBuffer({
         .usage = lvk::BufferUsageBits_Storage,
         .storage = lvk::StorageType_Device,
-        .size = sizeof(uint32_t) * kHashMapSize,
-        .debugName = "Buffer: AO hash checksums",
-    });
-    res.sbSpatialData_ = ctx_->createBuffer({
-        .usage = lvk::BufferUsageBits_Storage,
-        .storage = lvk::StorageType_Device,
-        .size = sizeof(uint32_t) * kHashMapSize,
-        .debugName = "Buffer: AO spatial data",
-    });
-    res.sbHashTime_ = ctx_->createBuffer({
-        .usage = lvk::BufferUsageBits_Storage,
-        .storage = lvk::StorageType_Device,
-        .size = sizeof(uint32_t) * kHashMapSize,
-        .debugName = "Buffer: AO hash time",
+        .size = sizeof(uint64_t) * kHashMapSize,
+        .debugName = "Buffer: AO hash slot",
     });
     lvk::ICommandBuffer& buf = ctx_->acquireCommandBuffer();
-    buf.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
-    buf.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
-    buf.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
+    buf.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
     ctx_->submit(buf);
   }
 
@@ -1384,9 +1490,7 @@ VULKAN_APP_MAIN {
         float aoRadius;
         float aoPower;
         uint32_t frameId;
-        uint64_t hashChecksums;
-        uint64_t spatialData;
-        uint64_t hashTime;
+        uint64_t hashSlot;
         float sp;
         float smin;
         uint32_t maxSamples;
@@ -1405,9 +1509,7 @@ VULKAN_APP_MAIN {
           .aoRadius = aoRadius_,
           .aoPower = aoPower_,
           .frameId = timeVaryingNoise ? frameId++ : 0,
-          .hashChecksums = ctx_->gpuAddress(res.sbHashChecksums_),
-          .spatialData = ctx_->gpuAddress(res.sbSpatialData_),
-          .hashTime = ctx_->gpuAddress(res.sbHashTime_),
+          .hashSlot = ctx_->gpuAddress(res.sbHashSlot_),
           .sp = spatialHashPixelSize_,
           .smin = spatialHashMinCellSize_,
           .maxSamples = (uint32_t)spatialHashMaxSamples_,
@@ -1520,9 +1622,7 @@ VULKAN_APP_MAIN {
       buffer.cmdEndRendering();
 
       if (resetHashMap) {
-        buffer.cmdFillBuffer(res.sbHashChecksums_, 0, lvk::LVK_WHOLE_SIZE, 0);
-        buffer.cmdFillBuffer(res.sbSpatialData_, 0, lvk::LVK_WHOLE_SIZE, 0);
-        buffer.cmdFillBuffer(res.sbHashTime_, 0, lvk::LVK_WHOLE_SIZE, 0);
+        buffer.cmdFillBuffer(res.sbHashSlot_, 0, lvk::LVK_WHOLE_SIZE, 0);
       }
 
       ctx_->submit(buffer, fbMain_.color[0].texture);
