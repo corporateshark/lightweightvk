@@ -13,17 +13,22 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif // !defined(IMGUI_DEFINE_MATH_OPERATORS)
 
-#include <lvk/LVK.h>
 #include <imgui/imgui.h>
+#include <lvk/LVK.h>
 
 namespace lvk {
 
 class ImGuiRenderer {
  public:
   explicit ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF = nullptr, float fontSizePixels = 24.0f);
+  explicit ImGuiRenderer(lvk::IContext& device,
+                         lvk::LVKwindow* window,
+                         const void* fontData,
+                         size_t fontDataSize,
+                         float fontSizePixels = 24.0f);
   ~ImGuiRenderer();
 
-  void updateFont(const char* defaultFontTTF, float fontSizePixels);
+  void updateFont(const char* defaultFontTTF, const void* fontData, size_t fontDataSize, float fontSizePixels);
 
   void beginFrame(const lvk::Framebuffer& desc);
   void endFrame(lvk::ICommandBuffer& cmdBuffer);

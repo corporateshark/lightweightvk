@@ -128,6 +128,12 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
 }
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
+: ImGuiRenderer(device, window, nullptr, 0, fontSizePixels) {
+  if (defaultFontTTF)
+    updateFont(defaultFontTTF, nullptr, 0, fontSizePixels);
+}
+
+ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const void* fontData, size_t fontDataSize, float fontSizePixels)
 : ctx_(device)
 , pimpl_(new ImGuiRendererImpl)
 , window_(window) {
@@ -154,7 +160,7 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
   }
 #endif // LVK_WITH_SDL3
 
-  updateFont(defaultFontTTF, fontSizePixels);
+  updateFont(nullptr, fontData, fontDataSize, fontSizePixels);
 
   vert_ = ctx_.createShaderModule({codeVS, Stage_Vert, "Shader Module: imgui (vert)"});
   frag_ = ctx_.createShaderModule({codeFS, Stage_Frag, "Shader Module: imgui (frag)"});
@@ -186,19 +192,23 @@ ImGuiRenderer::~ImGuiRenderer() {
   delete (pimpl_);
 }
 
-void ImGuiRenderer::updateFont(const char* defaultFontTTF, float fontSizePixels) {
+void ImGuiRenderer::updateFont(const char* defaultFontTTF, const void* fontData, size_t fontDataSize, float fontSizePixels) {
   ImGuiIO& io = ImGui::GetIO();
 
   ImFontConfig cfg = ImFontConfig();
-  cfg.FontDataOwnedByAtlas = true;
   cfg.RasterizerMultiply = 1.5f;
   cfg.SizePixels = ceilf(fontSizePixels);
   cfg.PixelSnapH = true;
   cfg.OversampleH = 4;
   cfg.OversampleV = 4;
+
   ImFont* font = nullptr;
   if (defaultFontTTF) {
+    cfg.FontDataOwnedByAtlas = true;
     font = io.Fonts->AddFontFromFileTTF(defaultFontTTF, cfg.SizePixels, &cfg);
+  } else if (fontData && fontDataSize) {
+    cfg.FontDataOwnedByAtlas = false;
+    font = io.Fonts->AddFontFromMemoryTTF(const_cast<void*>(fontData), (int)fontDataSize, cfg.SizePixels, &cfg);
   } else {
     font = io.Fonts->AddFontDefault(&cfg);
   }
