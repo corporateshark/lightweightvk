@@ -954,75 +954,67 @@ struct VulkanState final {
   lvk::Holder<lvk::TextureHandle> texSkyBox;
 } vulkanState;
 
-void convertEquirectangularMapToKTX(const std::string& inFilename, const std::string& outFilename) {
-  int sourceWidth, sourceHeight;
-  uint8_t* pixels = stbi_load(inFilename.c_str(), &sourceWidth, &sourceHeight, nullptr, 4);
-  SCOPE_EXIT {
-    if (pixels) {
-      stbi_image_free(pixels);
-    }
-  };
-
-  if (!pixels) {
-    LVK_ASSERT_MSG(pixels, "Failed to load texture `%s`\n", inFilename.c_str());
-    return;
-  }
-
-  Bitmap bmp = convertEquirectangularMapToCubeMapFaces(Bitmap(sourceWidth, sourceHeight, 4, eBitmapFormat_UnsignedByte, pixels));
-
-  const uint32_t w = static_cast<uint32_t>(bmp.w_);
-  const uint32_t h = static_cast<uint32_t>(bmp.h_);
-
-  const ktxTextureCreateInfo createInfo = {
-      .glInternalformat = GL_RGBA8,
-      .vkFormat = VK_FORMAT_R8G8B8A8_UNORM,
-      .baseWidth = w,
-      .baseHeight = h,
-      .baseDepth = 1u,
-      .numDimensions = 2u,
-      .numLevels = 1u,
-      .numLayers = 1u,
-      .numFaces = 6u,
-      .generateMipmaps = KTX_FALSE,
-  };
-
-  ktxTexture1* cube = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &cube) == KTX_SUCCESS);
-
-  const uint32_t faceSizeBytes = w * h * sizeof(uint32_t);
-
-  for (size_t face = 0; face != 6; face++) {
-    size_t offset = 0;
-    (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(cube), 0, 0, face, &offset) == KTX_SUCCESS);
-    memcpy(cube->pData + offset, bmp.data_.data() + face * faceSizeBytes, faceSizeBytes);
-  }
-
-  ktxTexture_WriteToNamedFile(ktxTexture(cube), outFilename.c_str());
-  ktxTexture_Destroy(ktxTexture(cube));
-}
 
 lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const std::string& fileName) {
   const std::string name = (std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string();
   const std::string fileNameKTX = name + ".ktx";
 
-  if (!std::filesystem::exists(fileNameKTX)) {
-    LLOGL("KTX cube map format not found.\nExtracting from `%s`...\n", name.c_str());
-    convertEquirectangularMapToKTX(name.c_str(), fileNameKTX);
+  // try loading a pre-cached KTX cubemap
+  const std::vector<uint8_t> ktxData = app.loadFile(fileNameKTX.c_str());
+  if (!ktxData.empty()) {
+    ktxTexture1* texture = nullptr;
+    (void)LVK_VERIFY(ktxTexture1_CreateFromMemory(ktxData.data(), ktxData.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) == KTX_SUCCESS);
+    SCOPE_EXIT {
+      ktxTexture_Destroy(ktxTexture(texture));
+    };
+
+    if (!LVK_VERIFY(texture->glInternalformat == GL_RGBA8)) {
+      LVK_ASSERT_MSG(false, "Texture format not supported");
+      return {};
+    }
+
+    const uint32_t width = texture->baseWidth;
+    const uint32_t height = texture->baseHeight;
+
+    lvk::Holder<lvk::TextureHandle> tex = app.ctx_->createTexture({
+        .type = lvk::TextureType_Cube,
+        .format = lvk::Format_RGBA_UN8,
+        .dimensions = {width, height},
+        .usage = lvk::TextureUsageBits_Sampled,
+        .numMipLevels = lvk::calcNumMipLevels(width, height),
+        .data = texture->pData,
+        .generateMipmaps = true,
+        .debugName = fileName.c_str(),
+    });
+
+    return std::move(tex);
   }
 
-  ktxTexture1* texture = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_CreateFromNamedFile(fileNameKTX.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) == KTX_SUCCESS);
-  SCOPE_EXIT {
-    ktxTexture_Destroy(ktxTexture(texture));
-  };
+  // no cached KTX: convert equirectangular map to cubemap in memory
+  LLOGL("Converting `%s` to cube map...\n", name.c_str());
 
-  if (!LVK_VERIFY(texture->glInternalformat == GL_RGBA8)) {
-    LVK_ASSERT_MSG(false, "Texture format not supported");
+  const std::vector<uint8_t> fileData = app.loadFile(name.c_str());
+  if (fileData.empty()) {
+    LVK_ASSERT_MSG(false, "Failed to load texture `%s`\n", name.c_str());
     return {};
   }
 
-  const uint32_t width = texture->baseWidth;
-  const uint32_t height = texture->baseHeight;
+  int sourceWidth, sourceHeight;
+  uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &sourceWidth, &sourceHeight, nullptr, 4);
+  SCOPE_EXIT {
+    if (pixels)
+      stbi_image_free(pixels);
+  };
+
+  if (!pixels) {
+    LVK_ASSERT_MSG(false, "Failed to decode texture `%s`\n", name.c_str());
+    return {};
+  }
+
+  Bitmap bmp = convertEquirectangularMapToCubeMapFaces(Bitmap(sourceWidth, sourceHeight, 4, eBitmapFormat_UnsignedByte, pixels));
+
+  const uint32_t width = static_cast<uint32_t>(bmp.w_);
+  const uint32_t height = static_cast<uint32_t>(bmp.h_);
 
   lvk::Holder<lvk::TextureHandle> tex = app.ctx_->createTexture({
       .type = lvk::TextureType_Cube,
@@ -1030,7 +1022,7 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
       .dimensions = {width, height},
       .usage = lvk::TextureUsageBits_Sampled,
       .numMipLevels = lvk::calcNumMipLevels(width, height),
-      .data = texture->pData,
+      .data = bmp.data_.data(),
       .generateMipmaps = true,
       .debugName = fileName.c_str(),
   });
@@ -1039,7 +1031,7 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
 }
 
 lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileName) {
-  auto it = vulkanState.textures.find(fileName);
+  const std::unordered_map<std::string, lvk::Holder<lvk::TextureHandle>>::iterator it = vulkanState.textures.find(fileName);
 
   if (it != vulkanState.textures.end()) {
     return it->second;
@@ -1047,15 +1039,22 @@ lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileNa
 
   const std::string name = (std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string();
 
+  const std::vector<uint8_t> fileData = app.loadFile(name.c_str());
+  if (fileData.empty()) {
+    LLOGL("Failed to load texture `%s`\n", name.c_str());
+    assert(false);
+    return {};
+  }
+
   int w = 0;
   int h = 0;
   int numComponents = 0;
 
   stbi_set_flip_vertically_on_load(0);
-  void* pixels = stbi_load(name.c_str(), &w, &h, &numComponents, 4);
+  void* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, &numComponents, 4);
 
   if (!pixels) {
-    LLOGL("Failed to load texture `%s`\n", name.c_str());
+    LLOGL("Failed to decode texture `%s`\n", name.c_str());
     assert(pixels);
     return {};
   }
@@ -1115,8 +1114,47 @@ ShaderModules loadShaderProgram(lvk::IContext* ctx, const char* codeVS, const ch
   return sm;
 }
 
+namespace {
+struct MemFile {
+  std::vector<uint8_t> data;
+  size_t offset = 0;
+};
+void* memFileOpen(const char* path, void* userData) {
+  VulkanApp* app = static_cast<VulkanApp*>(userData);
+  MemFile* file = new MemFile();
+  file->data = app->loadFile(path);
+  if (file->data.empty()) {
+    delete file;
+    return nullptr;
+  }
+  return file;
+}
+void memFileClose(void* filePtr, void* /*userData*/) {
+  delete static_cast<MemFile*>(filePtr);
+}
+size_t memFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
+  MemFile* file = static_cast<MemFile*>(filePtr);
+  const size_t remaining = file->data.size() - file->offset;
+  const size_t toRead = (bytes < remaining) ? bytes : remaining;
+  memcpy(dst, file->data.data() + file->offset, toRead);
+  file->offset += toRead;
+  return toRead;
+}
+unsigned long memFileSize(void* filePtr, void* /*userData*/) {
+  MemFile* file = static_cast<MemFile*>(filePtr);
+  return (unsigned long)file->data.size();
+}
+} // namespace
+
 std::vector<GeometryShapes::Vertex> loadMeshFromFile(VulkanApp& app, const char* fileName) {
-  fastObjMesh* mesh = fast_obj_read((std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string().c_str());
+  const std::string path = (std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string();
+  const fastObjCallbacks callbacks = {
+      .file_open = memFileOpen,
+      .file_close = memFileClose,
+      .file_read = memFileRead,
+      .file_size = memFileSize,
+  };
+  fastObjMesh* mesh = fast_obj_read_with_callbacks(path.c_str(), &callbacks, &app);
 
   SCOPE_EXIT {
     if (mesh)

@@ -399,18 +399,21 @@ void createTopLevelAccelerationStructure() {
 }
 
 lvk::Holder<lvk::TextureHandle> createTextureFromFile(VulkanApp& app, const char* fileName) {
-  using namespace std::filesystem;
-  path dir = app.folderContentRoot_;
+  const std::string filePath = (std::filesystem::path(app.folderContentRoot_) / fileName).string();
+  const std::vector<uint8_t> fileData = app.loadFile(filePath.c_str());
+  if (fileData.empty()) {
+    LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+    LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+    std::terminate();
+  }
   int32_t texWidth = 0;
   int32_t texHeight = 0;
   int32_t channels = 0;
-  uint8_t* pixels = stbi_load((dir / path(fileName)).string().c_str(), &texWidth, &texHeight, &channels, 4);
+  uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
   SCOPE_EXIT {
     stbi_image_free(pixels);
   };
   if (!pixels) {
-    LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
-    LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
     std::terminate();
   }
   return ctx_->createTexture({

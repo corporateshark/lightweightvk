@@ -87,31 +87,22 @@ struct Resources {
 
 Resources res_;
 
-void createDemo(lvk::IContext* ctx, const char* contentFolder, const char* name, lvk::Format format, const char* fileName) {
-  using namespace std::filesystem;
-  path dir(contentFolder);
-  int32_t texWidth = 1920;
-  int32_t texHeight = 1080;
-  FILE* file = fopen((dir / "src" / path(fileName)).string().c_str(), "rb");
-  SCOPE_EXIT {
-    if (file) {
-      fclose(file);
-    }
-  };
-  fseek(file, 0, SEEK_END);
-  const uint32_t length = ftell(file);
-  fseek(file, 0, SEEK_SET);
+void createDemo(VulkanApp& app, const char* name, lvk::Format format, const char* fileName) {
+  const std::string filePath = (std::filesystem::path(app.folderContentRoot_) / "src" / fileName).string();
+  const int32_t texWidth = 1920;
+  const int32_t texHeight = 1080;
 
-  LVK_ASSERT_MSG(file && length, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
-  if (!file || !length) {
+  std::vector<uint8_t> pixels = app.loadFile(filePath.c_str());
+
+  LVK_ASSERT_MSG(!pixels.empty(), "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+  if (pixels.empty()) {
     printf("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
     std::terminate();
   }
 
-  LVK_ASSERT(length == texWidth * texHeight * 3 / 2);
+  LVK_ASSERT(pixels.size() == (size_t)texWidth * texHeight * 3 / 2);
 
-  std::vector<uint8_t> pixels(length);
-  fread(pixels.data(), 1, length, file);
+  lvk::IContext* ctx = app.ctx_.get();
 
   lvk::Holder<lvk::TextureHandle> texture = ctx->createTexture({
       .type = lvk::TextureType_2D,
@@ -156,8 +147,8 @@ VULKAN_APP_MAIN {
   res_.frag = ctx->createShaderModule({codeFS, lvk::Stage_Frag, "Shader Module: main (frag)"});
 #endif // defined(LVK_DEMO_WITH_SLANG)
 
-  createDemo(ctx, app.folderContentRoot_.c_str(), "YUV NV12", lvk::Format_YUV_NV12, "igl-samples/output_frame_900.nv12.yuv");
-  createDemo(ctx, app.folderContentRoot_.c_str(), "YUV 420p", lvk::Format_YUV_420p, "igl-samples/output_frame_900.420p.yuv");
+  createDemo(app, "YUV NV12", lvk::Format_YUV_NV12, "igl-samples/output_frame_900.nv12.yuv");
+  createDemo(app, "YUV 420p", lvk::Format_YUV_420p, "igl-samples/output_frame_900.420p.yuv");
 
 #if !defined(ANDROID)
 #if LVK_WITH_GLFW

@@ -1123,11 +1123,11 @@ static_assert(sizeof(GPUMaterial) % 16 == 0);
 
 std::vector<GPUMaterial> materials_;
 
-bool initModel(const std::string& folderContentRoot) {
-  const std::string cacheFileName = folderContentRoot + CACHE_FILE_NAME;
+bool initModel(VulkanApp& app) {
+  const std::string cacheFileName = app.folderContentRoot_ + CACHE_FILE_NAME;
 
-  if (!loadFromCache(cacheFileName.c_str())) {
-    if (!LVK_VERIFY(loadAndCache(folderContentRoot, cacheFileName.c_str(), MODEL_PATH))) {
+  if (!loadFromCache(app, cacheFileName.c_str())) {
+    if (!LVK_VERIFY(loadAndCache(app, cacheFileName.c_str(), MODEL_PATH))) {
       LVK_ASSERT_MSG(false, "Cannot load 3D model");
       return false;
     }
@@ -1426,7 +1426,7 @@ VULKAN_APP_MAIN {
     ctx_->submit(buf);
   }
 
-  if (!initModel(app.folderContentRoot_)) {
+  if (!initModel(app)) {
     VULKAN_APP_EXIT();
   }
 

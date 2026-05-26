@@ -18,9 +18,129 @@
 #include <stb/stb_image_write.h>
 
 #if defined(ANDROID)
+#include <algorithm>
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
+
+// uncompressed TAR: files are stored as-is, so mmap() gives direct zero-copy access to file contents
+class TarFileReader final {
+ public:
+  struct FileData {
+    enum { kMaxPath = 512 };
+    char name[kMaxPath] = {};
+    const uint8_t* ptr = nullptr;
+    size_t size = 0;
+  };
+
+  explicit TarFileReader(const char* tarPath) {
+    fd_ = ::open(tarPath, O_RDONLY);
+    if (fd_ < 0)
+      return;
+    struct stat st = {};
+    if (fstat(fd_, &st) != 0) {
+      ::close(fd_);
+      fd_ = -1;
+      return;
+    }
+    fileSize_ = static_cast<size_t>(st.st_size);
+    data_ = static_cast<const uint8_t*>(mmap(nullptr, fileSize_, PROT_READ, MAP_PRIVATE, fd_, 0));
+    if (data_ == MAP_FAILED) {
+      data_ = nullptr;
+      ::close(fd_);
+      fd_ = -1;
+      return;
+    }
+    buildIndex();
+    if (!entries_.empty()) {
+      LLOGL("Opened content archive: %s (%zu entries)\n", tarPath, entries_.size());
+    } else {
+      LLOGL("Failed to open content archive: %s\n", tarPath);
+    }
+  }
+
+  ~TarFileReader() {
+    if (data_)
+      munmap(const_cast<uint8_t*>(data_), fileSize_);
+    if (fd_ >= 0)
+      ::close(fd_);
+  }
+
+  TarFileReader(const TarFileReader&) = delete;
+  TarFileReader& operator=(const TarFileReader&) = delete;
+
+  const FileData& getFile(const char* name) const {
+    static const FileData empty = {};
+    const std::vector<FileData>::const_iterator it =
+        std::lower_bound(entries_.begin(), entries_.end(), name, [](const FileData& e, const char* n) { return strcmp(e.name, n) < 0; });
+    if (it != entries_.end() && strcmp(it->name, name) == 0)
+      return *it;
+    return empty;
+  }
+
+ private:
+  static size_t parseOctal(const char* p, size_t len) {
+    const char* end = p + len;
+    size_t val = 0;
+    while (p < end && *p >= '0' && *p <= '7')
+      val = val * 8 + (*p++ - '0');
+    return val;
+  }
+
+  void buildIndex() {
+    size_t pos = 0;
+    const char* longName = nullptr;
+    size_t longNameLen = 0;
+
+    while (pos + 512 <= fileSize_) {
+      const char* header = reinterpret_cast<const char*>(data_ + pos);
+
+      if (header[0] == '\0')
+        break;
+
+      const size_t fileSize = parseOctal(header + 124, 12);
+      const char fileType = header[156];
+      const size_t blocks = (fileSize + 511) / 512;
+
+      // GNU long name: the data block contains the real file name, next header is the actual file
+      if (fileType == 'L') {
+        longName = header + 512;
+        longNameLen = strnlen(longName, fileSize);
+        pos += 512 + blocks * 512;
+        continue;
+      }
+
+      if (fileType == '0') {
+        FileData entry = {
+            .ptr = data_ + pos + 512,
+            .size = fileSize,
+        };
+        if (longName) {
+          memcpy(entry.name, longName, longNameLen < FileData::kMaxPath ? longNameLen : FileData::kMaxPath - 1);
+        } else {
+          memcpy(entry.name, header, strnlen(header, 100));
+        }
+        if (entry.name[0] != '\0')
+          entries_.push_back(entry);
+      }
+
+      longName = nullptr;
+      longNameLen = 0;
+      pos += 512 + blocks * 512;
+    }
+
+    std::sort(entries_.begin(), entries_.end(), [](const FileData& a, const FileData& b) { return strcmp(a.name, b.name) < 0; });
+  }
+
+  int fd_ = -1;
+  const uint8_t* data_ = nullptr;
+  size_t fileSize_ = 0;
+  std::vector<FileData> entries_; // sorted by name
+};
 
 double glfwGetTime() {
   timespec t = {0, 0};
@@ -222,6 +342,9 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     if (const char* externalStorage = std::getenv("EXTERNAL_STORAGE")) {
       folderThirdParty_ = (path(externalStorage) / "LVK" / "deps" / "src").string() + "/";
       folderContentRoot_ = (path(externalStorage) / "LVK" / "content").string() + "/";
+      tarBasePath_ = (path(externalStorage) / "LVK").string() + "/";
+      const std::string tarPath = (path(externalStorage) / "LVK" / "lvk_content.tar").string();
+      tarReader_ = std::make_unique<TarFileReader>(tarPath.c_str());
     }
 #else
     path subdir("third-party/content/");
@@ -345,8 +468,16 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 #endif // LVK_WITH_GLFW
 
   // initialize ImGUi after GLFW callbacks have been installed
+#if defined(ANDROID)
+  {
+    const TarFileReader::FileData& fd =
+        tarReader_ ? tarReader_->getFile("deps/src/3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf") : TarFileReader::FileData{};
+    imgui_ = std::make_unique<lvk::ImGuiRenderer>(*ctx_, window_, fd.ptr, fd.size, 30.0f);
+  }
+#else
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
       *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
+#endif // ANDROID
 }
 
 VulkanApp::~VulkanApp() {
@@ -720,6 +851,28 @@ void VulkanApp::drawFPS() {
   }
   ImGui::End();
 }
+
+std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
+#if defined(ANDROID)
+  if (tarReader_ && strncmp(filePath, tarBasePath_.c_str(), tarBasePath_.size()) == 0) {
+    const TarFileReader::FileData& fd = tarReader_->getFile(filePath + tarBasePath_.size());
+    if (fd.ptr)
+      return std::vector<uint8_t>(fd.ptr, fd.ptr + fd.size);
+  }
+#endif // ANDROID
+  FILE* f = fopen(filePath, "rb");
+  if (!f)
+    return {};
+  fseek(f, 0, SEEK_END);
+  const long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  std::vector<uint8_t> data(size);
+  if (fread(data.data(), 1, size, f) != static_cast<size_t>(size))
+    data.clear();
+  fclose(f);
+  return data;
+}
+
 
 #if LVK_WITH_OPENXR
 

@@ -486,18 +486,20 @@ VULKAN_APP_MAIN {
           {"Iron_Bars_001_height.png", &texMatHeight},
       };
       for (const MatSlot& s : slots) {
-        int32_t texWidth = 0;
-        int32_t texHeight = 0;
-        int32_t channels = 0;
-        uint8_t* pixels = stbi_load((dir / path(s.fileName)).string().c_str(), &texWidth, &texHeight, &channels, 4);
-        SCOPE_EXIT {
-          stbi_image_free(pixels);
-        };
-        if (!pixels) {
+        const std::string filePath = (dir / path(s.fileName)).string();
+        const std::vector<uint8_t> fileData = app.loadFile(filePath.c_str());
+        if (fileData.empty()) {
           LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
           LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
           std::terminate();
         }
+        int32_t texWidth = 0;
+        int32_t texHeight = 0;
+        int32_t channels = 0;
+        uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
+        SCOPE_EXIT {
+          stbi_image_free(pixels);
+        };
         *s.out = ctx->createTexture({
             .type = lvk::TextureType_2D,
             .format = lvk::Format_RGBA_UN8,

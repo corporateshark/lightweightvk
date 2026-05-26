@@ -15,8 +15,9 @@
 #define _USE_MATH_DEFINES
 #endif // _USE_MATH_DEFINES
 #include <cmath>
-
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
@@ -27,6 +28,7 @@
 
 // clang-format off
 #if defined(ANDROID)
+class TarFileReader;
 #  include <android_native_app_glue.h>
 #  include <jni.h>
 double glfwGetTime();
@@ -111,6 +113,8 @@ class VulkanApp {
   virtual void run(DrawFrameFunc drawFrame);
   virtual void drawFPS();
 
+  std::vector<uint8_t> loadFile(const char* filePath) const;
+
   double getSimulatedTime() const;
 
   lvk::Format getDepthFormat() const;
@@ -151,6 +155,8 @@ class VulkanApp {
   bool imguiCapturedTouch_ = false;
   bool imguiLastPressedLeft_ = false;
   bool imguiClearMouseNextFrame_ = false;
+  std::unique_ptr<TarFileReader> tarReader_;
+  std::string tarBasePath_;
 #endif // ANDROID
   std::unique_ptr<lvk::IContext> ctx_;
   mutable lvk::Holder<lvk::TextureHandle> depthTexture_;

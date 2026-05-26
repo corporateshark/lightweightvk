@@ -10,8 +10,8 @@
 /*
  Helper functions to load and cache Bistro/Sponza meshes:
 
-   bool loadAndCache(const std::string& folderContentRoot, const char* cacheFileName, const char* modelFileName)
-   bool loadFromCache(const char* cacheFileName)
+   bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName)
+   bool loadFromCache(VulkanApp& app, const char* cacheFileName)
 
  The result is stored in the global variables:
 
@@ -40,6 +40,8 @@
 
 #include <ldrutils/lutils/ScopeExit.h>
 #include <lvk/LVK.h>
+
+#include "VulkanApp.h"
 
 using glm::mat3;
 using glm::mat4;
@@ -101,13 +103,52 @@ std::string normalizeTextureName(const char* n) {
   return name;
 }
 
-bool loadAndCache(const std::string& folderContentRoot, const char* cacheFileName, const char* modelFileName) {
+namespace {
+struct BistroMemFile {
+  std::vector<uint8_t> data;
+  size_t offset = 0;
+};
+void* bistroMemFileOpen(const char* path, void* userData) {
+  VulkanApp* app = static_cast<VulkanApp*>(userData);
+  BistroMemFile* file = new BistroMemFile();
+  file->data = app->loadFile(path);
+  if (file->data.empty()) {
+    delete file;
+    return nullptr;
+  }
+  return file;
+}
+void bistroMemFileClose(void* filePtr, void* /*userData*/) {
+  delete static_cast<BistroMemFile*>(filePtr);
+}
+size_t bistroMemFileRead(void* filePtr, void* dst, size_t bytes, void* /*userData*/) {
+  BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
+  const size_t remaining = file->data.size() - file->offset;
+  const size_t toRead = (bytes < remaining) ? bytes : remaining;
+  memcpy(dst, file->data.data() + file->offset, toRead);
+  file->offset += toRead;
+  return toRead;
+}
+unsigned long bistroMemFileSize(void* filePtr, void* /*userData*/) {
+  BistroMemFile* file = static_cast<BistroMemFile*>(filePtr);
+  return (unsigned long)file->data.size();
+}
+} // namespace
+
+bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFileName) {
   LVK_PROFILER_FUNCTION();
 
   // load 3D model and cache it
   LLOGL("Loading `%s`... It can take a while in debug builds...\n", modelFileName);
 
-  fastObjMesh* mesh = fast_obj_read((folderContentRoot + modelFileName).c_str());
+  const std::string modelPath = (app.folderContentRoot_ + modelFileName);
+  const fastObjCallbacks callbacks = {
+      .file_open = bistroMemFileOpen,
+      .file_close = bistroMemFileClose,
+      .file_read = bistroMemFileRead,
+      .file_size = bistroMemFileSize,
+  };
+  fastObjMesh* mesh = fast_obj_read_with_callbacks(modelPath.c_str(), &callbacks, &app);
   SCOPE_EXIT {
     if (mesh)
       fast_obj_destroy(mesh);
@@ -185,39 +226,42 @@ bool loadAndCache(const std::string& folderContentRoot, const char* cacheFileNam
 
   LLOGL("Caching mesh...\n");
 
+  std::filesystem::create_directories(std::filesystem::path(cacheFileName).parent_path());
   FILE* cacheFile = fopen(cacheFileName, "wb");
-  if (!cacheFile) {
-    return false;
+  if (cacheFile) {
+    const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
+    const uint32_t numVertices = (uint32_t)vertexData_.size();
+    const uint32_t numIndices = (uint32_t)indexData_.size();
+    fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
+    fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
+    fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
+    fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
+    fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
+    fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
+    fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
+    fclose(cacheFile);
   }
-  const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
-  const uint32_t numVertices = (uint32_t)vertexData_.size();
-  const uint32_t numIndices = (uint32_t)indexData_.size();
-  fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
-  fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
-  fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
-  fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
-  fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
-  fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
-  fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
-  return fclose(cacheFile) == 0;
+  return true;
 }
 
-bool loadFromCache(const char* cacheFileName) {
-  FILE* cacheFile = fopen(cacheFileName, "rb");
-  SCOPE_EXIT {
-    if (cacheFile) {
-      fclose(cacheFile);
-    }
-  };
-  if (!cacheFile) {
+bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
+  const std::vector<uint8_t> data = app.loadFile(cacheFileName);
+  if (data.empty())
     return false;
-  }
-#define CHECK_READ(expected, read) \
-  if ((read) != (expected)) {      \
-    return false;                  \
-  }
+
+  size_t offset = 0;
+
+  auto readBytes = [&data, &offset](void* dst, size_t bytes) -> bool {
+    if (offset + bytes > data.size())
+      return false;
+    memcpy(dst, data.data() + offset, bytes);
+    offset += bytes;
+    return true;
+  };
+
   uint32_t versionProbe = 0;
-  CHECK_READ(1, fread(&versionProbe, sizeof(versionProbe), 1, cacheFile));
+  if (!readBytes(&versionProbe, sizeof(versionProbe)))
+    return false;
   if (versionProbe != kMeshCacheVersion) {
     LLOGL("Cache file has wrong version id\n");
     return false;
@@ -225,15 +269,20 @@ bool loadFromCache(const char* cacheFileName) {
   uint32_t numMaterials = 0;
   uint32_t numVertices = 0;
   uint32_t numIndices = 0;
-  CHECK_READ(1, fread(&numMaterials, sizeof(numMaterials), 1, cacheFile));
-  CHECK_READ(1, fread(&numVertices, sizeof(numVertices), 1, cacheFile));
-  CHECK_READ(1, fread(&numIndices, sizeof(numIndices), 1, cacheFile));
+  if (!readBytes(&numMaterials, sizeof(numMaterials)))
+    return false;
+  if (!readBytes(&numVertices, sizeof(numVertices)))
+    return false;
+  if (!readBytes(&numIndices, sizeof(numIndices)))
+    return false;
   cachedMaterials_.resize(numMaterials);
   vertexData_.resize(numVertices);
   indexData_.resize(numIndices);
-  CHECK_READ(numMaterials, fread(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile));
-  CHECK_READ(numVertices, fread(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile));
-  CHECK_READ(numIndices, fread(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile));
-#undef CHECK_READ
+  if (!readBytes(cachedMaterials_.data(), sizeof(CachedMaterial) * numMaterials))
+    return false;
+  if (!readBytes(vertexData_.data(), sizeof(VertexData) * numVertices))
+    return false;
+  if (!readBytes(indexData_.data(), sizeof(uint32_t) * numIndices))
+    return false;
   return true;
 }

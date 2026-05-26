@@ -303,19 +303,22 @@ VULKAN_APP_MAIN {
 
   // texture 1
   {
-    using namespace std::filesystem;
-    path dir = app.folderContentRoot_;
+    const std::string filePath =
+        (std::filesystem::path(app.folderContentRoot_) / "src/bistro/BuildingTextures/wood_polished_01_diff.png").string();
+    const std::vector<uint8_t> fileData = app.loadFile(filePath.c_str());
+    if (fileData.empty()) {
+      LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+      LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
+      std::terminate();
+    }
     int32_t texWidth = 0;
     int32_t texHeight = 0;
     int32_t channels = 0;
-    uint8_t* pixels = stbi_load(
-        (dir / path("src/bistro/BuildingTextures/wood_polished_01_diff.png")).string().c_str(), &texWidth, &texHeight, &channels, 4);
+    uint8_t* pixels = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &texWidth, &texHeight, &channels, 4);
     SCOPE_EXIT {
       stbi_image_free(pixels);
     };
     if (!pixels) {
-      LVK_ASSERT_MSG(false, "Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
-      LLOGW("Cannot load textures. Run `deploy_content.py`/`deploy_content_android.py` before running this app.");
       std::terminate();
     }
     texture1_ = ctx->createTexture({
