@@ -52,7 +52,7 @@ jobs:
             cmake --version
 
 #      - name: Prepare Vulkan SDK
-#        uses: jakoch/install-vulkan-sdk-action@v1.5.4
+#        uses: jakoch/install-vulkan-sdk-action@v1.5.5
 #        with:
 #            vulkan_version: 1.4.350.0
 #            install_runtime: true
@@ -171,7 +171,7 @@ jobs:
             sudo pip install --break-system-packages cmake==4.0.0
 
         - name: Prepare Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.5.4
+          uses: jakoch/install-vulkan-sdk-action@v1.5.5
           with:
             vulkan_version: 1.4.350.0
             install_runtime: true
@@ -220,7 +220,7 @@ jobs:
             key: deps-${{ runner.os }}-${{ hashFiles('third-party/bootstrap-deps.json') }}
 
         - name: Install Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.5.4
+          uses: jakoch/install-vulkan-sdk-action@v1.5.5
           with:
             vulkan_version: 1.4.350.0
             install_runtime: true
@@ -280,7 +280,7 @@ jobs:
             vulkaninfo
 
         - name: Install Vulkan SDK
-          uses: jakoch/install-vulkan-sdk-action@v1.5.4
+          uses: jakoch/install-vulkan-sdk-action@v1.5.5
           with:
             vulkan_version: 1.4.350.0
             install_runtime: true
