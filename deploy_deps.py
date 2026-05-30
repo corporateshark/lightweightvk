@@ -15,8 +15,4 @@ script = os.path.join(folder, "bootstrap.py")
 json = os.path.join(folder, "bootstrap-deps.json")
 base = os.path.join(folder, "deps")
 
-os.system(
-    '"{}" {} -b {} --bootstrap-file={} --break-on-first-error'.format(
-        sys.executable, script, base, json
-    )
-)
+os.system('"{}" {} -b {} --bootstrap-file={} --break-on-first-error'.format(sys.executable, script, base, json))

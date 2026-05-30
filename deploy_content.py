@@ -20,6 +20,4 @@ try:
 except FileExistsError:
     pass
 
-os.system(
-    '"{}" {} -b {} --bootstrap-file={}'.format(sys.executable, script, base, json)
-)
+os.system('"{}" {} -b {} --bootstrap-file={}'.format(sys.executable, script, base, json))
