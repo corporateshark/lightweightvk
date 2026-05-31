@@ -4054,7 +4054,7 @@ lvk::VulkanContext::~VulkanContext() {
   }
 
   // manually destroy the dummy sampler
-  vkDestroySampler(vkDevice_, samplersPool_.objects_.front().obj_, nullptr);
+  vkDestroySampler(vkDevice_, samplersPool_.objects_.front(), nullptr);
   samplersPool_.clear();
   computePipelinesPool_.clear();
   renderPipelinesPool_.clear();
@@ -5031,7 +5031,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
   if (workaround_noYcbcrSamplerArray_ && pimpl_->numYcbcrSamplers_ &&
       rps->workaround_yuvTextureIndex_ != pimpl_->workaround_activeYuvTextureIndex_) {
     const uint32_t idx = rps->workaround_yuvTextureIndex_; // some ad hoc guessing...
-    const bool isYuv = idx < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
+    const bool isYuv = idx < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[idx].vkImageFormat_) > 1;
     if (isYuv) {
       pimpl_->workaround_activeYuvTextureIndex_ = idx;
       awaitingNewImmutableSamplers_ = true;
@@ -5634,7 +5634,7 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       // some ad hoc guessing...
       if (entry.size == sizeof(uint32_t) && entry.offset + sizeof(uint32_t) <= desc.specInfo.dataSize) {
         const uint32_t value = *(const uint32_t*)((const uint8_t*)desc.specInfo.data + entry.offset);
-        if (value < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[value].obj_.vkImageFormat_) > 1) {
+        if (value < texturesPool_.objects_.size() && lvk::getNumImagePlanes(texturesPool_.objects_[value].vkImageFormat_) > 1) {
           rps.workaround_yuvTextureIndex_ = value;
           break;
         }
@@ -7705,15 +7705,14 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
   VkSampler firstYcbcrSampler = VK_NULL_HANDLE;
 
   // check if we have any YUV images
-  for (const auto& obj : texturesPool_.objects_) {
-    const VulkanImage* img = &obj.obj_;
+  for (const VulkanImage& img : texturesPool_.objects_) {
     // multisampled images cannot be directly accessed from shaders
-    const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
-    const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
+    const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+    const bool isYUVImage = isTextureAvailable && img.isSampledImage() && lvk::getNumImagePlanes(img.vkImageFormat_) > 1;
     if (isYUVImage) {
       // find the first Ycbcr sampler and use it as a dummy
       // (https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html#VUID-VkDescriptorSetLayoutBinding-descriptorType-12200)
-      firstYcbcrSampler = getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_));
+      firstYcbcrSampler = getOrCreateYcbcrSampler(vkFormatToFormat(img.vkImageFormat_));
       break;
     }
   }
@@ -7726,18 +7725,17 @@ lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet&
       // Adreno 840: single descriptor slot - use the active YUV texture's format sampler
       const uint32_t idx = pimpl_->workaround_activeYuvTextureIndex_;
       const bool isValidYuv = idx < texturesPool_.objects_.size() &&
-                              lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
-      immutableSamplers.push_back(isValidYuv ? getOrCreateYcbcrSampler(vkFormatToFormat(texturesPool_.objects_[idx].obj_.vkImageFormat_))
+                              lvk::getNumImagePlanes(texturesPool_.objects_[idx].vkImageFormat_) > 1;
+      immutableSamplers.push_back(isValidYuv ? getOrCreateYcbcrSampler(vkFormatToFormat(texturesPool_.objects_[idx].vkImageFormat_))
                                              : firstYcbcrSampler);
     } else {
       immutableSamplers.resize(maxTextures, firstYcbcrSampler);
       for (size_t i = 0; i != texturesPool_.objects_.size(); i++) {
-        const auto& obj = texturesPool_.objects_[i];
-        const VulkanImage* img = &obj.obj_;
+        const VulkanImage& img = texturesPool_.objects_[i];
         // multisampled images cannot be directly accessed from shaders
-        const bool isTextureAvailable = (img->vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
-        const bool isYUVImage = isTextureAvailable && img->isSampledImage() && lvk::getNumImagePlanes(img->vkImageFormat_) > 1;
-        immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img->vkImageFormat_)) : firstYcbcrSampler;
+        const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
+        const bool isYUVImage = isTextureAvailable && img.isSampledImage() && lvk::getNumImagePlanes(img.vkImageFormat_) > 1;
+        immutableSamplers[i] = isYUVImage ? getOrCreateYcbcrSampler(vkFormatToFormat(img.vkImageFormat_)) : firstYcbcrSampler;
       }
     }
     immutableSamplersData = immutableSamplers.data();
@@ -8011,13 +8009,12 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   }
 
   // use dummies to avoid sparse arrays
-  VkImageView dummyImageView = texturesPool_.objects_[0].obj_.imageView_;
-  VkSampler dummySampler = samplersPool_.objects_[0].obj_;
+  VkImageView dummyImageView = texturesPool_.objects_[0].imageView_;
+  VkSampler dummySampler = samplersPool_.objects_[0];
 
-  for (const auto& obj : texturesPool_.objects_) {
-    const VulkanImage& img = obj.obj_;
-    const VkImageView view = obj.obj_.imageView_;
-    const VkImageView storageView = obj.obj_.imageViewStorage_ ? obj.obj_.imageViewStorage_ : view;
+  for (const VulkanImage& img : texturesPool_.objects_) {
+    const VkImageView view = img.imageView_;
+    const VkImageView storageView = img.imageViewStorage_ ? img.imageViewStorage_ : view;
     // multisampled images cannot be directly accessed from shaders
     const bool isTextureAvailable = (img.vkSamples_ & VK_SAMPLE_COUNT_1_BIT) == VK_SAMPLE_COUNT_1_BIT;
     const bool isYUVImage = isTextureAvailable && img.isSampledImage() && lvk::getNumImagePlanes(img.vkImageFormat_) > 1;
@@ -8048,10 +8045,10 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   if (hasYcbcrSamplers && workaround_noYcbcrSamplerArray_) {
     const uint32_t idx = pimpl_->workaround_activeYuvTextureIndex_;
     const bool isValidYuv = idx < texturesPool_.objects_.size() &&
-                            lvk::getNumImagePlanes(texturesPool_.objects_[idx].obj_.vkImageFormat_) > 1;
+                            lvk::getNumImagePlanes(texturesPool_.objects_[idx].vkImageFormat_) > 1;
     infoYUVImages.push_back(VkDescriptorImageInfo{
         .sampler = dummySampler,
-        .imageView = isValidYuv ? texturesPool_.objects_[idx].obj_.imageView_ : dummyImageView,
+        .imageView = isValidYuv ? texturesPool_.objects_[idx].imageView_ : dummyImageView,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     });
   }
@@ -8060,9 +8057,9 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   std::vector<VkDescriptorImageInfo> infoSamplers;
   infoSamplers.reserve(samplersPool_.objects_.size());
 
-  for (const auto& sampler : samplersPool_.objects_) {
+  for (const VkSampler& sampler : samplersPool_.objects_) {
     infoSamplers.push_back({
-        .sampler = sampler.obj_ ? sampler.obj_ : samplersPool_.objects_[0].obj_,
+        .sampler = sampler ? sampler : samplersPool_.objects_[0],
         .imageView = VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     });
@@ -8074,15 +8071,15 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
 
   // use the first valid TLAS as a dummy
   const VkAccelerationStructureKHR dummyTLAS = [this]() -> VkAccelerationStructureKHR {
-    for (const auto& as : accelStructuresPool_.objects_) {
-      if (as.obj_.vkHandle && as.obj_.isTLAS)
-        return as.obj_.vkHandle;
+    for (const lvk::AccelerationStructure& as : accelStructuresPool_.objects_) {
+      if (as.vkHandle && as.isTLAS)
+        return as.vkHandle;
     }
     return VK_NULL_HANDLE;
   }();
 
-  for (const auto& as : accelStructuresPool_.objects_) {
-    handlesAccelStructs.push_back(as.obj_.isTLAS ? as.obj_.vkHandle : dummyTLAS);
+  for (const lvk::AccelerationStructure& as : accelStructuresPool_.objects_) {
+    handlesAccelStructs.push_back(as.isTLAS ? as.vkHandle : dummyTLAS);
   }
 
   VkWriteDescriptorSetAccelerationStructureKHR writeAccelStruct = {

@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <lvk/Pool.h>
+#include <ldrutils/lutils/Pool.h>
 #include <lvk/vulkan/VulkanUtils.h>
 
 #include <future>
@@ -811,15 +811,15 @@ class VulkanContext final : public IContext {
 
   TextureHandle dummyTexture_;
 
-  lvk::Pool<lvk::ShaderModule, lvk::ShaderModuleState> shaderModulesPool_;
-  lvk::Pool<lvk::RenderPipeline, lvk::RenderPipelineState> renderPipelinesPool_;
-  lvk::Pool<lvk::ComputePipeline, lvk::ComputePipelineState> computePipelinesPool_;
-  lvk::Pool<lvk::RayTracingPipeline, lvk::RayTracingPipelineState> rayTracingPipelinesPool_;
-  lvk::Pool<lvk::Sampler, VkSampler> samplersPool_;
-  lvk::Pool<lvk::Buffer, lvk::VulkanBuffer> buffersPool_;
-  lvk::Pool<lvk::Texture, lvk::VulkanImage> texturesPool_;
-  lvk::Pool<lvk::QueryPool, VkQueryPool> queriesPool_;
-  lvk::Pool<lvk::AccelerationStructure, lvk::AccelerationStructure> accelStructuresPool_;
+  ldr::Pool<lvk::ShaderModule, lvk::ShaderModuleState> shaderModulesPool_;
+  ldr::Pool<lvk::RenderPipeline, lvk::RenderPipelineState> renderPipelinesPool_;
+  ldr::Pool<lvk::ComputePipeline, lvk::ComputePipelineState> computePipelinesPool_;
+  ldr::Pool<lvk::RayTracingPipeline, lvk::RayTracingPipelineState> rayTracingPipelinesPool_;
+  ldr::Pool<lvk::Sampler, VkSampler> samplersPool_;
+  ldr::Pool<lvk::Buffer, lvk::VulkanBuffer> buffersPool_;
+  ldr::Pool<lvk::Texture, lvk::VulkanImage> texturesPool_;
+  ldr::Pool<lvk::QueryPool, VkQueryPool> queriesPool_;
+  ldr::Pool<lvk::AccelerationStructure, lvk::AccelerationStructure> accelStructuresPool_;
 };
 
 } // namespace lvk
