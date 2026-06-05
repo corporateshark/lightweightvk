@@ -1072,6 +1072,7 @@ class ICommandBuffer {
 
   virtual void cmdBindComputePipeline(lvk::ComputePipelineHandle handle) = 0;
   virtual void cmdDispatchThreadGroups(const Dimensions& threadgroupCount, const Dependencies& deps = {}) = 0;
+  virtual void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset, const Dependencies& deps = {}) = 0;
 
   virtual void cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& desc, const Dependencies& deps = {}) = 0;
   virtual void cmdEndRendering() = 0;
