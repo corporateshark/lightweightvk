@@ -621,13 +621,14 @@ union ClearColorValue {
   uint32_t uint32[4];
 };
 
-template <typename T>
+template<typename T>
 class Span {
  public:
   Span() = default;
   Span(T* data, size_t numElements) : data_(data), numElements_(numElements) {}
   template<size_t N>
-  Span(T (&arr)[N]) : data_(arr), numElements_(N) {}
+  Span(T (&arr)[N]) : data_(arr)
+                    , numElements_(N) {}
   Span(std::initializer_list<T> list) : data_(const_cast<T*>(list.begin())), numElements_(list.size()) {}
   const T& operator[](size_t idx) const {
     return data_[idx];
@@ -1084,8 +1085,14 @@ class ICommandBuffer {
   virtual void cmdBindRenderPipeline(lvk::RenderPipelineHandle handle) = 0;
   virtual void cmdBindDepthState(const DepthState& state) = 0;
 
-  virtual void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset = 0, uint64_t bufferSize = LVK_WHOLE_SIZE) = 0;
-  virtual void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset = 0, uint64_t bufferSize = LVK_WHOLE_SIZE) = 0;
+  virtual void cmdBindVertexBuffer(uint32_t index,
+                                   BufferHandle buffer,
+                                   uint64_t bufferOffset = 0,
+                                   uint64_t bufferSize = LVK_WHOLE_SIZE) = 0;
+  virtual void cmdBindIndexBuffer(BufferHandle indexBuffer,
+                                  IndexFormat indexFormat,
+                                  uint64_t bufferOffset = 0,
+                                  uint64_t bufferSize = LVK_WHOLE_SIZE) = 0;
   virtual void cmdPushConstants(const void* data, size_t size, size_t offset = 0) = 0;
   template<typename Struct>
   void cmdPushConstants(const Struct& data, size_t offset = 0) {
