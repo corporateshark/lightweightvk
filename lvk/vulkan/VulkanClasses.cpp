@@ -2398,15 +2398,22 @@ void lvk::CommandBuffer::bufferBarrier(BufferHandle handle,
       .size = size,
   };
 
+  // VK_ACCESS_2_SHADER_*_BIT is only valid for shader stages
+  // TRANSFER, DRAW_INDIRECT and VERTEX_INPUT have their own access flags and must not pull in shader access
+  const VkPipelineStageFlags2 nonShaderStages =
+      VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+
   if (srcStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
     barrier.srcAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
-  } else {
+  }
+  if (srcStage & ~nonShaderStages) {
     barrier.srcAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
   }
 
   if (dstStage & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
     barrier.dstAccessMask |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
-  } else {
+  }
+  if (dstStage & ~nonShaderStages) {
     barrier.dstAccessMask |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
   }
   if (dstStage & VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT) {
