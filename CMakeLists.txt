@@ -26,12 +26,14 @@ option(LVK_WITH_SAMPLES_ANDROID    "Generate Android projects for demo apps" OFF
 option(LVK_WITH_TRACY              "Enable Tracy profiler"                   ON)
 option(LVK_WITH_TRACY_GPU          "Enable Tracy GPU profiler"               OFF)
 option(LVK_WITH_WAYLAND            "Enable Wayland"                          OFF)
-option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
 option(LVK_WITH_OPENXR             "Enable OpenXR"                           OFF)
 option(LVK_WITH_ANDROID_VALIDATION "Enable validation layers on Android"     ON)
 option(LVK_WITH_MINILOG            "Enable Minilog"                          ON)
 option(LVK_WITH_SLANG              "Enable Slang compiler"                   OFF)
 option(LVK_WITH_SPIRV_OPT          "Run SPIRV optimization on shaders"       OFF)
+option(LVK_WITH_IMPLOT             "Enable ImPlot"                           ON)
+option(LVK_IMGUI_EXTERNAL          "Use external ImGui library"              OFF)
+option(LVK_IMPLOT_EXTERNAL         "Use external ImPlot library"             OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
 
 set(LVK_ANDROID_ABI "arm64-v8a" CACHE STRING "Enabled ABI on Android")
@@ -231,6 +233,13 @@ endif()
 
 if(LVK_WITH_IMPLOT)
   target_compile_definitions(LVKLibrary PUBLIC "LVK_WITH_IMPLOT=1")
+  if(NOT LVK_IMPLOT_EXTERNAL)
+    target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/implot")
+  endif()
+endif()
+
+if(NOT LVK_IMGUI_EXTERNAL)
+  target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/imgui")
 endif()
 
 if(LVK_DEPLOY_DEPS)
@@ -346,6 +355,3 @@ if(LVK_WITH_SAMPLES)
   lvk_set_folder(fast_obj_lib  "third-party")
   # cmake-format: on
 endif()
-
-# ImGui
-target_include_directories(LVKLibrary PUBLIC "${LVK_ROOT_DIR}/third-party/deps/src/imgui")

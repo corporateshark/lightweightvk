@@ -46,7 +46,9 @@
 #include <stb/stb_image_resize2.h>
 #include <taskflow/taskflow.hpp>
 
-#include <implot/implot.h>
+#if defined(LVK_WITH_IMPLOT)
+#include <implot.h>
+#endif // LVK_WITH_IMPLOT
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
@@ -57,8 +59,12 @@
 #elif LVK_WITH_GLFW
 #include <GLFW/glfw3.h>
 #elif LVK_WITH_SDL3
-#include "imgui/backends/imgui_impl_sdl3.h"
 #include <SDL3/SDL.h>
+#if __has_include(<imgui_impl_sdl3.h>)
+#include <imgui_impl_sdl3.h> // external ImGui
+#else
+#include <imgui/backends/imgui_impl_sdl3.h> // bundled ImGui
+#endif
 #endif
 
 #include "DEMO_002_Bistro.cpp" // temporary

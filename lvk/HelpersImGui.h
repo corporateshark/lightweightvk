@@ -13,7 +13,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif // !defined(IMGUI_DEFINE_MATH_OPERATORS)
 
-#include <imgui/imgui.h>
+#include <imgui.h>
 #include <lvk/LVK.h>
 
 namespace lvk {

@@ -9,14 +9,11 @@
 
 #include "HelpersImGui.h"
 
+#if !defined(LVK_IMGUI_EXTERNAL)
 #include "imgui/imgui.cpp"
 #include "imgui/imgui_draw.cpp"
 #include "imgui/imgui_tables.cpp"
 #include "imgui/imgui_widgets.cpp"
-#if defined(LVK_WITH_IMPLOT)
-#include "implot/implot.cpp"
-#include "implot/implot_items.cpp"
-#endif // LVK_WITH_IMPLOT
 
 #if LVK_WITH_GLFW
 #include "imgui/backends/imgui_impl_glfw.cpp"
@@ -25,6 +22,27 @@
 #if LVK_WITH_SDL3
 #include "imgui/backends/imgui_impl_sdl3.cpp"
 #endif // LVK_WITH_SDL3
+
+#else // LVK_IMGUI_EXTERNAL
+
+#if LVK_WITH_GLFW
+#include <imgui_impl_glfw.h>
+#endif // LVK_WITH_GLFW
+
+#if LVK_WITH_SDL3
+#include <imgui_impl_sdl3.h>
+#endif // LVK_WITH_SDL3
+
+#endif // !defined(LVK_IMGUI_EXTERNAL)
+
+#if defined(LVK_WITH_IMPLOT)
+#if !defined(LVK_IMPLOT_EXTERNAL)
+#include "implot/implot.cpp"
+#include "implot/implot_items.cpp"
+#else // LVK_IMPLOT_EXTERNAL
+#include <implot.h>
+#endif // !defined(LVK_IMPLOT_EXTERNAL)
+#endif // LVK_WITH_IMPLOT
 
 #include <math.h>
 
@@ -129,8 +147,10 @@ lvk::Holder<lvk::RenderPipelineHandle> ImGuiRenderer::createNewPipelineState(con
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const char* defaultFontTTF, float fontSizePixels)
 : ImGuiRenderer(device, window, nullptr, 0, fontSizePixels) {
-  if (defaultFontTTF)
+  if (defaultFontTTF) {
+    ImGui::GetIO().Fonts->Clear();
     updateFont(defaultFontTTF, nullptr, 0, fontSizePixels);
+  }
 }
 
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const void* fontData, size_t fontDataSize, float fontSizePixels)
