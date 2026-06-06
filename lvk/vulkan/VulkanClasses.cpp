@@ -580,7 +580,6 @@ std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
   default:
     return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
   }
-  return {VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT};
 }
 
 bool validateImageLimits(VkImageType imageType,
@@ -4581,7 +4580,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
         {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2, .pNext = numPlanes > 2 ? &planes[2] : nullptr, .image = img},
     };
 
-    const VkDeviceSize maxMemoryAllocationSize = vkPhysicalDeviceVulkan11Properties_.maxMemoryAllocationSize;
+    [[maybe_unused]] const VkDeviceSize maxMemoryAllocationSize = vkPhysicalDeviceVulkan11Properties_.maxMemoryAllocationSize;
 
     for (uint32_t p = 0; p != numPlanes; p++) {
       vkGetImageMemoryRequirements2(vkDevice_, &imgRequirements[p], &memRequirements[p]);
@@ -6144,8 +6143,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSPIRV(const voi
   }
 
   SpvReflectShaderModule mdl;
-  SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
-  LVK_ASSERT(result == SPV_REFLECT_RESULT_SUCCESS);
+  const SpvReflectResult result = spvReflectCreateShaderModule(numBytes, spirv, &mdl);
+  (void)LVK_VERIFY(result == SPV_REFLECT_RESULT_SUCCESS);
   SCOPE_EXIT {
     spvReflectDestroyShaderModule(&mdl);
   };
@@ -6584,9 +6583,9 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #elif defined(__linux__)
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
       VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-#else
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
       VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-#endif // VK_USE_PLATFORM_WAYLAND_KHR
+#endif // VK_USE_PLATFORM_WAYLAND_KHR || VK_USE_PLATFORM_XLIB_KHR
 #endif
   };
 
