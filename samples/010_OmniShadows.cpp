@@ -631,10 +631,10 @@ VULKAN_APP_MAIN {
     ImGui::Text("W/S/A/D - camera movement");
     ImGui::Text("1/2 - camera up/down");
     ImGui::Text("Shift - fast movement");
-    const float h = ImGui::GetWindowHeight();
+    const float windowHeight = ImGui::GetWindowHeight();
     const ImVec2 pos = ImGui::GetWindowPos();
     ImGui::End();
-    ImGui::SetNextWindowPos({0, pos.y + h});
+    ImGui::SetNextWindowPos({0, pos.y + windowHeight});
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
     ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
     for (uint32_t l = 0; l != LVK_ARRAY_NUM_ELEMENTS(layers); l++) {
