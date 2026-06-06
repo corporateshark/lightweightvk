@@ -1894,7 +1894,7 @@ void processLoadedMaterials(lvk::ICommandBuffer& buffer) {
     materials_[mtl.idx].texAmbient = tex.ambient.index();
     materials_[mtl.idx].texDiffuse = tex.diffuse.index();
     materials_[mtl.idx].texAlpha = tex.alpha.index();
-    textures_[mtl.idx] = std::move(tex);
+    textures_[mtl.idx] = tex;
   }
   LVK_ASSERT(materials_[mtl.idx].texAmbient >= 0);
   LVK_ASSERT(materials_[mtl.idx].texDiffuse >= 0);

@@ -986,7 +986,7 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
         .debugName = fileName.c_str(),
     });
 
-    return std::move(tex);
+    return tex;
   }
 
   // no cached KTX: convert equirectangular map to cubemap in memory
@@ -1026,7 +1026,7 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
       .debugName = fileName.c_str(),
   });
 
-  return std::move(tex);
+  return tex;
 }
 
 lvk::TextureHandle loadTextureFromFile(VulkanApp& app, const std::string& fileName) {
