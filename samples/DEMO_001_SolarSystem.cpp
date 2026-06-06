@@ -1545,6 +1545,7 @@ VULKAN_APP_MAIN {
       uint32_t padding[2] = {};
     };
     std::vector<MaterialBuffer> materials;
+    materials.reserve(scene.materials.size());
     for (const Material& m : scene.materials) {
       materials.push_back({
           .emissive = m.emissive,
