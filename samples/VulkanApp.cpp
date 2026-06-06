@@ -405,6 +405,10 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
     width_ = cfg_.width;
     height_ = cfg_.height;
     window_ = lvk::initWindow("Simple example", width_, height_, cfg_.resizable, cfg_.contextConfig.enableHeadlessSurface);
+    if (!window_ && (width_ <= 0 || height_ <= 0)) {
+      width_ = 800;
+      height_ = 600;
+    }
     ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
   }
 #endif // ANDROID
