@@ -390,7 +390,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 
   void cmdBindComputePipeline(lvk::ComputePipelineHandle handle) override;
-  void cmdDispatchThreadGroups(const Dimensions& threadgroupCount, const Dependencies& deps) override;
+  void cmdDispatch(const Dimensions& groupCount, const Dependencies& deps) override;
   void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset, const Dependencies& deps) override;
 
   void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA) const override;

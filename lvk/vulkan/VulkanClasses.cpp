@@ -2281,9 +2281,9 @@ void lvk::CommandBuffer::cmdBindComputePipeline(lvk::ComputePipelineHandle handl
   }
 }
 
-void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCount, const Dependencies& deps) {
+void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Dependencies& deps) {
   LVK_PROFILER_FUNCTION();
-  LVK_PROFILER_GPU_ZONE("cmdDispatchThreadGroups()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DISPATCH);
+  LVK_PROFILER_GPU_ZONE("cmdDispatch()", ctx_, wrapper_->cmdBuf_, LVK_PROFILER_COLOR_CMD_DISPATCH);
 
   LVK_ASSERT(!isRendering_);
 
@@ -2299,7 +2299,7 @@ void lvk::CommandBuffer::cmdDispatchThreadGroups(const Dimensions& threadgroupCo
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
-  vkCmdDispatch(wrapper_->cmdBuf_, threadgroupCount.width, threadgroupCount.height, threadgroupCount.depth);
+  vkCmdDispatch(wrapper_->cmdBuf_, groupCount.width, groupCount.height, groupCount.depth);
 }
 
 void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset, const Dependencies& deps) {

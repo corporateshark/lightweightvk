@@ -1071,8 +1071,8 @@ class ICommandBuffer {
   virtual void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) = 0;
 
   virtual void cmdBindComputePipeline(lvk::ComputePipelineHandle handle) = 0;
-  virtual void cmdDispatchThreadGroups(const Dimensions& threadgroupCount, const Dependencies& deps = {}) = 0;
-  virtual void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset, const Dependencies& deps = {}) = 0;
+  virtual void cmdDispatch(const Dimensions& groupCount, const Dependencies& deps = {}) = 0;
+  virtual void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset = 0, const Dependencies& deps = {}) = 0;
 
   virtual void cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& desc, const Dependencies& deps = {}) = 0;
   virtual void cmdEndRendering() = 0;

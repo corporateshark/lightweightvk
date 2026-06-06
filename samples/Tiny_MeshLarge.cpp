@@ -1371,7 +1371,7 @@ void render(double delta) {
           .height = (uint32_t)height_,
       };
       buffer.cmdPushConstants(bindings);
-      buffer.cmdDispatchThreadGroups(
+      buffer.cmdDispatch(
           {
               .width = 1 + (uint32_t)width_ / 16,
               .height = 1 + (uint32_t)height_ / 16,
