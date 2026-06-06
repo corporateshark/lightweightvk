@@ -654,8 +654,8 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         LLOGW("Unsupported pixel format %u\n", (uint32_t)format);
         break;
       }
-      std::vector<uint8_t> pixelsRGBA(dim.width * dim.height * 4);
-      std::vector<uint8_t> pixelsRGB(dim.width * dim.height * 3);
+      std::vector<uint8_t> pixelsRGBA(static_cast<size_t>(dim.width) * dim.height * 4);
+      std::vector<uint8_t> pixelsRGB(static_cast<size_t>(dim.width) * dim.height * 3);
       ctx_->download(view.colorTexture, {.dimensions = {dim.width, dim.height}}, pixelsRGBA.data());
       if (format == lvk::Format_BGRA_UN8 || format == lvk::Format_BGRA_SRGB8) {
         // swap R-B
@@ -812,8 +812,8 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
         LLOGW("Unsupported pixel format %u\n", (uint32_t)format);
         break;
       }
-      std::vector<uint8_t> pixelsRGBA(dim.width * dim.height * 4);
-      std::vector<uint8_t> pixelsRGB(dim.width * dim.height * 3);
+      std::vector<uint8_t> pixelsRGBA(static_cast<size_t>(dim.width) * dim.height * 4);
+      std::vector<uint8_t> pixelsRGB(static_cast<size_t>(dim.width) * dim.height * 3);
       ctx_->download(view.colorTexture, {.dimensions = {dim.width, dim.height}}, pixelsRGBA.data());
       if (format == lvk::Format_BGRA_UN8 || format == lvk::Format_BGRA_SRGB8) {
         // swap R-B
@@ -869,6 +869,10 @@ std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
     return {};
   fseek(f, 0, SEEK_END);
   const long size = ftell(f);
+  if (size <= 0) {
+    fclose(f);
+    return {};
+  }
   fseek(f, 0, SEEK_SET);
   std::vector<uint8_t> data(size);
   if (fread(data.data(), 1, size, f) != static_cast<size_t>(size))
