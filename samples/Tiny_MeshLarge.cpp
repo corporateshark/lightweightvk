@@ -606,10 +606,6 @@ std::atomic<bool> loaderShouldExit_ = false;
 std::atomic<uint32_t> remainingMaterialsToLoad_ = 0;
 std::unique_ptr<tf::Executor> loaderPool_ = std::make_unique<tf::Executor>(std::max(2u, std::thread::hardware_concurrency() / 2));
 
-static bool endsWith(const std::string& str, const std::string& suffix) {
-  return str.size() >= suffix.size() && 0 == str.compare(str.size() - suffix.size(), suffix.size(), suffix);
-}
-
 static std::string convertFileName(std::string fileName) {
   // generate compressed filename
   const std::string compressedPathPrefix = folderContentRoot;
@@ -627,13 +623,6 @@ static std::string convertFileName(std::string fileName) {
   // return absolute compressed filename
   return compressedPathPrefix + fileName + ".ktx";
 }
-static void stringReplaceAll(std::string& s, const std::string& searchString, const std::string& replaceString) {
-  size_t pos = 0;
-  while ((pos = s.find(searchString, pos)) != std::string::npos) {
-    s.replace(pos, searchString.length(), replaceString);
-  }
-}
-
 bool initModel();
 void loadSkyboxTexture();
 void loadMaterials();

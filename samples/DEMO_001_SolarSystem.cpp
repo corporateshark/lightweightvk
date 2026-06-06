@@ -954,7 +954,6 @@ struct VulkanState final {
   lvk::Holder<lvk::TextureHandle> texSkyBox;
 } vulkanState;
 
-
 lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const std::string& fileName) {
   const std::string name = (std::filesystem::path(app.folderContentRoot_) / "src/solarsystem" / fileName).string();
   const std::string fileNameKTX = name + ".ktx";

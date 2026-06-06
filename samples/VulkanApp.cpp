@@ -873,7 +873,6 @@ std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
   return data;
 }
 
-
 #if LVK_WITH_OPENXR
 
 void VulkanApp::initOpenXR() {

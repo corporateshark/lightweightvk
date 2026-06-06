@@ -18,10 +18,6 @@ struct VertexOutput {
   float3 color       : COLOR0;
 };
 
-struct PrimitiveOutput {
-  bool sv_CullPrimitive : SV_CullPrimitive;
-};
-
 struct MeshPayload {
   uint unused;
 };
@@ -39,8 +35,7 @@ void taskMain() {
 void meshMain(
   in payload MeshPayload meshPayload,
   OutputVertices<VertexOutput, 3> verts,
-  OutputIndices<uint3, 1> triangles,
-  OutputPrimitives<PrimitiveOutput, 1> primitives)
+  OutputIndices<uint3, 1> triangles)
 {
   const float2 pos[3] = {
     float2(-0.6, -0.4),
@@ -61,7 +56,6 @@ void meshMain(
     verts[i].color = col[i];
   }
 
-  primitives[0].sv_CullPrimitive = false;
   triangles[0] = uint3(0, 1, 2);
 }
 
@@ -102,7 +96,6 @@ void main() {
     color[i] = col[i];
   }
 
-  gl_MeshPrimitivesEXT[0].gl_CullPrimitiveEXT = false;
   gl_PrimitiveTriangleIndicesEXT[0] = uvec3(0, 1, 2);
 }
 )";

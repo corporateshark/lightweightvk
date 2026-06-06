@@ -156,8 +156,6 @@ void main() {
     uvs[vertOff + i] = (offs[i] + 1.0) * 0.5; // convert from [-1, 1] to [0, 1]
   }
 
-  gl_MeshPrimitivesEXT[triOff + 0].gl_CullPrimitiveEXT = false;
-  gl_MeshPrimitivesEXT[triOff + 1].gl_CullPrimitiveEXT = false;
   gl_PrimitiveTriangleIndicesEXT[triOff + 0] = uvec3(vertOff + 0, vertOff + 1, vertOff + 2);
   gl_PrimitiveTriangleIndicesEXT[triOff + 1] = uvec3(vertOff + 2, vertOff + 1, vertOff + 3);
 }
