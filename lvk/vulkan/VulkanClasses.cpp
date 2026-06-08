@@ -6930,10 +6930,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
     enabledInstanceExtensionNames_.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
 
-  if (config_.enableValidation) {
-    enabledInstanceExtensionNames_.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME); // enabled only for validation
-  }
-
   if (config_.enableHeadlessSurface) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
   }
@@ -6964,24 +6960,15 @@ lvk::Result lvk::VulkanContext::createInstance() {
     }
   }
 
-#if !defined(ANDROID)
   // GPU Assisted Validation doesn't work on Android.
   // It implicitly requires vertexPipelineStoresAndAtomics feature that's not supported even on high-end devices.
-  const VkValidationFeatureEnableEXT validationFeaturesEnabled[] = {
-      VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
-      VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT,
-  };
+#if defined(ANDROID)
+  const bool enableGpuAv = false;
+#else
+  const bool enableGpuAv = config_.enableValidation && config_.enableValidationGpuAssisted;
 #endif // ANDROID
 
-  const VkValidationFeaturesEXT features = {
-      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-      .pNext = nullptr,
-#if !defined(ANDROID)
-      .enabledValidationFeatureCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(validationFeaturesEnabled) : 0u,
-      .pEnabledValidationFeatures = config_.enableValidation ? validationFeaturesEnabled : nullptr,
-#endif
-  };
-
+  const VkBool32 gpuav_enable = enableGpuAv ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
 #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
   VkLayerSettingEXT {                                                                                                           \
@@ -6989,12 +6976,13 @@ lvk::Result lvk::VulkanContext::createInstance() {
     .pValues = var,                                                                                                             \
   }
   const VkLayerSettingEXT settings[] = {
+      LAYER_SETTINGS_BOOL32("gpuav_enable", &gpuav_enable),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
   };
 #undef LAYER_SETTINGS_BOOL32
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
-      .pNext = config_.enableValidation ? &features : nullptr,
+      .pNext = nullptr,
       .settingCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(settings),
       .pSettings = settings,
   };
@@ -7028,7 +7016,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
       .pNext = &layerSettingsCreateInfo,
 #else
-      .pNext = config_.enableValidation ? &features : nullptr,
+      .pNext = nullptr,
 #endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
       .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
