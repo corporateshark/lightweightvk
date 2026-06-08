@@ -1956,6 +1956,11 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::rasterizationSamples(VkS
   return *this;
 }
 
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::alphaToCoverage(bool enable) {
+  multisampleState_.alphaToCoverageEnable = enable ? VK_TRUE : VK_FALSE;
+  return *this;
+}
+
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::cullMode(VkCullModeFlags mode) {
   rasterizationState_.cullMode = mode;
   return *this;
@@ -5189,6 +5194,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
+      .alphaToCoverage(desc.alphaToCoverage)
       .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
       .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
                        stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),

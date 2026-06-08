@@ -693,6 +693,7 @@ struct RenderPipelineDesc final {
   uint32_t samplesCount = 1u;
   uint32_t patchControlPoints = 0;
   float minSampleShading = 0.0f;
+  bool alphaToCoverage = false;
 
   const char* debugName = "";
 
