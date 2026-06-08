@@ -1716,7 +1716,7 @@ VULKAN_APP_MAIN {
   modelMatrices.resize(scene.meshes.size());
   normalMatrices.resize(scene.meshes.size());
 
-  app.run([&](lvk::Span<const RenderView> appViews, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> appViews, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     const float aspectRatio = appViews[0].aspectRatio;

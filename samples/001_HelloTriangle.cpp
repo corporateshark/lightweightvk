@@ -102,7 +102,7 @@ VULKAN_APP_MAIN {
 
     LVK_ASSERT(renderPipelineState_Triangle_.valid());
 
-    app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+    app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
       // this will clear the framebuffer

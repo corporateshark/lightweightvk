@@ -2148,7 +2148,7 @@ lvk::CommandBuffer::~CommandBuffer() {
   LVK_ASSERT(!isRendering_);
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   StageAccess extraDstAccess = {};
@@ -2171,7 +2171,7 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const lvk::Span<TextureHandle>& 
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const {
+void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   for (TextureHandle handle : textures) {
@@ -2188,7 +2188,7 @@ void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const lvk::Span<Textu
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
+void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   StageAccess extraDstAccess = {};

@@ -235,7 +235,7 @@ VULKAN_APP_MAIN {
     });
 
     // Main loop
-    app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+    app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
       LVK_PROFILER_FUNCTION();
 
       const float fov = float(45.0f * (M_PI / 180.0f));

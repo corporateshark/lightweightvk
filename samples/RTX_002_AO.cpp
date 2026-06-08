@@ -1437,7 +1437,7 @@ VULKAN_APP_MAIN {
       .normal = glm::transpose(glm::inverse(modelMatrix)),
   };
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     bool resetHashMap = false;

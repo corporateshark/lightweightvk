@@ -831,7 +831,7 @@ VULKAN_APP_MAIN {
   g_Points.useViewerFacingExplosions = true;
 #endif
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     // simulation

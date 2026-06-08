@@ -79,7 +79,7 @@ struct RenderView {
   float aspectRatio = 1.0f;
 };
 
-using DrawFrameFunc = std::function<void(lvk::Span<const RenderView> views, float deltaSeconds)>;
+using DrawFrameFunc = std::function<void(ldr::Span<const RenderView> views, float deltaSeconds)>;
 
 struct VulkanAppConfig {
   int width = -95; // 95% horizontally

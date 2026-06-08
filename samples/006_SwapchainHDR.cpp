@@ -117,7 +117,7 @@ VULKAN_APP_MAIN {
         .rgb2 = {0, 0, 1},
     };
 
-    app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+    app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
       lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
       const lvk::Framebuffer fb = {
           .color = {{.texture = ctx->getCurrentSwapchainTexture()}},

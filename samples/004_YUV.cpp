@@ -189,7 +189,7 @@ VULKAN_APP_MAIN {
 #endif
 #endif // !ANDROID
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
 #if defined(ANDROID)
     // cycle through demos on touch release
     if (app.imguiClearMouseNextFrame_ && !res_.demos.empty()) {

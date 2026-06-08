@@ -17,6 +17,7 @@
 #include <utility>
 
 #include <ldrutils/lutils/Handle.h>
+#include <ldrutils/lutils/Span.h>
 
 // clang-format off
 #if defined(LVK_WITH_MINILOG)
@@ -571,60 +572,6 @@ union ClearColorValue {
   uint32_t uint32[4];
 };
 
-template<typename T>
-class Span {
- public:
-  Span() = default;
-  Span(T* data, size_t numElements) : data_(data), numElements_(numElements) {}
-  template<size_t N>
-  Span(T (&arr)[N]) : data_(arr)
-                    , numElements_(N) {}
-  Span(std::initializer_list<T> list) : data_(const_cast<T*>(list.begin())), numElements_(list.size()) {}
-  const T& operator[](size_t idx) const {
-    return data_[idx];
-  };
-  T& operator[](size_t idx) {
-    return data_[idx];
-  };
-  size_t size() const {
-    return numElements_;
-  }
-  size_t size_bytes() const {
-    return sizeof(T) * numElements_;
-  }
-  bool empty() const {
-    return numElements_ == 0;
-  }
-  T* data() {
-    return data_;
-  }
-  const T* data() const {
-    return data_;
-  }
-  T* begin() {
-    return data_;
-  }
-  const T* begin() const {
-    return data_;
-  }
-  T* end() {
-    return data_ + numElements_;
-  }
-  const T* end() const {
-    return data_ + numElements_;
-  }
-  const T* cbegin() const {
-    return data_;
-  }
-  const T* cend() const {
-    return data_ + numElements_;
-  }
-
- private:
-  T* data_ = nullptr;
-  size_t numElements_ = 0;
-};
-
 struct VertexInput final {
   enum { LVK_VERTEX_ATTRIBUTES_MAX = 16 };
   enum { LVK_VERTEX_BUFFER_MAX = 16 };
@@ -773,10 +720,10 @@ struct RayTracingHitGroupDesc final {
 };
 
 struct RayTracingPipelineDesc final {
-  Span<ShaderModuleHandle> smRayGen = {}; // typically just one, but spec allows more
-  Span<ShaderModuleHandle> smMiss = {}; // index 0 for primary rays, 1 for shadow rays, etc
-  Span<ShaderModuleHandle> smCallable = {};
-  Span<RayTracingHitGroupDesc> hitGroups = {}; // hit groups - one per material
+  ldr::Span<ShaderModuleHandle> smRayGen = {}; // typically just one, but spec allows more
+  ldr::Span<ShaderModuleHandle> smMiss = {}; // index 0 for primary rays, 1 for shadow rays, etc
+  ldr::Span<ShaderModuleHandle> smCallable = {};
+  ldr::Span<RayTracingHitGroupDesc> hitGroups = {}; // hit groups - one per material
   SpecializationConstantDesc specInfo = {};
   const char* debugName = "";
 };
@@ -1000,20 +947,20 @@ struct AccelStructDesc {
 };
 
 struct Dependencies {
-  lvk::Span<TextureHandle> sampledImages = {};
-  lvk::Span<TextureHandle> storageImages = {};
-  lvk::Span<BufferHandle> buffers = {};
-  lvk::Span<TextureHandle> inputAttachments = {};
+  ldr::Span<TextureHandle> sampledImages = {};
+  ldr::Span<TextureHandle> storageImages = {};
+  ldr::Span<BufferHandle> buffers = {};
+  ldr::Span<TextureHandle> inputAttachments = {};
 };
 
 class ICommandBuffer {
  public:
   virtual ~ICommandBuffer() = default;
 
-  virtual void cmdTransitionToGeneral(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
-  virtual void cmdTransitionToShaderReadOnly(const lvk::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
+  virtual void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
+  virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   // no extraDstStage parameter: this is only used within a render pass
-  virtual void cmdTransitionToRenderingLocalRead(const lvk::Span<TextureHandle>& textures) const = 0;
+  virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;

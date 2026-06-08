@@ -663,7 +663,7 @@ VULKAN_APP_MAIN {
     VULKAN_APP_EXIT();
   }
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
     LVK_PROFILER_FUNCTION();
 
     const uint32_t width = views[0].scissorRect.width;

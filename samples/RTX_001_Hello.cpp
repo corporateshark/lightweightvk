@@ -342,7 +342,7 @@ VULKAN_APP_MAIN {
       .hitGroups = {{.smClosestHit = res.hit_}},
   });
 
-  app.run([&](lvk::Span<const RenderView> views, float deltaSeconds) {
+  app.run([&](ldr::Span<const RenderView> views, float deltaSeconds) {
     const uint32_t width = views[0].scissorRect.width;
     const uint32_t height = views[0].scissorRect.height;
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
