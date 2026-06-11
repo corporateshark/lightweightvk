@@ -23,6 +23,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * mandatory **VK_KHR_maintenance5**
    * mandatory **VK_KHR_push_descriptor**
    * mandatory **VK_EXT_surface_maintenance1**
+   * optional **VK_KHR_maintenance6**
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)

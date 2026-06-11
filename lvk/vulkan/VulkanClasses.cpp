@@ -7182,6 +7182,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .indexTypeUint8 = VK_TRUE,
       .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
+      .maintenance6 = VK_TRUE,
       .pushDescriptor = VK_TRUE,
   };
 
@@ -7226,6 +7227,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5Features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR,
       .maintenance5 = VK_TRUE,
+  };
+  VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6Features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR,
+      .maintenance6 = VK_TRUE,
   };
   VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR dynamicRenderingLocalReadFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR,
@@ -7290,9 +7295,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addExtension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, nullptr);
     addExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME, &maintenance5Features);
     addExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME, &dynamicRenderingLocalReadFeatures);
+    addOptionalExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, has_KHR_maintenance6_, &maintenance6Features);
     if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
       addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
     }
+  } else {
+    has_KHR_maintenance6_ = vkFeatures14_.maintenance6 == VK_TRUE; // promoted to core in Vulkan 1.4
   }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_KHR_calibrated_timestamps_, nullptr);
