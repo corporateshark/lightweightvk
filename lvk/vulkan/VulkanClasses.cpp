@@ -7020,10 +7020,21 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
     vkFeatures13_.pNext = &vkFeatures14_;
+  } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&maintenance6Properties_);
   }
 
   vkGetPhysicalDeviceFeatures2(vkPhysicalDevice_, &vkFeatures10_);
   vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &vkPhysicalDeviceProperties2_);
+
+  // VK_KHR_maintenance6 (promoted to Vulkan 1.4) reports the device-wide maximum number of descriptors a single combined image
+  // sampler may consume (multi-planar YCbCr formats). Initialize it here so the bindless descriptor pool is sized correctly upfront,
+  // instead of relying solely on the per-format value queried lazily in getOrCreateYcbcrConversionInfo()
+  if (config_.vulkanVersion >= VulkanVersion_1_4) {
+    pimpl_->maxCombinedImageSamplerDescriptorCount_ = vkPhysicalDeviceVulkan14Properties_.maxCombinedImageSamplerDescriptorCount;
+  } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
+    pimpl_->maxCombinedImageSamplerDescriptorCount_ = maintenance6Properties_.maxCombinedImageSamplerDescriptorCount;
+  }
 
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
 
