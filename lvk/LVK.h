@@ -492,6 +492,8 @@ enum Format : uint8_t {
   Format_R_F16,
   Format_R_F32,
 
+  Format_A_UN8,
+
   Format_RG_UN8,
   Format_RG_UI16,
   Format_RG_UI32,
@@ -510,6 +512,7 @@ enum Format : uint8_t {
 
   Format_A2B10G10R10_UN,
   Format_A2R10G10B10_UN,
+  Format_A1B5G5R5_UN,
 
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
