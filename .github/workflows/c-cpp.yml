@@ -15,7 +15,7 @@ env:
 jobs:
   build:
     name: "Android (Ubuntu)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -45,9 +45,7 @@ jobs:
         shell: bash
         run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
-            sudo apt remove cmake -y
-            sudo pip install --break-system-packages cmake==4.0.0
+            sudo apt-get install -y cmake gcc-15 clang-21 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-15-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             which make
             cmake --version
 
@@ -62,8 +60,8 @@ jobs:
       - name: Generate Android projects
         shell: bash
         env:
-          CC: "clang-18"
-          CXX: "clang++-18"
+          CC: "clang-21"
+          CXX: "clang++-21"
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cmake -G Ninja -S "${{ github.workspace }}" -B build -DLVK_WITH_SAMPLES_ANDROID=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF
@@ -116,39 +114,40 @@ jobs:
 #            }
           - {
               name: "Ubuntu - Clang (GLFW)",
-              os: ubuntu-latest,
+              os: ubuntu-26.04,
               build_type: "Debug",
-              cc: "clang-18",
-              cxx: "clang++-18",
+              cc: "clang-21",
+              cxx: "clang++-21",
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_GLFW=ON -DLVK_WITH_SDL3=OFF -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF -DLVK_WITH_SPIRV_OPT=ON"
             }
           - {
               name: "Ubuntu - Clang (SDL3)",
-              os: ubuntu-latest,
+              os: ubuntu-26.04,
               build_type: "Debug",
-              cc: "clang-18",
-              cxx: "clang++-18",
+              cc: "clang-21",
+              cxx: "clang++-21",
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF -DLVK_WITH_SPIRV_OPT=ON"
             }
           - {
               name: "Ubuntu - Clang (Wayland)",
-              os: ubuntu-latest,
+              os: ubuntu-26.04,
               build_type: "Debug",
-              cc: "clang-18",
-              cxx: "clang++-18",
+              cc: "clang-21",
+              cxx: "clang++-21",
               generators: "Unix Makefiles",
               cmake_args: "-DLVK_WITH_WAYLAND=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
             }
-#          - {
-#              name: "Ubuntu - GCC",
-#              os: ubuntu-latest,
-#              build_type: "Debug",
-#              cc: "gcc-14",
-#              cxx: "g++-14",
-#              generators: "Unix Makefiles"
-#            }
+          - {
+              name: "Ubuntu - GCC (SDL3)",
+              os: ubuntu-26.04,
+              build_type: "Debug",
+              cc: "gcc-15",
+              cxx: "g++-15",
+              generators: "Unix Makefiles",
+              cmake_args: "-DLVK_WITH_TRACY=ON -DLVK_WITH_TRACY_GPU=OFF -DLVK_WITH_GLFW=OFF -DLVK_WITH_SDL3=ON -DLVK_DEPLOY_SCREENSHOT_TESTS=OFF"
+            }
       runs-on: ${{ matrix.config.os }}
 
       steps:
@@ -166,9 +165,7 @@ jobs:
           name: Install Ubuntu packages
           run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
-            sudo apt remove cmake -y
-            sudo pip install --break-system-packages cmake==4.0.0
+            sudo apt-get install -y cmake gcc-15 clang-21 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-15-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols
 
         - name: Prepare Vulkan SDK
           uses: jakoch/install-vulkan-sdk-action@v1.5.5
@@ -248,10 +245,10 @@ jobs:
           config:
           - {
               name: "Ubuntu - Clang",
-              os: ubuntu-latest,
+              os: ubuntu-26.04,
               build_type: "Debug",
-              cc: "clang-18",
-              cxx: "clang++-18",
+              cc: "clang-21",
+              cxx: "clang++-21",
               generators: "Unix Makefiles",
             }
       runs-on: ${{ matrix.config.os }}
@@ -271,10 +268,9 @@ jobs:
           shell: bash
           run: |
             sudo apt-get update
-            sudo apt-get install -y gcc-14 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-14-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
+            # clang-18 is installed side by side with clang-21 only to provide libLLVM.so.18.1 for the prebuilt lavapipe driver; the build still uses clang-21
+            sudo apt-get install -y cmake gcc-15 clang-21 clang-18 xorg-dev libxinerama-dev libxcursor-dev libgles2-mesa-dev libegl1-mesa-dev libglfw3-dev libglew-dev libstdc++-15-dev extra-cmake-modules libxkbcommon-x11-dev wayland-protocols ninja-build
             sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools vulkan-validationlayers
-            sudo apt remove cmake -y
-            sudo pip install --break-system-packages cmake==4.0.0
             which make
             cmake --version
             vulkaninfo
@@ -286,6 +282,30 @@ jobs:
             install_runtime: true
             cache: false
             stripdown: true
+
+        # The distro's Mesa 26.0.3 llvmpipe aborts vkCreateSwapchainKHR (VK_ERROR_OUT_OF_DEVICE_MEMORY) on the headless
+        # surface; this is fixed in Mesa 26.1. Launchpad PPAs only build amd64 (Ubuntu 26.04 is amd64v3), so install a
+        # prebuilt lavapipe 26.1 and point the Vulkan loader at it via VK_DRIVER_FILES. Done before the build so a broken
+        # driver fails the job early.
+        - name: Install Mesa 26.1.0 lavapipe (prebuilt)
+          shell: bash
+          run: |
+            # libxcb-keysyms.so.1 runtime dependency of the prebuilt lavapipe driver (libLLVM.so.18.1 comes from the side-by-side clang-18 install above)
+            sudo apt-get install -y libxcb-keysyms1
+            curl -fL -o lavapipe.zip https://github.com/rokuz/lavapipe-binaries/releases/download/mesa-mesa-26.1.0/lavapipe-linux-x86_64-release.zip
+            unzip -o lavapipe.zip -d "$HOME/lavapipe"
+            ICD=$(find "$HOME/lavapipe" -name 'lvp_icd*.json' | head -n1)
+            SO=$(find "$HOME/lavapipe" -name 'libvulkan_lvp.so' | head -n1)
+            test -n "$ICD" && test -n "$SO" || { echo "lavapipe ICD/.so not found under $HOME/lavapipe"; find "$HOME/lavapipe"; exit 1; }
+            # fail early (and list every missing lib at once) if the driver has unmet runtime dependencies
+            ldd "$SO" | (grep "not found" && { echo "lavapipe has missing runtime dependencies (see above)"; exit 1; } || true)
+            # point the ICD manifest at the absolute driver path in case its library_path is relative
+            jq --arg so "$SO" '.ICD.library_path=$so' "$ICD" > "$ICD.tmp" && mv "$ICD.tmp" "$ICD"
+            echo "VK_DRIVER_FILES=$ICD" >> "$GITHUB_ENV"
+            echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$(dirname "$SO"):$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+            echo "Using lavapipe ICD: $ICD"; cat "$ICD"
+            VK_DRIVER_FILES="$ICD" LD_LIBRARY_PATH="$(dirname "$SO"):$LD_LIBRARY_PATH" vulkaninfo --summary 2>&1 | head -40 || true
 
         - name: Get the number of CPU cores
           id: cpu-cores

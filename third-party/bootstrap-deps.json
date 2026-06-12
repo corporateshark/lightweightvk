@@ -280,7 +280,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/lightweightvk_screenshot_tests",
-        "revision": "29895693445cb836b98ff09b2b9fb7aa0c5b2efa",
+        "revision": "e7cb74ad35153ca978a13827dee892980ce8f799",
         "recursive": false
     }
 }
