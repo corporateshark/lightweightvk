@@ -919,6 +919,14 @@ bool loadFromCache(const char* cacheFileName) {
   CHECK_READ(numVertices, fread(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile));
   CHECK_READ(numIndices, fread(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile));
 #undef CHECK_READ
+  // normalize path separators so a `cache.data` generated on Windows works on Android
+#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
+  for (CachedMaterial& mtl : cachedMaterials_) {
+    std::replace(std::begin(mtl.ambient_texname), std::end(mtl.ambient_texname), '\\', '/');
+    std::replace(std::begin(mtl.diffuse_texname), std::end(mtl.diffuse_texname), '\\', '/');
+    std::replace(std::begin(mtl.alpha_texname), std::end(mtl.alpha_texname), '\\', '/');
+  }
+#endif
   return true;
 }
 
