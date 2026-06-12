@@ -31,6 +31,11 @@
 #include <vk_mem_alloc.h>
 #include <volk.h>
 
+// VMA_VERSION was introduced in VMA 3.4.0
+#if !defined(VMA_VERSION)
+#error "LightweightVK requires VulkanMemoryAllocator 3.4.0 or newer"
+#endif
+
 // clang-format off
 #define VK_ASSERT(func)                                            \
   {                                                                \

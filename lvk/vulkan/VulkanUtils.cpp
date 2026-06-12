@@ -481,6 +481,7 @@ VmaAllocator lvk::createVmaAllocator(VkPhysicalDevice physDev, VkDevice device, 
       .vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2,
       .vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements,
       .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
+      .vkGetPhysicalDeviceProperties2KHR = vkGetPhysicalDeviceProperties2,
   };
 
   const VmaAllocatorCreateInfo ci = {
