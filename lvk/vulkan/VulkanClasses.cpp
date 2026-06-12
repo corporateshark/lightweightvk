@@ -1415,6 +1415,8 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
       if (presentFence_[currentImageIndex_]) {
         VK_ASSERT(vkWaitForFences(device_, 1, &presentFence_[currentImageIndex_], VK_TRUE, UINT64_MAX));
         VK_ASSERT(vkResetFences(device_, 1, &presentFence_[currentImageIndex_]));
+        // present done; drop the reuse guard (its fence was just reset)
+        ctx_.immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
       }
     } else {
       // without VK_KHR_swapchain_maintenance1: use acquire fences to synchronize semaphore reuse
@@ -1486,6 +1488,9 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
     VK_ASSERT(r);
   }
   LVK_PROFILER_ZONE_END();
+
+  // let acquire() gate reuse of this command buffer's slot until the present has consumed its wait semaphore
+  ctx_.immediate_->setLastPresentSemaphore(waitSemaphore, presentFence_[currentImageIndex_]);
 
   // drop the previous present mode so we don't set it again in the next `present()` call if the present mode is not switched at runtime
   presentFenceInfo_.pNext = nullptr;
@@ -1613,6 +1618,13 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
   LVK_ASSERT_MSG(numAvailableCommandBuffers_, "No available command buffers");
   LVK_ASSERT_MSG(current, "No available command buffers");
   LVK_ASSERT(current->cmdBufAllocated_ != VK_NULL_HANDLE);
+
+  // wait for a pending present still using this slot's semaphore before reusing it (VUID-vkQueueSubmit2-semaphore-03868)
+  if (current->semaphore_ == lastPresentSemaphore_ && lastPresentFence_) {
+    VK_ASSERT(vkWaitForFences(device_, 1, &lastPresentFence_, VK_TRUE, UINT64_MAX));
+    lastPresentSemaphore_ = VK_NULL_HANDLE;
+    lastPresentFence_ = VK_NULL_HANDLE;
+  }
 
   current->handle_.submitId_ = submitCounter_;
   numAvailableCommandBuffers_--;
@@ -1845,6 +1857,11 @@ void lvk::VulkanImmediateCommands::signalSemaphore(VkSemaphore semaphore, uint64
 
 VkSemaphore lvk::VulkanImmediateCommands::acquireLastSubmitSemaphore() {
   return std::exchange(lastSubmitSemaphore_.semaphore, VK_NULL_HANDLE);
+}
+
+void lvk::VulkanImmediateCommands::setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence) {
+  lastPresentSemaphore_ = semaphore;
+  lastPresentFence_ = presentFence;
 }
 
 VkFence lvk::VulkanImmediateCommands::getVkFence(lvk::SubmitHandle handle) const {
@@ -7690,6 +7707,8 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
     // destroy the old swapchain first
     // TODO: replace with VK_EXT_swapchain_maintenance1
     VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
+    // the guard fence belongs to the swapchain we are about to destroy
+    immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
     swapchain_ = nullptr;
     vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }

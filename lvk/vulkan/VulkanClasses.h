@@ -197,6 +197,7 @@ class VulkanImmediateCommands final {
   void waitSemaphore(VkSemaphore semaphore);
   void signalSemaphore(VkSemaphore semaphore, uint64_t signalValue);
   VkSemaphore acquireLastSubmitSemaphore();
+  void setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence);
   VkFence getVkFence(SubmitHandle handle) const;
   SubmitHandle getLastSubmitHandle() const;
   SubmitHandle getNextSubmitHandle() const;
@@ -223,6 +224,8 @@ class VulkanImmediateCommands final {
                                           .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "wait" semaphore
   VkSemaphoreSubmitInfo signalSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "signal" semaphore
+  VkSemaphore lastPresentSemaphore_ = VK_NULL_HANDLE; // present-wait semaphore of the last vkQueuePresentKHR()
+  VkFence lastPresentFence_ = VK_NULL_HANDLE; // its present fence; acquire() waits it before reusing that slot
   uint32_t numAvailableCommandBuffers_ = kMaxCommandBuffers;
   uint32_t submitCounter_ = 1;
 };
