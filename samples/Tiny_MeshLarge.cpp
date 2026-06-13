@@ -836,20 +836,21 @@ bool loadAndCache(const char* cacheFileName) {
     // 1. Generate an index buffer
     const size_t indexCount = vertexData_.size();
     std::vector<uint32_t> remap(indexCount);
-    const size_t vertexCount =
+    const size_t remappedVertexCount =
         meshopt_generateVertexRemap(remap.data(), nullptr, indexCount, vertexData_.data(), indexCount, sizeof(VertexData));
     // 2. Remap vertices
     std::vector<VertexData> remappedVertices;
     indexData_.resize(indexCount);
-    remappedVertices.resize(vertexCount);
+    remappedVertices.resize(remappedVertexCount);
     meshopt_remapIndexBuffer(indexData_.data(), nullptr, indexCount, &remap[0]);
     meshopt_remapVertexBuffer(remappedVertices.data(), vertexData_.data(), indexCount, sizeof(VertexData), remap.data());
     vertexData_ = remappedVertices;
     // 3. Optimize for the GPU vertex cache reuse and overdraw
-    meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, vertexCount);
+    meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, remappedVertexCount);
     meshopt_optimizeOverdraw(
-        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, vertexCount, sizeof(VertexData), 1.05f);
-    meshopt_optimizeVertexFetch(vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), vertexCount, sizeof(VertexData));
+        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, remappedVertexCount, sizeof(VertexData), 1.05f);
+    meshopt_optimizeVertexFetch(
+        vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), remappedVertexCount, sizeof(VertexData));
   }
 
   // loop over materials
@@ -1967,8 +1968,9 @@ void showTimeGPU() {
   const double timePresent = stats.add(3, " Present", getTimespan(GPUTimestamp_BeginPresent));
 
   const double timeGPU = timeScene + timeCompute + timePresent;
+  const double timeCPU = (timestampEndRendering - timestampBeginRendering) * 1000;
   stats.add(0, "GPU", timeGPU);
-  const double timeCPU = stats.add(4, "CPU", (timestampEndRendering - timestampBeginRendering) * 1000);
+  stats.add(4, "CPU", timeCPU);
   stats.updateMinMax();
 
   char text[128];
@@ -2013,10 +2015,10 @@ void showTimeGPU() {
   };
 
   if (ImGui::BeginTable("##table", 3, ImGuiTableFlags_None, ImVec2(-1, 0))) {
-    const ImGuiTableColumnFlags flags = ImGuiTableColumnFlags_NoSort;
-    ImGui::TableSetupColumn("Stage", flags);
-    ImGui::TableSetupColumn("Time (ms)", flags);
-    ImGui::TableSetupColumn("Graph", flags | ImGuiTableColumnFlags_WidthStretch);
+    const ImGuiTableColumnFlags columnFlags = ImGuiTableColumnFlags_NoSort;
+    ImGui::TableSetupColumn("Stage", columnFlags);
+    ImGui::TableSetupColumn("Time (ms)", columnFlags);
+    ImGui::TableSetupColumn("Graph", columnFlags | ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     for (uint32_t i = 0; i != sTimeStats::kNumTimelines; i++) {
       ImGui::TableNextRow();

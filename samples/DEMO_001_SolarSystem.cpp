@@ -962,7 +962,8 @@ lvk::Holder<lvk::TextureHandle> loadTextureCubeFromFile(VulkanApp& app, const st
   const std::vector<uint8_t> ktxData = app.loadFile(fileNameKTX.c_str());
   if (!ktxData.empty()) {
     ktxTexture1* texture = nullptr;
-    (void)LVK_VERIFY(ktxTexture1_CreateFromMemory(ktxData.data(), ktxData.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) == KTX_SUCCESS);
+    (void)LVK_VERIFY(ktxTexture1_CreateFromMemory(ktxData.data(), ktxData.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) ==
+                     KTX_SUCCESS);
     SCOPE_EXIT {
       ktxTexture_Destroy(ktxTexture(texture));
     };
