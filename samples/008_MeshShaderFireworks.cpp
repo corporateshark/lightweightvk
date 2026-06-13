@@ -281,8 +281,9 @@ struct Particle {
       }
     }
 
-    if (TTL < 0)
+    if (TTL < 0) {
       return PSM_Kill;
+    }
 
     return emission ? PSM_Emission : PSM_None;
   }
@@ -307,8 +308,9 @@ struct ParticleSystem {
         case PSM_None:
           break;
         case PSM_Kill:
-          if (particles[i].spawnExplosion)
+          if (particles[i].spawnExplosion) {
             addExplosion(particles[i].pos, particles[i].explosionType, particles[i].paletteIndex);
+          }
           particles[i].alive = false;
           totalParticles--;
           break;
@@ -340,8 +342,9 @@ struct ParticleSystem {
   }
 
   void addParticle(const Particle& particle) {
-    if (queuedParticles < kStackSize)
+    if (queuedParticles < kStackSize) {
       particlesStack[queuedParticles++] = particle;
+    }
   }
 
   void addSphereExplosion(vec3 pos, const ColorPalette& pal, int count, float speed, int lifetime) {
@@ -586,10 +589,12 @@ struct ParticleSystem {
   }
 
   void addExplosion(vec3 pos, int type = -1, int paletteIdx = -1) {
-    if (type < 0)
+    if (type < 0) {
       type = static_cast<int>(random(NumExplosionTypes));
-    if (paletteIdx < 0)
+    }
+    if (paletteIdx < 0) {
       paletteIdx = static_cast<int>(random(LVK_ARRAY_NUM_ELEMENTS(g_Palettes)));
+    }
 
     const ColorPalette& pal = g_Palettes[paletteIdx % LVK_ARRAY_NUM_ELEMENTS(g_Palettes)];
 

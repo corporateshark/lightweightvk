@@ -418,9 +418,9 @@ VULKAN_APP_MAIN {
     // rotate objects around random axes
     for (uint32_t i = 0; i != kNumObjects; i++) {
       const float direction = powf(-1, (float)(i + 1));
-      const uint32_t cubesInLine = (uint32_t)sqrt(kNumObjects);
-      const vec3 offset =
-          vec3(-1.5f * sqrt(kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrt(kNumObjects) + 4.0f * (i / cubesInLine), 0);
+      const uint32_t cubesInLine = (uint32_t)sqrtf((float)kNumObjects);
+      const vec3 offset = vec3(
+          -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i % cubesInLine), -1.5f * sqrtf((float)kNumObjects) + 4.0f * (i / cubesInLine), 0);
       modelMatrices[i] = glm::rotate(glm::translate(mat4(1.0f), offset), float(direction * app.getSimulatedTime()), axis_[i]);
     }
 

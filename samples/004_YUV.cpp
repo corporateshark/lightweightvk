@@ -162,8 +162,9 @@ VULKAN_APP_MAIN {
       glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_T && action == GLFW_PRESS) {
       currentDemo_ = 0;
-      if (!res_.demos.empty())
+      if (!res_.demos.empty()) {
         res_.demos.pop_back();
+      }
     } else if (action == GLFW_PRESS && !res_.demos.empty()) {
       currentDemo_ = (currentDemo_ + 1) % res_.demos.size();
     }
