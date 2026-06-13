@@ -383,10 +383,6 @@ class CommandBuffer final : public ICommandBuffer {
 
   CommandBuffer& operator=(CommandBuffer&& other) = default;
 
-  operator VkCommandBuffer() const {
-    return getVkCommandBuffer();
-  }
-
   void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
@@ -460,6 +456,14 @@ class CommandBuffer final : public ICommandBuffer {
                     const TextureLayers& dstLayers) override;
   void cmdGenerateMipmap(TextureHandle handle) override;
   void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) override;
+
+  operator VkCommandBuffer() const
+#if defined(LVK_WITH_RAW_VULKAN)
+      override
+#endif // defined(LVK_WITH_RAW_VULKAN)
+  {
+    return getVkCommandBuffer();
+  }
 
   VkCommandBuffer getVkCommandBuffer() const {
     return wrapper_ ? wrapper_->cmdBuf_ : VK_NULL_HANDLE;

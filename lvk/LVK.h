@@ -48,6 +48,27 @@
 #include <android/native_window.h>
 #endif
 
+#if defined(LVK_WITH_RAW_VULKAN)
+
+#define VMA_VULKAN_VERSION 1003000
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+
+// set to 1 to see very verbose debug console logs with Vulkan commands
+#define LVK_VULKAN_PRINT_COMMANDS 0
+
+#if !defined(VK_NO_PROTOTYPES)
+#define VK_NO_PROTOTYPES 1
+#endif // !defined(VK_NO_PROTOTYPES)
+
+// enable to use VulkanMemoryAllocator (VMA)
+#define LVK_VULKAN_USE_VMA 1
+
+#include <vk_mem_alloc.h>
+#include <volk.h>
+
+#endif // defined(LVK_WITH_RAW_VULKAN)
+
 // clang-format off
 #if defined(LVK_WITH_TRACY)
   #include "tracy/Tracy.hpp"
@@ -1056,6 +1077,10 @@ class ICommandBuffer {
                             const TextureLayers& dstLayers = {}) = 0;
   virtual void cmdGenerateMipmap(TextureHandle handle) = 0;
   virtual void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) = 0;
+
+#if defined(LVK_WITH_RAW_VULKAN)
+  virtual operator VkCommandBuffer() const = 0;
+#endif // defined(LVK_WITH_RAW_VULKAN)
 };
 
 struct SubmitHandle {
