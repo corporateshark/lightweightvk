@@ -2470,9 +2470,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   }
 
   const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
-  const uint32_t numPassColorAttachments = renderPass.getNumColorAttachments();
 
-  LVK_ASSERT(numPassColorAttachments == numFbColorAttachments);
+  LVK_ASSERT(renderPass.getNumColorAttachments() == numFbColorAttachments);
 
   framebuffer_ = fb;
 
