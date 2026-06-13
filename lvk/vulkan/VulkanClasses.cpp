@@ -6848,7 +6848,7 @@ void lvk::VulkanContext::createSurface(void* window, void* display) {
     VK_ASSERT(vkCreateMetalSurfaceEXT(vkInstance_, &ci, nullptr, &vkSurface_));
   }
 #else
-#error Implement for other platforms
+  LVK_ASSERT_MSG(false, "No windowed surface API available; use createHeadlessSurface()");
 #endif
 }
 
