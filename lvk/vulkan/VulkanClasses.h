@@ -536,8 +536,8 @@ class VulkanStagingDevice final {
     SubmitHandle handle_ = {};
   };
 
-  MemoryRegionDesc getNextFreeOffset(uint32_t size);
-  void ensureStagingBufferSize(uint32_t sizeNeeded);
+  MemoryRegionDesc getNextFreeOffset(VkDeviceSize size);
+  void ensureStagingBufferSize(VkDeviceSize sizeNeeded);
   void waitAndReset();
 
  private:

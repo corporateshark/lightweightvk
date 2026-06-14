@@ -3490,8 +3490,8 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
 
   while (size) {
     // get next staging buffer free offset
-    MemoryRegionDesc desc = getNextFreeOffset((uint32_t)size);
-    const uint32_t chunkSize = std::min((uint64_t)size, desc.size_);
+    MemoryRegionDesc desc = getNextFreeOffset(size);
+    const VkDeviceSize chunkSize = std::min<VkDeviceSize>(size, desc.size_);
     const bool isLast = (chunkSize == size);
 
     // copy data into staging buffer
@@ -3572,7 +3572,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
     layerStorageSize += mipSize;
   }
 
-  const uint32_t storageSize = layerStorageSize * numLayers;
+  const uint64_t storageSize = (uint64_t)layerStorageSize * numLayers;
 
   ensureStagingBufferSize(storageSize);
 
@@ -3705,7 +3705,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
 
   const uint32_t maxSlicesPerBatch = std::max(1u, (uint32_t)(ctx_.config_.maxStagingBufferSize / sliceBytes));
 
-  ensureStagingBufferSize(sliceBytes * maxSlicesPerBatch);
+  ensureStagingBufferSize((VkDeviceSize)sliceBytes * maxSlicesPerBatch);
 
   const uint8_t* srcPtr = static_cast<const uint8_t*>(data);
   uint32_t remainingSlices = extent.depth;
@@ -3715,7 +3715,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
 
   while (remainingSlices) {
     const uint32_t batchSlices = std::min(remainingSlices, maxSlicesPerBatch);
-    const uint32_t batchBytes = batchSlices * sliceBytes;
+    const VkDeviceSize batchBytes = (VkDeviceSize)batchSlices * sliceBytes;
 
     MemoryRegionDesc desc = getNextFreeOffset(batchBytes);
     if (desc.size_ < batchBytes) {
@@ -3790,7 +3790,7 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   LVK_ASSERT(image.vkImageLayout_ != VK_IMAGE_LAYOUT_UNDEFINED);
   LVK_ASSERT(range.layerCount == 1);
 
-  const uint32_t storageSize = extent.width * extent.height * extent.depth * getBytesPerPixel(format);
+  const uint64_t storageSize = (uint64_t)extent.width * extent.height * extent.depth * getBytesPerPixel(format);
 
   ensureStagingBufferSize(storageSize);
 
@@ -3875,10 +3875,10 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   ctx_.immediate_->wait(ctx_.immediate_->submit(wrapper2));
 }
 
-void lvk::VulkanStagingDevice::ensureStagingBufferSize(uint32_t sizeNeeded) {
+void lvk::VulkanStagingDevice::ensureStagingBufferSize(VkDeviceSize sizeNeeded) {
   LVK_PROFILER_FUNCTION();
 
-  const uint32_t alignedSize = std::max(getAlignedSize(sizeNeeded, kStagingBufferAlignment), minBufferSize_);
+  const VkDeviceSize alignedSize = std::max(getAlignedSize(sizeNeeded, kStagingBufferAlignment), minBufferSize_);
 
   sizeNeeded = alignedSize < ctx_.config_.maxStagingBufferSize ? alignedSize : ctx_.config_.maxStagingBufferSize;
 
@@ -3919,10 +3919,10 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(uint32_t sizeNeeded) {
   regions_.push_back({0, stagingBufferSize_, SubmitHandle()});
 }
 
-lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFreeOffset(uint32_t size) {
+lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFreeOffset(VkDeviceSize size) {
   LVK_PROFILER_FUNCTION();
 
-  const uint32_t requestedAlignedSize = getAlignedSize(size, kStagingBufferAlignment);
+  const VkDeviceSize requestedAlignedSize = getAlignedSize(size, kStagingBufferAlignment);
 
   ensureStagingBufferSize(requestedAlignedSize);
 
@@ -3937,8 +3937,8 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
       // This region is free, but is it big enough?
       if (it->size_ >= requestedAlignedSize) {
         // It is big enough!
-        const uint32_t unusedSize = it->size_ - requestedAlignedSize;
-        const uint32_t unusedOffset = it->offset_ + requestedAlignedSize;
+        const VkDeviceSize unusedSize = it->size_ - requestedAlignedSize;
+        const VkDeviceSize unusedOffset = it->offset_ + requestedAlignedSize;
 
         // Return this region and add the remaining unused size to the regions_ vector
         SCOPE_EXIT {
