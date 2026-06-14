@@ -3940,7 +3940,7 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
         const uint32_t unusedSize = it->size_ - requestedAlignedSize;
         const uint32_t unusedOffset = it->offset_ + requestedAlignedSize;
 
-        // Return this region and add the remaining unused size to the regions_ deque
+        // Return this region and add the remaining unused size to the regions_ vector
         SCOPE_EXIT {
           regions_.erase(it);
           if (unusedSize > 0) {
@@ -3973,7 +3973,7 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
   // an unused portion
   regions_.clear();
 
-  // store the unused size in the deque first...
+  // store the unused size in the vector first...
   const uint64_t unusedSize = stagingBufferSize_ > requestedAlignedSize ? stagingBufferSize_ - requestedAlignedSize : 0;
 
   if (unusedSize) {
