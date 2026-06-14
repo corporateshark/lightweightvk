@@ -3540,7 +3540,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                            const VkRect2D& imageRegion,
                                            uint32_t baseMipLevel,
                                            uint32_t numMipLevels,
-                                           uint32_t layer,
+                                           uint32_t baseLayer,
                                            uint32_t numLayers,
                                            VkFormat format,
                                            const void* data,
@@ -3598,7 +3598,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   const uint32_t numPlanes = lvk::getNumImagePlanes(image.vkImageFormat_);
 
   if (numPlanes > 1) {
-    LVK_ASSERT(layer == 0 && baseMipLevel == 0);
+    LVK_ASSERT(baseLayer == 0 && baseMipLevel == 0);
     LVK_ASSERT(numLayers == 1 && numMipLevels == 1);
     LVK_ASSERT(imageRegion.offset.x == 0 && imageRegion.offset.y == 0);
     LVK_ASSERT(image.vkType_ == VK_IMAGE_TYPE_2D);
@@ -3618,9 +3618,11 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   for (uint32_t mipLevel = 0; mipLevel < numMipLevels; ++mipLevel) {
     for (uint32_t layer = 0; layer != numLayers; layer++) {
       const uint32_t currentMipLevel = baseMipLevel + mipLevel;
+      const uint32_t currentLayer = baseLayer + layer;
 
       LVK_ASSERT(currentMipLevel < image.numLevels_);
       LVK_ASSERT(mipLevel < image.numLevels_);
+      LVK_ASSERT(currentLayer < image.numLayers_);
 
       // 1. Transition initial image layout into TRANSFER_DST_OPTIMAL
       lvk::imageMemoryBarrier2(wrapper.cmdBuf_,
@@ -3629,7 +3631,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
                                coversFullImage ? VK_IMAGE_LAYOUT_UNDEFINED : image.vkImageLayout_,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+                               VkImageSubresourceRange{imageAspect, currentMipLevel, 1, currentLayer, 1});
 
 #if LVK_VULKAN_PRINT_COMMANDS
       LLOGL("%p vkCmdCopyBufferToImage2()\n", wrapper.cmdBuf_);
@@ -3655,7 +3657,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .bufferRowLength = bufferRowLength,
             .bufferImageHeight = 0,
             .imageSubresource =
-                VkImageSubresourceLayers{numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, layer, 1},
+                VkImageSubresourceLayers{numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, currentLayer, 1},
             .imageOffset = {.x = region.offset.x, .y = region.offset.y, .z = 0},
             .imageExtent = {.width = region.extent.width, .height = region.extent.height, .depth = 1u},
         };
@@ -3679,7 +3681,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-          VkImageSubresourceRange{imageAspect, currentMipLevel, 1, layer, 1});
+          VkImageSubresourceRange{imageAspect, currentMipLevel, 1, currentLayer, 1});
 
       offset += lvk::getTextureBytesPerLayer(imageRegion.extent.width, imageRegion.extent.height, texFormat, currentMipLevel);
     }
