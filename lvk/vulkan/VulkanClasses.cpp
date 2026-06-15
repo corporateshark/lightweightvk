@@ -3932,7 +3932,7 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
 
   // if we can't find an available region that is big enough to store requestedAlignedSize, return whatever we could find, which will be
   // stored in bestNextIt
-  auto bestNextIt = regions_.begin();
+  auto bestNextIt = regions_.end();
 
   for (auto it = regions_.begin(); it != regions_.end(); ++it) {
     if (ctx_.immediate_->isReady(it->handle_)) {
@@ -3953,7 +3953,7 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
         return {it->offset_, requestedAlignedSize, SubmitHandle()};
       }
       // cache the largest available region that isn't as big as the one we're looking for
-      if (it->size_ > bestNextIt->size_) {
+      if (bestNextIt == regions_.end() || it->size_ > bestNextIt->size_) {
         bestNextIt = it;
       }
     }
