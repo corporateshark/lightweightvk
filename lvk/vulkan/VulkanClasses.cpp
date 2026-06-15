@@ -3528,7 +3528,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
       vkCmdPipelineBarrier2(wrapper.cmdBuf_, &depInfo);
     }
     desc.handle_ = ctx_.immediate_->submit(wrapper);
-    regions_.push_back(desc);
+    insertRegion(desc);
 
     size -= chunkSize;
     data = (uint8_t*)data + chunkSize;
@@ -3690,7 +3690,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
   desc.handle_ = ctx_.immediate_->submit(wrapper);
-  regions_.push_back(desc);
+  insertRegion(desc);
 }
 
 void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
@@ -3773,7 +3773,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
     }
 
     desc.handle_ = ctx_.immediate_->submit(wrapper);
-    regions_.push_back(desc);
+    insertRegion(desc);
 
     srcPtr += batchBytes;
     currentZ += batchSlices;
@@ -3851,7 +3851,7 @@ void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
   vkCmdCopyImageToBuffer2(wrapper1.cmdBuf_, &copyInfo);
 
   desc.handle_ = ctx_.immediate_->submit(wrapper1);
-  regions_.push_back(desc);
+  insertRegion(desc);
 
   waitAndReset();
 
@@ -3921,6 +3921,15 @@ void lvk::VulkanStagingDevice::ensureStagingBufferSize(VkDeviceSize sizeNeeded) 
   regions_.push_back({0, stagingBufferSize_, SubmitHandle()});
 }
 
+void lvk::VulkanStagingDevice::insertRegion(const MemoryRegionDesc& region) {
+  // keep regions_ sorted by offset so adjacent free regions can be merged
+  auto it = regions_.begin();
+  while (it != regions_.end() && it->offset_ < region.offset_) {
+    ++it;
+  }
+  regions_.insert(it, region);
+}
+
 lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFreeOffset(VkDeviceSize size) {
   LVK_PROFILER_FUNCTION();
 
@@ -3929,6 +3938,26 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
   ensureStagingBufferSize(requestedAlignedSize);
 
   LVK_ASSERT(!regions_.empty());
+
+  // `regions_` is kept sorted by offset, so one forward pass merges adjacent free (ready) regions.
+  // Each region's readiness is queried only once: `next` becomes the following `cur`, so its result is cached in `curReady`
+  if (regions_.size() > 1) {
+    size_t write = 0;
+    bool curReady = ctx_.immediate_->isReady(regions_[0].handle_);
+    for (size_t read = 1; read < regions_.size(); ++read) {
+      MemoryRegionDesc& cur = regions_[write];
+      const MemoryRegionDesc& next = regions_[read];
+      const bool nextReady = ctx_.immediate_->isReady(next.handle_);
+      if (curReady && nextReady && cur.offset_ + cur.size_ == next.offset_) {
+        cur.size_ += next.size_;
+        cur.handle_ = SubmitHandle(); // the merged region is free, so `curReady` stays true
+      } else {
+        regions_[++write] = next;
+        curReady = nextReady;
+      }
+    }
+    regions_.resize(write + 1);
+  }
 
   // if we can't find an available region that is big enough to store requestedAlignedSize, return whatever we could find, which will be
   // stored in bestNextIt
@@ -3946,7 +3975,7 @@ lvk::VulkanStagingDevice::MemoryRegionDesc lvk::VulkanStagingDevice::getNextFree
         SCOPE_EXIT {
           regions_.erase(it);
           if (unusedSize > 0) {
-            regions_.insert(regions_.begin(), {unusedOffset, unusedSize, SubmitHandle()});
+            insertRegion({unusedOffset, unusedSize, SubmitHandle()});
           }
         };
 

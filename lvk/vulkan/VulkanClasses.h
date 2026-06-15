@@ -538,6 +538,7 @@ class VulkanStagingDevice final {
 
   MemoryRegionDesc getNextFreeOffset(VkDeviceSize size);
   void ensureStagingBufferSize(VkDeviceSize sizeNeeded);
+  void insertRegion(const MemoryRegionDesc& region);
   void waitAndReset();
 
  private:
