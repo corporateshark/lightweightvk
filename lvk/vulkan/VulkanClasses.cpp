@@ -686,6 +686,35 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
+void emitImageQFOTransfer(VkCommandBuffer cb,
+                          const lvk::VulkanImage& img,
+                          VkImageLayout oldLayout,
+                          VkImageLayout newLayout,
+                          StageAccess src,
+                          StageAccess dst,
+                          uint32_t srcQueueFamily,
+                          uint32_t dstQueueFamily) {
+  const VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = src.stage,
+      .srcAccessMask = src.access,
+      .dstStageMask = dst.stage,
+      .dstAccessMask = dst.access,
+      .oldLayout = oldLayout,
+      .newLayout = newLayout,
+      .srcQueueFamilyIndex = srcQueueFamily,
+      .dstQueueFamilyIndex = dstQueueFamily,
+      .image = img.vkImage_,
+      .subresourceRange = {img.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+  };
+  const VkDependencyInfo di = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(cb, &di);
+}
+
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats,
                                            lvk::ColorSpace requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
@@ -764,6 +793,8 @@ struct VulkanContextImpl final {
   VmaAllocator vma_ = VK_NULL_HANDLE;
 
   lvk::CommandBuffer currentCommandBuffer_;
+  lvk::CommandBuffer currentComputeCommandBuffer_; // async-compute slot (coexists with the graphics one).
+  uint64_t lastGraphicsPresentTimelineValue_ = 0;
 
   std::vector<DeferredTask> deferredTasks_;
 
@@ -1712,18 +1743,31 @@ bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastC
   return vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0) == VK_SUCCESS;
 }
 
-lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper) {
+lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper,
+                                                       const VkSemaphore* extraWaits,
+                                                       size_t numExtraWaits) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_SUBMIT);
   LVK_ASSERT(wrapper.isEncoding_);
   VK_ASSERT(vkEndCommandBuffer(wrapper.cmdBuf_));
 
-  VkSemaphoreSubmitInfo waitSemaphores[] = {{}, {}};
+  // waits: swapchain-acquire + intra-queue chain + an optional cross-queue timeline wait + the cross-queue
+  // binary waits from Dependencies::compute (one per distinct in-flight command buffer).
+  LVK_ASSERT(numExtraWaits <= kMaxCommandBuffers);
+  VkSemaphoreSubmitInfo waitSemaphores[3 + kMaxCommandBuffers];
   uint32_t numWaitSemaphores = 0;
   if (waitSemaphore_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitSemaphore_;
   }
   if (lastSubmitSemaphore_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = lastSubmitSemaphore_;
+  }
+  if (waitTimeline_.semaphore) {
+    waitSemaphores[numWaitSemaphores++] = waitTimeline_;
+  }
+  for (size_t i = 0; i != numExtraWaits; i++) {
+    waitSemaphores[numWaitSemaphores++] = VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                                                                .semaphore = extraWaits[i],
+                                                                .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
   }
   VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -1828,6 +1872,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   lastSubmitSemaphore_.semaphore = wrapper.semaphore_;
   lastSubmitHandle_ = wrapper.handle_;
   waitSemaphore_.semaphore = VK_NULL_HANDLE;
+  waitTimeline_.semaphore = VK_NULL_HANDLE;
   signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
@@ -1846,6 +1891,13 @@ void lvk::VulkanImmediateCommands::waitSemaphore(VkSemaphore semaphore) {
   LVK_ASSERT(waitSemaphore_.semaphore == VK_NULL_HANDLE);
 
   waitSemaphore_.semaphore = semaphore;
+}
+
+void lvk::VulkanImmediateCommands::waitTimelineSemaphore(VkSemaphore semaphore, uint64_t value) {
+  LVK_ASSERT(waitTimeline_.semaphore == VK_NULL_HANDLE);
+
+  waitTimeline_.semaphore = semaphore;
+  waitTimeline_.value = value;
 }
 
 void lvk::VulkanImmediateCommands::signalSemaphore(VkSemaphore semaphore, uint64_t signalValue) {
@@ -2163,11 +2215,43 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
   return lvk::setDebugObjectName(device, VK_OBJECT_TYPE_PIPELINE, (uint64_t)*outPipeline, debugName);
 }
 
-lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx) : ctx_(ctx), wrapper_(&ctx_->immediate_->acquire()) {}
+lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx)
+  : ctx_(ctx), wrapper_(&ctx_->immediate_->acquire()), immediate_(ctx_->immediate_.get()) {}
+
+lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx, VulkanImmediateCommands& immediate)
+  : ctx_(ctx), wrapper_(&immediate.acquire()), immediate_(&immediate) {}
 
 lvk::CommandBuffer::~CommandBuffer() {
   // did you forget to call cmdEndRendering()?
   LVK_ASSERT(!isRendering_);
+}
+
+bool lvk::CommandBuffer::isComputeQueue() const {
+  return immediate_ == ctx_->immediateCompute_.get();
+}
+
+uint32_t lvk::CommandBuffer::queueFamilyIndex() const {
+  return isComputeQueue() ? ctx_->deviceQueues_.computeQueueFamilyIndex : ctx_->deviceQueues_.graphicsQueueFamilyIndex;
+}
+
+void lvk::CommandBuffer::addComputeDependencies(const Dependencies& deps) {
+  for (ICommandBufferCompute* dep : deps.compute) {
+    if (!dep || dep == static_cast<ICommandBufferCompute*>(this)) {
+      continue;
+    }
+    const VkSemaphore sem = static_cast<CommandBuffer*>(dep)->asyncComputeSubmitSemaphore_;
+    LVK_ASSERT_MSG(sem != VK_NULL_HANDLE, "Dependencies::compute lists an async-compute command buffer that was not submitted");
+    if (sem == VK_NULL_HANDLE) {
+      continue;
+    }
+    bool found = false;
+    for (VkSemaphore s : crossQueueWaits_) {
+      if (s == sem) { found = true; break; }
+    }
+    if (!found) {
+      crossQueueWaits_.push_back(sem); // binary semaphore: wait it exactly once for this submission
+    }
+  }
 }
 
 void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
@@ -2182,14 +2266,35 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
 
+  const bool isCompute = isComputeQueue();
+  const uint32_t cur = queueFamilyIndex();
+
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
     lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
+
+    if (isCompute && tex.ownerQueueFamily_ != VK_QUEUE_FAMILY_IGNORED && tex.ownerQueueFamily_ != cur) {
+      tex.vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+    }
 
     tex.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_GENERAL,
                          VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
                          extraDstAccess);
+
+    tex.ownerQueueFamily_ = [&]() -> uint32_t {
+      if (!isCompute) {
+        return tex.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED ? cur : tex.ownerQueueFamily_;
+      }
+      // Hand this output to graphics at submit() (QFOT release). De-dup: one image, one release.
+      for (TextureHandle h : imagesToTransfer_) {
+        if (h == handle) {
+          return cur;
+        }
+      }
+      const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(handle);
+      return cur;
+    }();
   }
 }
 
@@ -2222,21 +2327,40 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
 
+  const uint32_t cur = queueFamilyIndex();
+
   for (TextureHandle handle : textures) {
     const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
 
     LVK_ASSERT(!img.isSwapchainImage_);
 
     // transition only non-multisampled images - MSAA images cannot be accessed from shaders
-    if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
-      LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
-                     "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
-      const VkImageAspectFlags flags = img.getImageAspectFlags();
-      // set the result of the previous render pass
-      img.transitionLayout(wrapper_->cmdBuf_,
-                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                           extraDstAccess);
+    if (img.vkSamples_ != VK_SAMPLE_COUNT_1_BIT) {
+      continue;
+    }
+    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
+                   "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
+
+    if (img.pendingAcquireSrcFamily_ != VK_QUEUE_FAMILY_IGNORED && img.pendingAcquireSrcFamily_ != cur) {
+      // QFOT acquire.
+      StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+      dst.stage |= extraDstAccess.stage;
+      dst.access |= extraDstAccess.access;
+      emitImageQFOTransfer(
+          wrapper_->cmdBuf_, img, img.qfotSrcLayout_, img.vkImageLayout_, StageAccess{}, dst, img.pendingAcquireSrcFamily_, cur);
+      img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
+      img.ownerQueueFamily_ = cur;
+      continue;
+    }
+
+    const VkImageAspectFlags flags = img.getImageAspectFlags();
+    // set the result of the previous render pass
+    img.transitionLayout(wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         extraDstAccess);
+    if (img.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
+      img.ownerQueueFamily_ = cur;
     }
   }
 }
@@ -2299,6 +2423,7 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
 
   LVK_ASSERT(!isRendering_);
 
+  addComputeDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2320,6 +2445,7 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
 
   LVK_ASSERT(!isRendering_);
 
+  addComputeDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2453,6 +2579,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
+  addComputeDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, {});
   cmdTransitionToGeneral(deps.storageImages, {});
 
@@ -3089,6 +3216,7 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
+  addComputeDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
   cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
 
@@ -4115,6 +4243,7 @@ lvk::VulkanContext::~VulkanContext() {
 
   waitDeferredTasks();
 
+  immediateCompute_.reset(nullptr);
   immediate_.reset(nullptr);
 
   for (const DescriptorSet& dset : DSets_) {
@@ -4162,6 +4291,21 @@ lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer() {
   return pimpl_->currentCommandBuffer_;
 }
 
+lvk::ICommandBufferCompute& lvk::VulkanContext::acquireComputeCommandBuffer() {
+  LVK_PROFILER_FUNCTION();
+
+  if (!immediateCompute_) {
+    return pimpl_->currentCommandBuffer_.ctx_ ? pimpl_->currentCommandBuffer_ : acquireCommandBuffer();
+  }
+
+  LVK_ASSERT_MSG(!pimpl_->currentComputeCommandBuffer_.ctx_ || !pimpl_->currentComputeCommandBuffer_.lastSubmitHandle_.empty(),
+                 "Cannot acquire more than 1 compute command buffer simultaneously");
+
+  pimpl_->currentComputeCommandBuffer_ = CommandBuffer(this, *immediateCompute_);
+
+  return pimpl_->currentComputeCommandBuffer_;
+}
+
 lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
   LVK_PROFILER_FUNCTION();
 
@@ -4193,9 +4337,43 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     // we wait for this value next time we want to acquire this swapchain image
     swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
     immediate_->signalSemaphore(timelineSemaphore_, signalValue);
+    pimpl_->lastGraphicsPresentTimelineValue_ = signalValue; // async-compute submits wait on this (WAR)
   }
 
-  vkCmdBuffer->lastSubmitHandle_ = immediate_->submit(*vkCmdBuffer->wrapper_);
+  // Submit on the command buffer's own queue (graphics or async-compute).
+  LVK_ASSERT(vkCmdBuffer->immediate_);
+  lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
+
+  // QFOT release: hand every storage image written on this async-compute CB to the graphics queue.
+  if (&imm == immediateCompute_.get()) {
+    const uint32_t computeFamily = deviceQueues_.computeQueueFamilyIndex;
+    const uint32_t graphicsFamily = deviceQueues_.graphicsQueueFamilyIndex;
+    for (TextureHandle h : vkCmdBuffer->imagesToTransfer_) {
+      lvk::VulkanImage& img = *texturesPool_.get(h);
+      const VkImageLayout oldLayout = img.vkImageLayout_;
+      emitImageQFOTransfer(vkCmdBuffer->wrapper_->cmdBuf_,
+                           img,
+                           oldLayout,
+                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                           StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
+                           StageAccess{},
+                           computeFamily,
+                           graphicsFamily);
+      img.qfotSrcLayout_ = oldLayout;
+      img.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      img.pendingAcquireSrcFamily_ = computeFamily; // graphics completes the transfer on first read
+    }
+    // Graphics->compute write-after-read guard
+    immediateCompute_->waitTimelineSemaphore(timelineSemaphore_, pimpl_->lastGraphicsPresentTimelineValue_);
+  }
+
+  // Cross-queue execution dependency.
+  vkCmdBuffer->lastSubmitHandle_ =
+      imm.submit(*vkCmdBuffer->wrapper_, vkCmdBuffer->crossQueueWaits_.data(), vkCmdBuffer->crossQueueWaits_.size());
+
+  if (&imm == immediateCompute_.get()) {
+    vkCmdBuffer->asyncComputeSubmitSemaphore_ = immediateCompute_->acquireLastSubmitSemaphore();
+  }
 
   if (shouldPresent) {
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
@@ -4217,8 +4395,13 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     DSets_[idx].handle_ = handle;
   }
 
-  // reset
-  pimpl_->currentCommandBuffer_ = {};
+  // Reset the graphics slot. The async-compute slot is reset lazily (in acquireComputeCommandBuffer)
+  // instead: a graphics consumer references this just-submitted compute CB via Dependencies::compute to
+  // read its signal semaphore, so the object must stay alive past its own submit until the frame's graphics
+  // work is recorded.
+  if (&imm != immediateCompute_.get()) {
+    pimpl_->currentCommandBuffer_ = {};
+  }
 
   return handle;
 }
@@ -7589,6 +7772,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   immediate_ = std::make_unique<lvk::VulkanImmediateCommands>(
       vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, has_EXT_device_fault_, "VulkanContext::immediate_");
+
+  if (deviceQueues_.computeQueueFamilyIndex != DeviceQueues::INVALID &&
+      deviceQueues_.computeQueueFamilyIndex != deviceQueues_.graphicsQueueFamilyIndex) {
+    immediateCompute_ = std::make_unique<lvk::VulkanImmediateCommands>(
+        vkDevice_, deviceQueues_.computeQueueFamilyIndex, has_EXT_device_fault_, "VulkanContext::immediateCompute_");
+  }
 
   // create Vulkan pipeline cache
   {

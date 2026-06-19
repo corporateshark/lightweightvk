@@ -108,6 +108,7 @@
 namespace lvk {
 
 class IContext;
+class ICommandBufferCompute;
 
 bool Assert(bool cond, const char* file, int line, const char* format, ...);
 
@@ -976,26 +977,61 @@ struct Dependencies {
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
   ldr::Span<TextureHandle> inputAttachments = {};
+  ldr::Span<ICommandBufferCompute*> compute = {};
 };
 
-class ICommandBuffer {
+// Minimal command-buffer interface valid on the async-compute queue (no graphics/raster commands).
+class ICommandBufferCompute {
  public:
-  virtual ~ICommandBuffer() = default;
+  virtual ~ICommandBufferCompute() = default;
 
   virtual void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
-  // no extraDstStage parameter: this is only used within a render pass
-  virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdPopDebugGroupLabel() const = 0;
 
-  virtual void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) = 0;
-
   virtual void cmdBindComputePipeline(lvk::ComputePipelineHandle handle) = 0;
   virtual void cmdDispatch(const Dimensions& groupCount, const Dependencies& deps = {}) = 0;
   virtual void cmdDispatchIndirect(BufferHandle indirectBuffer, size_t indirectBufferOffset = 0, const Dependencies& deps = {}) = 0;
+
+  virtual void cmdPushConstants(const void* data, size_t size, size_t offset = 0) = 0;
+  template<typename Struct>
+  void cmdPushConstants(const Struct& data, size_t offset = 0) {
+    this->cmdPushConstants(&data, sizeof(Struct), offset);
+  }
+
+  virtual void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) = 0;
+  virtual void cmdFillBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, uint32_t data) = 0;
+  virtual void cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) = 0;
+  template<typename Struct>
+  void cmdUpdateBuffer(BufferHandle buffer, const Struct& data, size_t bufferOffset = 0) {
+    this->cmdUpdateBuffer(buffer, bufferOffset, sizeof(Struct), &data);
+  }
+
+  virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
+  virtual void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) = 0;
+
+  virtual void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers = {}) = 0;
+  virtual void cmdCopyImage(TextureHandle src,
+                            TextureHandle dst,
+                            const Dimensions& extent,
+                            const Offset3D& srcOffset = {},
+                            const Offset3D& dstOffset = {},
+                            const TextureLayers& srcLayers = {},
+                            const TextureLayers& dstLayers = {}) = 0;
+  virtual void cmdGenerateMipmap(TextureHandle handle) = 0;
+};
+
+class ICommandBuffer : public ICommandBufferCompute {
+ public:
+  ~ICommandBuffer() override = default;
+
+  // no extraDstStage parameter: this is only used within a render pass
+  virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
+
+  virtual void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) = 0;
 
   virtual void cmdBeginRendering(const lvk::RenderPass& renderPass, const lvk::Framebuffer& desc, const Dependencies& deps = {}) = 0;
   virtual void cmdEndRendering() = 0;
@@ -1015,19 +1051,6 @@ class ICommandBuffer {
                                   IndexFormat indexFormat,
                                   uint64_t bufferOffset = 0,
                                   uint64_t bufferSize = LVK_WHOLE_SIZE) = 0;
-  virtual void cmdPushConstants(const void* data, size_t size, size_t offset = 0) = 0;
-  template<typename Struct>
-  void cmdPushConstants(const Struct& data, size_t offset = 0) {
-    this->cmdPushConstants(&data, sizeof(Struct), offset);
-  }
-
-  virtual void cmdCopyBuffer(BufferHandle srcBuffer, BufferHandle dstBuffer, size_t srcOffset, size_t dstOffset, size_t size) = 0;
-  virtual void cmdFillBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, uint32_t data) = 0;
-  virtual void cmdUpdateBuffer(BufferHandle buffer, size_t bufferOffset, size_t size, const void* data) = 0;
-  template<typename Struct>
-  void cmdUpdateBuffer(BufferHandle buffer, const Struct& data, size_t bufferOffset = 0) {
-    this->cmdUpdateBuffer(buffer, bufferOffset, sizeof(Struct), &data);
-  }
 
   virtual void cmdDraw(uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t baseInstance = 0) = 0;
   virtual void cmdDrawIndexed(uint32_t indexCount,
@@ -1064,18 +1087,6 @@ class ICommandBuffer {
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
 
-  virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
-  virtual void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) = 0;
-
-  virtual void cmdClearColorImage(TextureHandle tex, const ClearColorValue& value, const TextureLayers& layers = {}) = 0;
-  virtual void cmdCopyImage(TextureHandle src,
-                            TextureHandle dst,
-                            const Dimensions& extent,
-                            const Offset3D& srcOffset = {},
-                            const Offset3D& dstOffset = {},
-                            const TextureLayers& srcLayers = {},
-                            const TextureLayers& dstLayers = {}) = 0;
-  virtual void cmdGenerateMipmap(TextureHandle handle) = 0;
   virtual void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) = 0;
 
 #if defined(LVK_WITH_RAW_VULKAN)
@@ -1108,8 +1119,17 @@ class IContext {
   virtual ~IContext() = default;
 
   virtual ICommandBuffer& acquireCommandBuffer() = 0;
+  virtual ICommandBufferCompute& acquireComputeCommandBuffer() {
+    return acquireCommandBuffer();
+  }
+  virtual bool supportsAsyncCompute() const {
+    return false;
+  }
 
   virtual SubmitHandle submit(ICommandBuffer& commandBuffer, TextureHandle present = {}) = 0;
+  virtual SubmitHandle submit(ICommandBufferCompute& computeCommandBuffer) {
+    return supportsAsyncCompute() ? submit(static_cast<ICommandBuffer&>(computeCommandBuffer), TextureHandle{}) : SubmitHandle{};
+  }
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
 
   [[nodiscard]] virtual Holder<BufferHandle> createBuffer(const BufferDesc& desc,
