@@ -7254,6 +7254,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .dynamicRenderingLocalRead = VK_TRUE,
       .maintenance5 = VK_TRUE,
       .maintenance6 = VK_TRUE,
+      .hostImageCopy = vkFeatures14_.hostImageCopy, // enable if supported
       .pushDescriptor = VK_TRUE,
   };
 
@@ -7321,6 +7322,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
       .presentModeFifoLatestReady = VK_TRUE,
   };
+  VkPhysicalDeviceHostImageCopyFeaturesEXT hostImageCopyFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
+      .hostImageCopy = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7370,8 +7375,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     if (!addOptionalExtension(VK_KHR_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features)) {
       addOptionalExtension(VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME, has_8BitIndices_, &indexTypeUint8Features);
     }
+    addOptionalExtension(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME, has_EXT_host_image_copy_, &hostImageCopyFeatures);
   } else {
     has_KHR_maintenance6_ = vkFeatures14_.maintenance6 == VK_TRUE; // promoted to core in Vulkan 1.4
+    has_EXT_host_image_copy_ = vkFeatures14_.hostImageCopy == VK_TRUE; // promoted to core in Vulkan 1.4
   }
 #if defined(LVK_WITH_TRACY)
   addOptionalExtension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, has_KHR_calibrated_timestamps_, nullptr);
