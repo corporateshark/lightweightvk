@@ -972,17 +972,23 @@ struct AccelStructDesc {
 };
 
 struct SubmitHandle {
-  uint32_t bufferIndex_ = 0;
-  uint32_t submitId_ = 0;
+  union {
+    struct {
+      uint32_t bufferIndex_      : 16;
+      uint32_t queueFamilyIndex_ : 16; // Vulkan queue family this submission ran on; makes a handle self-describing
+      uint32_t submitId_         : 32;
+    };
+    uint64_t handle_ = 0;
+  };
   SubmitHandle() = default;
-  explicit SubmitHandle(uint64_t handle) : bufferIndex_(uint32_t(handle & 0xffffffff)), submitId_(uint32_t(handle >> 32)) {
+  explicit SubmitHandle(uint64_t handle) : handle_(handle) {
     LVK_ASSERT(submitId_);
   }
   bool empty() const {
     return submitId_ == 0;
   }
   uint64_t handle() const {
-    return (uint64_t(submitId_) << 32) + bufferIndex_;
+    return handle_;
   }
 };
 

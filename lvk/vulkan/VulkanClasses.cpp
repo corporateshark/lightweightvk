@@ -1543,6 +1543,7 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     buf.fence_ = lvk::createFence(device, fenceName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
     buffers_[i].handle_.bufferIndex_ = i;
+    buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
 }
 
