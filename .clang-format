@@ -2,6 +2,7 @@
 AccessModifierOffset: -1
 AlignAfterOpenBracket: Align
 AlignConsecutiveAssignments: false
+AlignConsecutiveBitFields: AcrossEmptyLinesAndComments
 AlignConsecutiveDeclarations: false
 AlignEscapedNewlines:  Left
 # AlingOperands: true # Unsupported
