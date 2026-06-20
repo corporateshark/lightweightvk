@@ -2228,16 +2228,17 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
     LVK_ASSERT(!img.isSwapchainImage_);
 
     // transition only non-multisampled images - MSAA images cannot be accessed from shaders
-    if (img.vkSamples_ == VK_SAMPLE_COUNT_1_BIT) {
-      LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
-                     "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
-      const VkImageAspectFlags flags = img.getImageAspectFlags();
-      // set the result of the previous render pass
-      img.transitionLayout(wrapper_->cmdBuf_,
-                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                           VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                           extraDstAccess);
+    if (img.vkSamples_ != VK_SAMPLE_COUNT_1_BIT) {
+      continue;
     }
+    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
+                   "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
+    const VkImageAspectFlags flags = img.getImageAspectFlags();
+    // set the result of the previous render pass
+    img.transitionLayout(wrapper_->cmdBuf_,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         extraDstAccess);
   }
 }
 

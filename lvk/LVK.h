@@ -971,6 +971,23 @@ struct AccelStructDesc {
   const char* debugName = "";
 };
 
+struct SubmitHandle {
+  uint32_t bufferIndex_ = 0;
+  uint32_t submitId_ = 0;
+  SubmitHandle() = default;
+  explicit SubmitHandle(uint64_t handle) : bufferIndex_(uint32_t(handle & 0xffffffff)), submitId_(uint32_t(handle >> 32)) {
+    LVK_ASSERT(submitId_);
+  }
+  bool empty() const {
+    return submitId_ == 0;
+  }
+  uint64_t handle() const {
+    return (uint64_t(submitId_) << 32) + bufferIndex_;
+  }
+};
+
+static_assert(sizeof(SubmitHandle) == sizeof(uint64_t));
+
 struct Dependencies {
   ldr::Span<TextureHandle> sampledImages = {};
   ldr::Span<TextureHandle> storageImages = {};
@@ -1082,23 +1099,6 @@ class ICommandBuffer {
   virtual operator VkCommandBuffer() const = 0;
 #endif // defined(LVK_WITH_RAW_VULKAN)
 };
-
-struct SubmitHandle {
-  uint32_t bufferIndex_ = 0;
-  uint32_t submitId_ = 0;
-  SubmitHandle() = default;
-  explicit SubmitHandle(uint64_t handle) : bufferIndex_(uint32_t(handle & 0xffffffff)), submitId_(uint32_t(handle >> 32)) {
-    LVK_ASSERT(submitId_);
-  }
-  bool empty() const {
-    return submitId_ == 0;
-  }
-  uint64_t handle() const {
-    return (uint64_t(submitId_) << 32) + bufferIndex_;
-  }
-};
-
-static_assert(sizeof(SubmitHandle) == sizeof(uint64_t));
 
 class IContext {
  protected:
