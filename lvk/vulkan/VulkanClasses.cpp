@@ -2739,7 +2739,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     inputAttachments_.count = i;
   }
 
-  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+  VkSampleCountFlagBits colorSamples = VK_SAMPLE_COUNT_1_BIT;
   uint32_t mipLevel = 0;
   uint32_t fbWidth = 0;
   uint32_t fbHeight = 0;
@@ -2765,14 +2765,14 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     mipLevel = descColor.level;
     fbWidth = dim.width;
     fbHeight = dim.height;
-    samples = colorTexture.vkSamples_;
+    colorSamples = colorTexture.vkSamples_;
     colorAttachments[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
         .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = (samples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
-                                     : VK_RESOLVE_MODE_NONE,
+        .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
+                                          : VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = loadOpToVkAttachmentLoadOp(descColor.loadOp),
@@ -2781,7 +2781,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     memcpy(&colorAttachments[i].clearValue.color, &descColor.clearColor, sizeof(descColor.clearColor));
     // handle MSAA
     if (attachment.resolveTexture) {
-      LVK_ASSERT(samples > 1);
+      LVK_ASSERT(colorSamples > 1);
       LVK_ASSERT_MSG(colorAttachments[i].storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
                      "Multisampled attachments should have store op DONT_CARE");
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
@@ -2813,9 +2813,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     // handle depth MSAA
     if (fb.depthStencil.resolveTexture) {
       LVK_ASSERT(depthTexture.vkSamples_ > 1);
-      LVK_ASSERT(depthTexture.vkSamples_ == samples);
-      LVK_ASSERT_MSG(depthAttachment.storeOp == VK_ATTACHMENT_STORE_OP_DONT_CARE,
-                     "Multisampled attachments should have store op DONT_CARE");
+      LVK_ASSERT(!numFbColorAttachments || depthTexture.vkSamples_ == colorSamples);
       const lvk::Framebuffer::AttachmentDesc& attachment = fb.depthStencil;
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
