@@ -191,16 +191,22 @@ class VulkanImmediateCommands final {
     SubmitHandle handle_ = {};
     VkFence fence_ = VK_NULL_HANDLE;
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
+    uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
     bool isEncoding_ = false;
   };
 
   // returns the current command buffer (creates one if it does not exist)
   const CommandBufferWrapper& acquire();
-  SubmitHandle submit(const CommandBufferWrapper& wrapper, const VkSemaphore* extraWaits = nullptr, size_t numExtraWaits = 0);
+  SubmitHandle submit(const CommandBufferWrapper& wrapper);
   void waitSemaphore(VkSemaphore semaphore);
   void waitTimelineSemaphore(VkSemaphore semaphore, uint64_t value);
   void signalSemaphore(VkSemaphore semaphore, uint64_t signalValue);
   VkSemaphore acquireLastSubmitSemaphore();
+  // timeline semaphore signaled by every submit() on this queue; lets another queue wait for a specific submission to complete
+  VkSemaphore getTimelineSemaphore() const {
+    return submitTimelineSemaphore_;
+  }
+  uint64_t getTimelineValue(SubmitHandle handle) const;
   void setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence);
   VkFence getVkFence(SubmitHandle handle) const;
   SubmitHandle getLastSubmitHandle() const;
@@ -232,6 +238,7 @@ class VulkanImmediateCommands final {
                                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "signal" semaphore
   VkSemaphore lastPresentSemaphore_ = VK_NULL_HANDLE; // present-wait semaphore of the last vkQueuePresentKHR()
   VkFence lastPresentFence_ = VK_NULL_HANDLE; // its present fence; acquire() waits it before reusing that slot
+  VkSemaphore submitTimelineSemaphore_ = VK_NULL_HANDLE; // monotonic timeline signaled by every submit() (cross-queue waits)
   uint32_t numAvailableCommandBuffers_ = kMaxCommandBuffers;
   uint32_t submitCounter_ = 1;
 };
@@ -489,12 +496,11 @@ class CommandBuffer final : public ICommandBuffer {
 
   VulkanContext* ctx_ = nullptr;
   const VulkanImmediateCommands::CommandBufferWrapper* wrapper_ = nullptr;
-  VulkanImmediateCommands* immediate_ = nullptr; // which queue this buffer was acquired from / submits to.
+  VulkanImmediateCommands* immediate_ = nullptr; // which queue this buffer was acquired from and submits to
 
-  VkSemaphore asyncComputeSubmitSemaphore_ = VK_NULL_HANDLE;
-  // Cross-queue wait semaphores collected from Dependencies::compute, applied as waits at this CB's submit.
-  std::vector<VkSemaphore> crossQueueWaits_;
-  // Storage images written on the async-compute queue and need to be transferred back to the graphics queue for shader-read usage.
+  // Highest async-compute timeline value this CB depends on (from Dependencies::asynCompute); waited cross-queue at submit()
+  uint64_t crossQueueComputeWaitValue_ = 0;
+  // Storage images written on the async-compute queue and need to be transferred back to the graphics queue for shader-read usage
   // The list is cleared at the end of each `submit()`
   std::vector<lvk::TextureHandle> imagesToTransfer_;
   uint32_t queueFamilyIndex_ = 0;

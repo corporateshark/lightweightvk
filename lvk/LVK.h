@@ -999,7 +999,7 @@ struct Dependencies {
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
   ldr::Span<TextureHandle> inputAttachments = {};
-  ldr::Span<class ICommandBuffer*> compute = {};
+  ldr::Span<SubmitHandle> waitCompute = {}; // async-compute work a graphics submit must wait for
 };
 
 class ICommandBuffer {

@@ -1576,6 +1576,12 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     buffers_[i].handle_.bufferIndex_ = i;
     buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
+
+  char timelineName[256] = {0};
+  if (debugName) {
+    (void)snprintf(timelineName, sizeof(timelineName) - 1, "Semaphore: %s (timeline)", debugName);
+  }
+  submitTimelineSemaphore_ = lvk::createSemaphoreTimeline(device, 0, timelineName);
 }
 
 lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
@@ -1589,6 +1595,7 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
     vkDestroySemaphore(device_, buf.semaphore_, nullptr);
   }
 
+  vkDestroySemaphore(device_, submitTimelineSemaphore_, nullptr);
   vkDestroyCommandPool(device_, commandPool_, nullptr);
 }
 
@@ -1744,17 +1751,13 @@ bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastC
   return vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0) == VK_SUCCESS;
 }
 
-lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper,
-                                                       const VkSemaphore* extraWaits,
-                                                       size_t numExtraWaits) {
+lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_SUBMIT);
   LVK_ASSERT(wrapper.isEncoding_);
   VK_ASSERT(vkEndCommandBuffer(wrapper.cmdBuf_));
 
-  // waits: swapchain-acquire + intra-queue chain + an optional cross-queue timeline wait + the cross-queue binary waits from
-  // Dependencies::compute (one per distinct in-flight command buffer)
-  LVK_ASSERT(numExtraWaits <= kMaxCommandBuffers);
-  VkSemaphoreSubmitInfo waitSemaphores[3 + kMaxCommandBuffers];
+  // waits: swapchain-acquire + intra-queue chain + an optional cross-queue timeline wait (e.g. Dependencies::waitCompute)
+  VkSemaphoreSubmitInfo waitSemaphores[3];
   uint32_t numWaitSemaphores = 0;
   if (waitSemaphore_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitSemaphore_;
@@ -1765,23 +1768,26 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   if (waitTimeline_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitTimeline_;
   }
-  for (size_t i = 0; i != numExtraWaits; i++) {
-    waitSemaphores[numWaitSemaphores++] = VkSemaphoreSubmitInfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .semaphore = extraWaits[i],
-        .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-    };
-  }
+  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline + an optional extra signal.
+  // The next timeline value is one past the most recent submission's; the highest value always belongs to the last submit,
+  // so we read it back from that slot instead of caching a separate running counter.
+  const uint64_t prevTimelineValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
+  const uint64_t timelineValue = prevTimelineValue + 1;
   VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = wrapper.semaphore_,
                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
+      VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                            .semaphore = submitTimelineSemaphore_,
+                            .value = timelineValue,
+                            .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
       {},
   };
-  uint32_t numSignalSemaphores = 1;
+  uint32_t numSignalSemaphores = 2;
   if (signalSemaphore_.semaphore) {
     signalSemaphores[numSignalSemaphores++] = signalSemaphore_;
   }
+  const_cast<CommandBufferWrapper&>(wrapper).signaledTimelineValue_ = timelineValue;
 
   LVK_PROFILER_ZONE("vkQueueSubmit2()", LVK_PROFILER_COLOR_SUBMIT);
 #if LVK_VULKAN_PRINT_COMMANDS
@@ -1925,6 +1931,16 @@ VkFence lvk::VulkanImmediateCommands::getVkFence(lvk::SubmitHandle handle) const
   }
 
   return buffers_[handle.bufferIndex_].fence_;
+}
+
+uint64_t lvk::VulkanImmediateCommands::getTimelineValue(lvk::SubmitHandle handle) const {
+  if (handle.empty()) {
+    return 0;
+  }
+
+  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
+  // a stale handle (slot already recycled and reused) means the dependency completed long ago - nothing to wait for
+  return buf.handle_.submitId_ == handle.submitId_ ? buf.signaledTimelineValue_ : 0;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getLastSubmitHandle() const {
@@ -2230,14 +2246,24 @@ lvk::CommandBuffer::~CommandBuffer() {
 }
 
 void lvk::CommandBuffer::addComputeDependencies(const Dependencies& deps) {
-  for (ICommandBuffer* dep : deps.compute) {
-    if (!dep || dep == this)
+  if (deps.waitCompute.empty() || !ctx_->immediateCompute_) {
+    return;
+  }
+
+  // Same-queue ordering is already guaranteed by the intra-queue chain, so a compute CB ignores its compute dependencies.
+  if (immediate_ == ctx_->immediateCompute_.get()) {
+    return;
+  }
+
+  // All compute submits signal one monotonic timeline, so waiting on the highest required value covers every dependency at once -
+  // no per-dependency semaphores, no de-duplication, and the same value can be waited by any number of consumers.
+  for (SubmitHandle dep : deps.waitCompute) {
+    if (dep.empty()) {
       continue;
-    const VkSemaphore sem = static_cast<lvk::CommandBuffer*>(dep)->asyncComputeSubmitSemaphore_;
-    LVK_ASSERT_MSG(sem != VK_NULL_HANDLE, "Dependencies::compute has a command buffer that was not submitted");
-    if (sem && std::find(crossQueueWaits_.begin(), crossQueueWaits_.end(), sem) == crossQueueWaits_.end()) {
-      crossQueueWaits_.push_back(sem); // binary semaphore: wait it exactly once for this submission
     }
+    LVK_ASSERT_MSG(dep.queueFamilyIndex_ == ctx_->deviceQueues_.computeQueueFamilyIndex,
+                   "Dependencies::waitCompute expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = true)");
+    crossQueueComputeWaitValue_ = std::max<uint64_t>(crossQueueComputeWaitValue_, ctx_->immediateCompute_->getTimelineValue(dep));
   }
 }
 
@@ -4273,9 +4299,7 @@ lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer(bool dedicatedComp
 
   lvk::CommandBuffer& commandBuffer = dedicatedCompute ? pimpl_->currentComputeCommandBuffer_ : pimpl_->currentCommandBuffer_;
 
-  // The async-compute slot is reset lazily in `submit()`, so it can still hold an already-submitted command buffer; allow reacquiring it
-  LVK_ASSERT_MSG(!commandBuffer.ctx_ || (dedicatedCompute && !commandBuffer.lastSubmitHandle_.empty()),
-                 "Cannot acquire more than 1 command buffer simultaneously");
+  LVK_ASSERT_MSG(!commandBuffer.ctx_, "Cannot acquire more than 1 command buffer simultaneously");
 
 #if defined(_M_ARM64)
   vkDeviceWaitIdle(vkDevice_); // a temporary workaround for Windows on Snapdragon
@@ -4346,15 +4370,12 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     }
     // Graphics->compute write-after-read guard
     immediateCompute_->waitTimelineSemaphore(timelineSemaphore_, pimpl_->lastGraphicsPresentTimelineValue_);
+  } else if (vkCmdBuffer->crossQueueComputeWaitValue_) {
+    // Cross-queue execution dependency: wait until the required async-compute submits complete (from Dependencies::waitCompute)
+    imm.waitTimelineSemaphore(immediateCompute_->getTimelineSemaphore(), vkCmdBuffer->crossQueueComputeWaitValue_);
   }
 
-  // Cross-queue execution dependency.
-  vkCmdBuffer->lastSubmitHandle_ =
-      imm.submit(*vkCmdBuffer->wrapper_, vkCmdBuffer->crossQueueWaits_.data(), vkCmdBuffer->crossQueueWaits_.size());
-
-  if (&imm == immediateCompute_.get()) {
-    vkCmdBuffer->asyncComputeSubmitSemaphore_ = immediateCompute_->acquireLastSubmitSemaphore();
-  }
+  vkCmdBuffer->lastSubmitHandle_ = imm.submit(*vkCmdBuffer->wrapper_);
 
   if (shouldPresent) {
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
@@ -4376,10 +4397,11 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     DSets_[idx].handle_ = handle;
   }
 
-  // Reset the graphics slot. The async-compute slot is reset lazily (in acquireCommandBuffer()) instead: a graphics consumer
-  // references this just-submitted compute CB via Dependencies::compute to read its signal semaphore, so the object must stay alive past
-  // its own submit until the frame's graphics work is recorded.
-  if (&imm != immediateCompute_.get()) {
+  // Reset the just-submitted slot (graphics or async-compute). Consumers reference a compute submission by SubmitHandle (a value
+  // looked up against the compute queue's timeline), not by a CommandBuffer pointer, so nothing needs this object to outlive submit().
+  if (&imm == immediateCompute_.get()) {
+    pimpl_->currentComputeCommandBuffer_ = {};
+  } else {
     pimpl_->currentCommandBuffer_ = {};
   }
 
@@ -4387,6 +4409,11 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 }
 
 void lvk::VulkanContext::wait(SubmitHandle handle) {
+  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
+  if (immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex) {
+    immediateCompute_->wait(handle);
+    return;
+  }
   immediate_->wait(handle);
 }
 
