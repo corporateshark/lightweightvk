@@ -7432,6 +7432,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .pNext = config_.extensionsDeviceFeatures,
       .storageBuffer16BitAccess = VK_TRUE,
+      .storagePushConstant16 = vkFeatures11_.storagePushConstant16, // enable if supported
       .storageInputOutput16 = vkFeatures11_.storageInputOutput16, // enable if supported
       .multiview = vkFeatures11_.multiview, // enable if supported
       .variablePointersStorageBuffer = VK_TRUE,
