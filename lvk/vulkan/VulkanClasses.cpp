@@ -1035,6 +1035,7 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
   for (uint32_t layer = 0; layer < numLayers_; ++layer) {
     int32_t mipWidth = (int32_t)vkExtent_.width;
     int32_t mipHeight = (int32_t)vkExtent_.height;
+    int32_t mipDepth = (int32_t)vkExtent_.depth; // 3D textures downsample depth too (1 for 2D/array/cube).
 
     for (uint32_t i = 1; i < numLevels_; ++i) {
       // 1: Transition the i-th level to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; it will be copied into from the (i-1)-th layer
@@ -1048,14 +1049,15 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
 
       const int32_t nextLevelWidth = mipWidth > 1 ? mipWidth / 2 : 1;
       const int32_t nextLevelHeight = mipHeight > 1 ? mipHeight / 2 : 1;
+      const int32_t nextLevelDepth = mipDepth > 1 ? mipDepth / 2 : 1; // 3D blit downsamples depth (1 for 2D).
 
       const VkOffset3D srcOffsets[2] = {
           VkOffset3D{0, 0, 0},
-          VkOffset3D{mipWidth, mipHeight, 1},
+          VkOffset3D{mipWidth, mipHeight, mipDepth},
       };
       const VkOffset3D dstOffsets[2] = {
           VkOffset3D{0, 0, 0},
-          VkOffset3D{nextLevelWidth, nextLevelHeight, 1},
+          VkOffset3D{nextLevelWidth, nextLevelHeight, nextLevelDepth},
       };
 
       // 2: Blit the image from the prev mip-level (i-1) (VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) to the current mip-level (i)
@@ -1093,6 +1095,7 @@ void lvk::VulkanImage::generateMipmap(VkCommandBuffer commandBuffer) const {
       // Compute the size of the next mip-level
       mipWidth = nextLevelWidth;
       mipHeight = nextLevelHeight;
+      mipDepth = nextLevelDepth;
     }
   }
 
