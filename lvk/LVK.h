@@ -1236,7 +1236,7 @@ struct ContextConfig {
   VulkanVersion vulkanVersion = VulkanVersion_1_3;
   bool terminateOnValidationError = false; // invoke std::terminate() on any validation error
   bool enableValidation = true;
-  bool enableValidationGpuAssisted = true;
+  bool enableValidationGpuAV = true;
   bool generateSPIRVDebugInfo = true;
   lvk::ColorSpace swapchainRequestedColorSpace = lvk::ColorSpace_SRGB_NONLINEAR;
   // owned by the application - should be alive until createVulkanContextWithSwapchain() returns

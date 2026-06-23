@@ -6908,9 +6908,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
   const bool hasPortabilityEnumeration = hasExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, allInstanceExtensions);
 
 #if defined(__APPLE__)
-  if (hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions)) {
-    enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
-  }
   if (hasExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME, allInstanceExtensions)) {
     has_MVK_macos_surface_ = true;
     enabledInstanceExtensionNames_.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
@@ -6928,6 +6925,10 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   if (hasDebugUtils) {
     enabledInstanceExtensionNames_.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+
+  if (hasExtension(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME, allInstanceExtensions)) {
+    enabledInstanceExtensionNames_.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
   }
 
   if (config_.enableHeadlessSurface) {
@@ -6963,12 +6964,12 @@ lvk::Result lvk::VulkanContext::createInstance() {
   // GPU Assisted Validation doesn't work on Android.
   // It implicitly requires vertexPipelineStoresAndAtomics feature that's not supported even on high-end devices.
 #if defined(ANDROID)
-  const bool enableGpuAv = false;
+  const bool enableGpuAV = false;
 #else
-  const bool enableGpuAv = config_.enableValidation && config_.enableValidationGpuAssisted;
+  const bool enableGpuAV = config_.enableValidation && config_.enableValidationGpuAV;
 #endif // ANDROID
 
-  const VkBool32 gpuav_enable = enableGpuAv ? VK_TRUE : VK_FALSE;
+  const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
 #define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
   VkLayerSettingEXT {                                                                                                           \
@@ -6982,7 +6983,6 @@ lvk::Result lvk::VulkanContext::createInstance() {
 #undef LAYER_SETTINGS_BOOL32
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
-      .pNext = nullptr,
       .settingCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(settings),
       .pSettings = settings,
   };
@@ -7013,11 +7013,7 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   const VkInstanceCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-#if defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
       .pNext = &layerSettingsCreateInfo,
-#else
-      .pNext = nullptr,
-#endif // defined(VK_EXT_layer_settings) && VK_EXT_layer_settings
       .flags = hasPortabilityEnumeration ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0u,
       .pApplicationInfo = &appInfo,
       .enabledLayerCount = config_.enableValidation ? (uint32_t)LVK_ARRAY_NUM_ELEMENTS(kDefaultValidationLayers) : 0u,
