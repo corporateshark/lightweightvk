@@ -999,6 +999,7 @@ struct Dependencies {
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
   ldr::Span<TextureHandle> inputAttachments = {};
+  ldr::Span<class ICommandBuffer*> compute = {};
 };
 
 class ICommandBuffer {
@@ -1113,7 +1114,7 @@ class IContext {
  public:
   virtual ~IContext() = default;
 
-  virtual ICommandBuffer& acquireCommandBuffer() = 0;
+  virtual ICommandBuffer& acquireCommandBuffer(bool dedicatedCompute = false) = 0;
 
   virtual SubmitHandle submit(ICommandBuffer& commandBuffer, TextureHandle present = {}) = 0;
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
@@ -1190,6 +1191,7 @@ class IContext {
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 
   virtual bool isExtensionEnabled(const char* ext) const = 0;
+  virtual bool supportsAsyncCompute() const = 0;
 
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;
