@@ -794,7 +794,6 @@ struct VulkanContextImpl final {
 
   lvk::CommandBuffer currentCommandBuffer_;
   lvk::CommandBuffer currentComputeCommandBuffer_; // async-compute slot (coexists with the graphics one).
-  uint64_t lastGraphicsPresentTimelineValue_ = 0;
 
   std::vector<DeferredTask> deferredTasks_;
 
@@ -2245,25 +2244,81 @@ lvk::CommandBuffer::~CommandBuffer() {
   LVK_ASSERT(!isRendering_);
 }
 
-void lvk::CommandBuffer::addComputeDependencies(const Dependencies& deps) {
-  if (deps.waitCompute.empty() || !ctx_->immediateCompute_) {
-    return;
+void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
+  if (!ctx_->immediateCompute_) {
+    return; // no async-compute queue: all work runs on graphics and the intra-queue chain orders it
   }
 
-  // Same-queue ordering is already guaranteed by the intra-queue chain, so a compute CB ignores its compute dependencies.
-  if (immediate_ == ctx_->immediateCompute_.get()) {
-    return;
-  }
-
-  // All compute submits signal one monotonic timeline, so waiting on the highest required value covers every dependency at once -
-  // no per-dependency semaphores, no de-duplication, and the same value can be waited by any number of consumers.
+  // validate before any early-out so a foreign handle is caught on either queue, even though same-queue deps are ignored below
   for (SubmitHandle dep : deps.waitCompute) {
+    LVK_ASSERT_MSG(dep.empty() || dep.queueFamilyIndex_ == ctx_->deviceQueues_.computeQueueFamilyIndex,
+                   "Dependencies::waitCompute expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = true)");
+  }
+  for (SubmitHandle dep : deps.waitGraphics) {
+    LVK_ASSERT_MSG(dep.empty() || dep.queueFamilyIndex_ == ctx_->deviceQueues_.graphicsQueueFamilyIndex,
+                   "Dependencies::waitGraphics expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = false)");
+  }
+
+  // each queue only needs to wait on the *other* queue's timeline; same-queue ordering is the intra-queue chain's job
+  const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
+  const ldr::Span<SubmitHandle> crossDeps = isCompute ? deps.waitGraphics : deps.waitCompute;
+  lvk::VulkanImmediateCommands& other = isCompute ? *ctx_->immediate_ : *ctx_->immediateCompute_;
+  uint64_t& waitValue = isCompute ? crossQueueGraphicsWaitValue_ : crossQueueComputeWaitValue_;
+
+  // each queue signals one monotonic timeline, so waiting on the highest required value covers every dependency at once
+  for (SubmitHandle dep : crossDeps) {
     if (dep.empty()) {
       continue;
     }
-    LVK_ASSERT_MSG(dep.queueFamilyIndex_ == ctx_->deviceQueues_.computeQueueFamilyIndex,
-                   "Dependencies::waitCompute expects SubmitHandles produced by acquireCommandBuffer(dedicatedCompute = true)");
-    crossQueueComputeWaitValue_ = std::max<uint64_t>(crossQueueComputeWaitValue_, ctx_->immediateCompute_->getTimelineValue(dep));
+    waitValue = std::max<uint64_t>(waitValue, other.getTimelineValue(dep));
+  }
+}
+
+bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const {
+  if (img.pendingAcquireSrcFamily_ == VK_QUEUE_FAMILY_IGNORED || img.pendingAcquireSrcFamily_ == queueFamilyIndex_) {
+    return false;
+  }
+
+  // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
+  emitImageQFOTransfer(wrapper_->cmdBuf_,
+                       img,
+                       img.qfotSrcLayout_,
+                       img.qfotDstLayout_,
+                       StageAccess{},
+                       dst,
+                       img.pendingAcquireSrcFamily_,
+                       queueFamilyIndex_);
+  img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
+  img.ownerQueueFamily_ = queueFamilyIndex_;
+  img.vkImageLayout_ = img.qfotDstLayout_;
+  return true;
+}
+
+void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const {
+  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
+
+  if (!ctx_->immediateCompute_) {
+    return; // no async-compute queue: nothing to hand off, the image stays on the graphics queue
+  }
+  LVK_ASSERT_MSG(immediate_ == ctx_->immediate_.get(), "cmdReleaseToAsyncCompute() must be called on a graphics command buffer");
+
+  const uint32_t computeFamily = ctx_->deviceQueues_.computeQueueFamilyIndex;
+
+  for (TextureHandle handle : textures) {
+    LVK_ASSERT(!handle.empty());
+    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+
+    const bool already = std::any_of(
+        imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
+    if (already) {
+      continue; // de-dup: one image, one release
+    }
+    const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+        .handle = handle,
+        .dstQueueFamily = computeFamily,
+        .dstLayout = VK_IMAGE_LAYOUT_GENERAL, // rendezvous layout valid for both sampled and storage reads on compute
+        .srcStage = getPipelineStageAccess(img.vkImageLayout_), // producer's last use of the image
+    });
   }
 }
 
@@ -2285,7 +2340,15 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
     LVK_ASSERT(!handle.empty());
     lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
 
-    if (isCompute && tex.ownerQueueFamily_ != VK_QUEUE_FAMILY_IGNORED && tex.ownerQueueFamily_ != queueFamilyIndex_) {
+    StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_GENERAL);
+    dst.stage |= extraDstAccess.stage;
+    dst.access |= extraDstAccess.access;
+
+    // Reading an image another queue released to us (e.g. compute reading a graphics-produced storage image): complete the acquire.
+    const bool acquired = acquireOwnershipIfPending(tex, dst);
+
+    if (!acquired && tex.ownerQueueFamily_ != VK_QUEUE_FAMILY_IGNORED && tex.ownerQueueFamily_ != queueFamilyIndex_) {
+      // foreign-owned with no handoff armed: we are overwriting, so discard the stale contents instead of acquiring them
       tex.vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     }
 
@@ -2293,16 +2356,21 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
                          VK_IMAGE_LAYOUT_GENERAL,
                          VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
                          extraDstAccess);
+    tex.ownerQueueFamily_ = queueFamilyIndex_;
 
-    tex.ownerQueueFamily_ = [&]() -> uint32_t {
-      if (!isCompute)
-        return tex.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED ? queueFamilyIndex_ : tex.ownerQueueFamily_;
-      if (std::find(imagesToTransfer_.begin(), imagesToTransfer_.end(), handle) == imagesToTransfer_.end()) {
-        // hand this output to graphics at submit() (QFOT release)
-        const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(handle); // de-dup: one image, one release
+    // Async-compute storage OUTPUTS are auto-released to graphics at submit(); an image just acquired as input is not re-released.
+    if (isCompute && !acquired) {
+      const bool already = std::any_of(
+          imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
+      if (!already) {
+        const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+            .handle = handle,
+            .dstQueueFamily = ctx_->deviceQueues_.graphicsQueueFamilyIndex,
+            .dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // rendezvous layout: graphics samples the compute output
+            .srcStage = StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
+        });
       }
-      return queueFamilyIndex_;
-    }();
+    }
   }
 }
 
@@ -2336,7 +2404,7 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
   }
 
   for (TextureHandle handle : textures) {
-    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
+    lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
 
     LVK_ASSERT(!img.isSwapchainImage_);
 
@@ -2347,26 +2415,17 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
     LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
                    "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
 
-    if (img.pendingAcquireSrcFamily_ != VK_QUEUE_FAMILY_IGNORED && img.pendingAcquireSrcFamily_ != queueFamilyIndex_) {
-      // QFOT acquire
-      StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-      dst.stage |= extraDstAccess.stage;
-      dst.access |= extraDstAccess.access;
-      emitImageQFOTransfer(wrapper_->cmdBuf_,
-                           img,
-                           img.qfotSrcLayout_,
-                           img.vkImageLayout_,
-                           StageAccess{},
-                           dst,
-                           img.pendingAcquireSrcFamily_,
-                           queueFamilyIndex_);
-      img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
-      img.ownerQueueFamily_ = queueFamilyIndex_;
-      continue;
+    StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    dst.stage |= extraDstAccess.stage;
+    dst.access |= extraDstAccess.access;
+
+    // Complete a pending cross-queue handoff (acquire half). It replays the producer's rendezvous layout.
+    if (acquireOwnershipIfPending(img, dst) && img.vkImageLayout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      continue; // acquired directly into the layout we need (e.g. compute->graphics handoff)
     }
 
+    // Either no handoff, or acquired into a different rendezvous layout (e.g. GENERAL): finish with a same-queue transition.
     const VkImageAspectFlags flags = img.getImageAspectFlags();
-    // set the result of the previous render pass
     img.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
@@ -2435,7 +2494,7 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
 
   LVK_ASSERT(!isRendering_);
 
-  addComputeDependencies(deps);
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2457,7 +2516,7 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
 
   LVK_ASSERT(!isRendering_);
 
-  addComputeDependencies(deps);
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_Comp);
   cmdTransitionToGeneral(deps.storageImages, Stage_Comp);
 
@@ -2591,7 +2650,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   isRendering_ = true;
   viewMask_ = renderPass.viewMask;
 
-  addComputeDependencies(deps);
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, {});
   cmdTransitionToGeneral(deps.storageImages, {});
 
@@ -3228,7 +3287,7 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
 
   LVK_ASSERT(!isRendering_);
 
-  addComputeDependencies(deps);
+  addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, Stage_RayGen);
   cmdTransitionToGeneral(deps.storageImages, Stage_RayGen);
 
@@ -4342,34 +4401,35 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
     // we wait for this value next time we want to acquire this swapchain image
     swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
     immediate_->signalSemaphore(timelineSemaphore_, signalValue);
-    pimpl_->lastGraphicsPresentTimelineValue_ = signalValue; // async-compute submits wait on this (WAR)
   }
 
   // Submit on the command buffer's own queue (graphics or async-compute)
   LVK_ASSERT(vkCmdBuffer->immediate_);
   lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
 
-  // QFOT release: hand every storage image written on this async-compute CB to the graphics queue
+  // QFOT release: hand off every image this CB collected (compute->graphics auto-collected outputs, or graphics->compute
+  // images declared via cmdReleaseToAsyncCompute()) to its destination queue. The matching acquire is emitted by the consumer.
+  const uint32_t producerFamily = (&imm == immediateCompute_.get()) ? deviceQueues_.computeQueueFamilyIndex
+                                                                    : deviceQueues_.graphicsQueueFamilyIndex;
+  for (const CommandBuffer::PendingRelease& r : vkCmdBuffer->imagesToTransfer_) {
+    lvk::VulkanImage& img = *texturesPool_.get(r.handle);
+    const VkImageLayout oldLayout = img.vkImageLayout_;
+    emitImageQFOTransfer(
+        vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, r.dstLayout, r.srcStage, StageAccess{}, producerFamily, r.dstQueueFamily);
+    img.qfotSrcLayout_ = oldLayout;
+    img.qfotDstLayout_ = r.dstLayout;
+    img.vkImageLayout_ = r.dstLayout;
+    img.pendingAcquireSrcFamily_ = producerFamily; // the destination queue completes the transfer on first use
+  }
+
   if (&imm == immediateCompute_.get()) {
-    const uint32_t computeFamily = deviceQueues_.computeQueueFamilyIndex;
-    const uint32_t graphicsFamily = deviceQueues_.graphicsQueueFamilyIndex;
-    for (TextureHandle h : vkCmdBuffer->imagesToTransfer_) {
-      lvk::VulkanImage& img = *texturesPool_.get(h);
-      const VkImageLayout oldLayout = img.vkImageLayout_;
-      emitImageQFOTransfer(vkCmdBuffer->wrapper_->cmdBuf_,
-                           img,
-                           oldLayout,
-                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                           StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
-                           StageAccess{},
-                           computeFamily,
-                           graphicsFamily);
-      img.qfotSrcLayout_ = oldLayout;
-      img.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      img.pendingAcquireSrcFamily_ = computeFamily; // graphics completes the transfer on first read
+    // Compute waits on the graphics submit timeline for BOTH the write-after-read guard (don't overwrite images the graphics queue
+    // may still be reading) and any explicit Dependencies::waitGraphics (read-after-write). A single wait on the highest value covers both.
+    const lvk::SubmitHandle lastGraphics = immediate_->getLastSubmitHandle();
+    const uint64_t waitValue = std::max<uint64_t>(immediate_->getTimelineValue(lastGraphics), vkCmdBuffer->crossQueueGraphicsWaitValue_);
+    if (waitValue) {
+      immediateCompute_->waitTimelineSemaphore(immediate_->getTimelineSemaphore(), waitValue);
     }
-    // Graphics->compute write-after-read guard
-    immediateCompute_->waitTimelineSemaphore(timelineSemaphore_, pimpl_->lastGraphicsPresentTimelineValue_);
   } else if (vkCmdBuffer->crossQueueComputeWaitValue_) {
     // Cross-queue execution dependency: wait until the required async-compute submits complete (from Dependencies::waitCompute)
     imm.waitTimelineSemaphore(immediateCompute_->getTimelineSemaphore(), vkCmdBuffer->crossQueueComputeWaitValue_);

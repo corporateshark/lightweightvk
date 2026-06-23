@@ -116,8 +116,9 @@ struct VulkanImage final {
   // current image layout
   mutable VkImageLayout vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
   mutable uint32_t ownerQueueFamily_ = VK_QUEUE_FAMILY_IGNORED;
-  mutable uint32_t pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED; // set by a release, consumed by the acquire
+  mutable uint32_t pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED; // released in `submit()`, consumed by `acquireOwnershipIfPending()`
   mutable VkImageLayout qfotSrcLayout_ = VK_IMAGE_LAYOUT_UNDEFINED; // oldLayout the acquire must match the release
+  mutable VkImageLayout qfotDstLayout_ = VK_IMAGE_LAYOUT_UNDEFINED; // newLayout (rendezvous layout) the acquire must match the release
   // precached image views - owned by this VulkanImage
   VkImageView imageView_ = VK_NULL_HANDLE; // default view with all mip-levels
   VkImageView imageViewStorage_ = VK_NULL_HANDLE; // default view with identity swizzle (all mip-levels)
@@ -399,6 +400,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const override;
   void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
+  void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
 
@@ -489,20 +491,32 @@ class CommandBuffer final : public ICommandBuffer {
                      VkDeviceSize offset = 0,
                      VkDeviceSize size = VK_WHOLE_SIZE);
 
-  void addComputeDependencies(const Dependencies& deps);
+  void addCrossQueueDependencies(const Dependencies& deps);
+  // Completes a cross-queue ownership transfer for `img` if the producing queue armed one; returns true if an acquire was emitted
+  bool acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const;
 
  private:
   friend class VulkanContext;
+
+  // One image handed off to the other queue at `submit()` (QFOT release); collected during recording
+  struct PendingRelease {
+    lvk::TextureHandle handle;
+    uint32_t dstQueueFamily = VK_QUEUE_FAMILY_IGNORED;
+    VkImageLayout dstLayout = VK_IMAGE_LAYOUT_UNDEFINED; // rendezvous layout the matching acquire must replay
+    StageAccess srcStage = {}; // producer's last-write scope
+  };
 
   VulkanContext* ctx_ = nullptr;
   const VulkanImmediateCommands::CommandBufferWrapper* wrapper_ = nullptr;
   VulkanImmediateCommands* immediate_ = nullptr; // which queue this buffer was acquired from and submits to
 
-  // Highest async-compute timeline value this CB depends on (from Dependencies::asynCompute); waited cross-queue at submit()
+  // Highest async-compute timeline value a graphics CB depends on (from Dependencies::waitCompute); waited cross-queue at `submit()`
   uint64_t crossQueueComputeWaitValue_ = 0;
-  // Storage images written on the async-compute queue and need to be transferred back to the graphics queue for shader-read usage
-  // The list is cleared at the end of each `submit()`
-  std::vector<lvk::TextureHandle> imagesToTransfer_;
+  // Highest graphics timeline value an async-compute CB depends on (from Dependencies::waitGraphics); waited cross-queue at `submit()`
+  uint64_t crossQueueGraphicsWaitValue_ = 0;
+  // Images handed off to the other queue (compute->graphics or graphics->compute), released at this CB's `submit()`
+  // The list lives with the CommandBuffer, so it is implicitly cleared when the slot is reset at the end of `submit()`
+  std::vector<PendingRelease> imagesToTransfer_;
   uint32_t queueFamilyIndex_ = 0;
 
   lvk::Framebuffer framebuffer_ = {};

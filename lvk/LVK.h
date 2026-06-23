@@ -999,7 +999,10 @@ struct Dependencies {
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
   ldr::Span<TextureHandle> inputAttachments = {};
+  // Cross-queue waits only: dependencies on work submitted to the *other* queue. Same-queue ordering is already
+  // guaranteed automatically (by barriers within a command buffer and by the intra-queue chain between submits).
   ldr::Span<SubmitHandle> waitCompute = {}; // async-compute work a graphics submit must wait for
+  ldr::Span<SubmitHandle> waitGraphics = {}; // graphics work an async-compute submit must wait for
 };
 
 class ICommandBuffer {
@@ -1010,6 +1013,9 @@ class ICommandBuffer {
   virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   // no extraDstStage parameter: this is only used within a render pass
   virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
+  // Hand graphics-produced images to the async-compute queue (queue-family ownership release). The matching acquire is emitted
+  // automatically when the async-compute submit first uses the image. Pair with `Dependencies::waitGraphics` on that submit.
+  virtual void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
