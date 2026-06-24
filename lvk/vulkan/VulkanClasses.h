@@ -749,6 +749,8 @@ class VulkanContext final : public IContext {
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
   VkSampler getOrCreateYcbcrSampler(lvk::Format format);
   void addNextPhysicalDeviceProperties(void* properties);
+  // whether to add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to the image described by `ci` (`ci.usage` must not include it yet)
+  [[nodiscard]] bool shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const;
 
   void getBuildInfoBLAS(const AccelStructDesc& desc,
                         VkAccelerationStructureGeometryKHR& geom,
@@ -859,6 +861,12 @@ class VulkanContext final : public IContext {
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
+  // VK_EXT_host_image_copy: usable host copy src/dst layouts and whether HOST_TRANSFER changes memory type requirements (set in initContext())
+  std::vector<VkImageLayout> hostImageCopySrcLayouts_;
+  std::vector<VkImageLayout> hostImageCopyDstLayouts_;
+  bool hostImageCopyIdenticalMemoryTypeRequirements_ = false;
+  // bitmask of device-local memory type indices
+  uint32_t deviceLocalMemoryTypeMask_ = 0;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

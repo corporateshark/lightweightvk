@@ -3671,6 +3671,9 @@ lvk::VulkanStagingDevice::VulkanStagingDevice(VulkanContext& ctx) : ctx_(ctx) {
   // clamped to the max limits
   maxBufferSize_ = std::min(maxMemoryAllocationSize, ctx_.config_.maxStagingBufferSize);
   minBufferSize_ = std::min(minBufferSize_, maxBufferSize_);
+
+  // pre-create the staging buffer: avoids allocating it (and growing `buffersPool_`) on the first upload
+  ensureStagingBufferSize(minBufferSize_);
 }
 
 void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOffset, size_t size, const void* data) {
@@ -3681,18 +3684,23 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     return;
   }
 
-  lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
-
-  LVK_ASSERT(stagingBuffer);
+  // capture the destination handle: an oversized upload grows the staging buffer below, and as it shares `buffersPool_` that
+  // reallocation would dangle the `buffer` reference
+  const VkBuffer dstVkBuffer = buffer.vkBuffer_;
 
   const size_t origDstOffset = dstOffset;
   const size_t origSize = size;
 
   while (size) {
-    // get next staging buffer free offset
+    // next free staging offset (grows the staging buffer if the upload doesn't fit)
     MemoryRegionDesc desc = getNextFreeOffset(size);
     const VkDeviceSize chunkSize = std::min<VkDeviceSize>(size, desc.size_);
     const bool isLast = (chunkSize == size);
+
+    // fetch the staging buffer after getNextFreeOffset() so the pointer is valid even if it just grew
+    lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
+
+    LVK_ASSERT(stagingBuffer);
 
     // copy data into staging buffer
     stagingBuffer->bufferSubData(ctx_, desc.offset_, chunkSize, data);
@@ -3705,7 +3713,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     };
 
     const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
-    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, buffer.vkBuffer_, 1, &copy);
+    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, dstVkBuffer, 1, &copy);
     // one barrier covering the full destination range
     if (isLast) {
       const VkBufferMemoryBarrier2 barrier = {
@@ -3716,7 +3724,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
           .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .buffer = buffer.vkBuffer_,
+          .buffer = dstVkBuffer,
           .offset = origDstOffset,
           .size = origSize,
       };
@@ -3762,6 +3770,56 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   if (numMipLevels > 1 || numLayers > 1) {
     LVK_ASSERT(!bufferRowLength);
     LVK_ASSERT_MSG(coversFullImage, "Uploading mip-levels with an image region that is smaller than the base mip-level is not supported");
+  }
+
+  // fast path: copy straight from host memory (no staging buffer, command buffer or submit) for single-plane images created with
+  // VK_IMAGE_USAGE_HOST_TRANSFER_BIT (see createTexture()); multi-planar images fall through to the staging path
+  if ((image.vkUsageFlags_ & VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT) && lvk::getNumImagePlanes(image.vkImageFormat_) == 1) {
+    std::vector<VkMemoryToImageCopyEXT> regions;
+    regions.reserve((size_t)numMipLevels * numLayers);
+
+    // `data` is laid out mip-major, layer-minor (same accounting as `storageSize` below)
+    uint32_t srcOffset = 0;
+    for (uint32_t mipLevel = 0; mipLevel < numMipLevels; ++mipLevel) {
+      for (uint32_t layer = 0; layer < numLayers; ++layer) {
+        regions.push_back(VkMemoryToImageCopyEXT{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY_EXT,
+            .pHostPointer = (const uint8_t*)data + srcOffset,
+            .memoryRowLength = bufferRowLength,
+            .memoryImageHeight = 0,
+            .imageSubresource = VkImageSubresourceLayers{VK_IMAGE_ASPECT_COLOR_BIT, baseMipLevel + mipLevel, baseLayer + layer, 1},
+            .imageOffset = {.x = imageRegion.offset.x >> mipLevel, .y = imageRegion.offset.y >> mipLevel, .z = 0},
+            .imageExtent = {.width = std::max(1u, imageRegion.extent.width >> mipLevel),
+                            .height = std::max(1u, imageRegion.extent.height >> mipLevel),
+                            .depth = 1u},
+        });
+        srcOffset += lvk::getTextureBytesPerLayer(
+            bufferRowLength ? bufferRowLength : imageRegion.extent.width, imageRegion.extent.height, texFormat, mipLevel);
+      }
+    }
+
+    // transition the subresources into the copy-destination layout (also the final sampling layout)
+    const VkHostImageLayoutTransitionInfoEXT transition = {
+        .sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO_EXT,
+        .image = image.vkImage_,
+        .oldLayout = coversFullImage ? VK_IMAGE_LAYOUT_UNDEFINED : image.vkImageLayout_,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, baseMipLevel, numMipLevels, baseLayer, numLayers},
+    };
+    // the *EXT entry points resolve on both core-1.4 and extension devices (as with vkCmdPushDescriptorSetKHR), so call them unconditionally
+    VK_ASSERT(vkTransitionImageLayoutEXT(ctx_.vkDevice_, 1, &transition));
+
+    const VkCopyMemoryToImageInfoEXT copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO_EXT,
+        .dstImage = image.vkImage_,
+        .dstImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .regionCount = (uint32_t)regions.size(),
+        .pRegions = regions.data(),
+    };
+    VK_ASSERT(vkCopyMemoryToImageEXT(ctx_.vkDevice_, &copyInfo));
+
+    image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    return;
   }
 
   // find the storage size for all mip-levels being uploaded
@@ -4783,6 +4841,28 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   LVK_ASSERT(vkExtent.width > 0);
   LVK_ASSERT(vkExtent.height > 0);
   LVK_ASSERT(vkExtent.depth > 0);
+
+  // add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to eligible single-plane images to enable the staging-free imageData2D() path (read back from
+  // `image.vkUsageFlags_`); decided here where the full image parameters are known
+  if (desc.storage != lvk::StorageType_Memoryless && lvk::getNumImagePlanes(desc.format) == 1) {
+    const VkImageCreateInfo hostCopyProbe = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags = vkCreateFlags,
+        .imageType = vkImageType,
+        .format = vkFormat,
+        .extent = vkExtent,
+        .mipLevels = numLevels,
+        .arrayLayers = numLayers,
+        .samples = vkSamples,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = usageFlags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    if (shouldEnableHostImageCopy(hostCopyProbe)) {
+      usageFlags |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+    }
+  }
 
   lvk::VulkanImage image = {
       .vkUsageFlags_ = usageFlags,
@@ -7169,6 +7249,47 @@ void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
   vkPhysicalDeviceProperties2_.pNext = properties;
 }
 
+bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const {
+  if (!has_EXT_host_image_copy_) {
+    return false;
+  }
+
+  // only sampled/transfer images: host-copying device-written (storage/attachment) images hangs some drivers (NVIDIA)
+  if (ci.usage & (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT)) {
+    return false;
+  }
+
+  // format must support host image transfer
+  VkFormatProperties3 formatProps3 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
+  VkFormatProperties2 formatProps2 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &formatProps3};
+  vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, ci.format, &formatProps2);
+  if (!(formatProps3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT)) {
+    return false;
+  }
+
+  // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL, so it must be a supported copy-destination layout
+  if (std::find(hostImageCopyDstLayouts_.begin(), hostImageCopyDstLayouts_.end(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ==
+      hostImageCopyDstLayouts_.end()) {
+    return false;
+  }
+
+  // if HOST_TRANSFER never changes the memory type requirements, it is always free
+  if (hostImageCopyIdenticalMemoryTypeRequirements_) {
+    return true;
+  }
+
+  // otherwise enable it only if the image can still be device-local with HOST_TRANSFER (e.g. resizable BAR), not forced into host memory
+  VkImageCreateInfo ciWithHostTransfer = ci;
+  ciWithHostTransfer.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+  const VkDeviceImageMemoryRequirements imageReqInfo = {.sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
+                                                        .pCreateInfo = &ciWithHostTransfer};
+  VkMemoryRequirements2 memReq = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+  vkGetDeviceImageMemoryRequirements(vkDevice_, &imageReqInfo, &memReq);
+
+  return (memReq.memoryRequirements.memoryTypeBits & deviceLocalMemoryTypeMask_) != 0;
+}
+
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
@@ -7641,6 +7762,51 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
 
+  if (has_EXT_host_image_copy_) {
+    // two-pass query of VK_EXT_host_image_copy properties (copy src/dst layouts + memory-type requirements)
+    VkPhysicalDeviceHostImageCopyPropertiesEXT props = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_PROPERTIES_EXT,
+    };
+    VkPhysicalDeviceProperties2 props2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &props,
+    };
+
+    // first pass: get the layout counts
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+
+    // second pass: get the layouts
+    hostImageCopySrcLayouts_.resize(props.copySrcLayoutCount);
+    hostImageCopyDstLayouts_.resize(props.copyDstLayoutCount);
+    props.pCopySrcLayouts = hostImageCopySrcLayouts_.data();
+    props.pCopyDstLayouts = hostImageCopyDstLayouts_.data();
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+
+    hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
+
+    // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local
+    VkPhysicalDeviceMemoryProperties memoryProps;
+    vkGetPhysicalDeviceMemoryProperties(vkPhysicalDevice_, &memoryProps);
+    deviceLocalMemoryTypeMask_ = 0;
+    for (uint32_t i = 0; i < memoryProps.memoryTypeCount; ++i) {
+      if (memoryProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+        deviceLocalMemoryTypeMask_ |= (1u << i);
+      }
+    }
+
+    const auto isDstLayoutSupported = [this](VkImageLayout layout) {
+      return std::find(hostImageCopyDstLayouts_.begin(), hostImageCopyDstLayouts_.end(), layout) != hostImageCopyDstLayouts_.end();
+    };
+    LLOGL("VK_EXT_host_image_copy: enabled (identicalMemoryTypeRequirements: %s)\n",
+          hostImageCopyIdenticalMemoryTypeRequirements_ ? "true" : "false");
+    LLOGL("   copy dst layouts: %u (SHADER_READ_ONLY_OPTIMAL: %s, TRANSFER_DST_OPTIMAL: %s, GENERAL: %s)\n",
+          (uint32_t)hostImageCopyDstLayouts_.size(),
+          isDstLayoutSupported(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ? "yes" : "no",
+          isDstLayoutSupported(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) ? "yes" : "no",
+          isDstLayoutSupported(VK_IMAGE_LAYOUT_GENERAL) ? "yes" : "no");
+    LLOGL("   copy src layouts: %u\n", (uint32_t)hostImageCopySrcLayouts_.size());
+  }
+
   // check extensions
   {
     std::string missingExtensions;
@@ -7817,6 +7983,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VK_ASSERT_RETURN(vkCreateDevice(vkPhysicalDevice_, &ci, nullptr, &vkDevice_));
 
   volkLoadDevice(vkDevice_);
+
+  // promoted to Vulkan 1.4
+  if (!vkTransitionImageLayout)
+    vkTransitionImageLayout = vkTransitionImageLayoutEXT;
+  if (!vkCopyMemoryToImage)
+    vkCopyMemoryToImage = vkCopyMemoryToImageEXT;
 
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
   vkGetDeviceQueue(vkDevice_, deviceQueues_.computeQueueFamilyIndex, 0, &deviceQueues_.computeQueue);
