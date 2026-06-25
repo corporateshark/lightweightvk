@@ -2446,7 +2446,7 @@ VULKAN_APP_MAIN {
         buffer.cmdPopDebugGroupLabel();
       }
       buffer.cmdEndRendering();
-      buffer.cmdTransitionToShaderReadOnly({res_.texShadowMap}, {});
+      buffer.cmdTransitionLayout({res_.texShadowMap}, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, {});
       isShadowMapDirty_ = false;
     }
 
