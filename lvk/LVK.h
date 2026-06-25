@@ -834,7 +834,7 @@ struct Dependencies {
 };
 
 // A global memory and execution barrier for the hazards not covered by `Dependencies`
-// Image layouts are not changed by this: use `Dependencies` or `cmdTransitionToShaderReadOnly()`
+// Image layouts are not changed by this: use `Dependencies` or `cmdTransitionLayout()`
 struct Barrier {
   VkPipelineStageFlags2 srcStages = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
   VkAccessFlags2 srcAccess = 0;
@@ -847,10 +847,9 @@ class ICommandBuffer {
   virtual ~ICommandBuffer() = default;
 
   virtual void cmdBarrier(const Barrier& barrier) = 0; // don't call between cmdBeginRendering()/cmdEndRendering()
-  virtual void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  // no extraDstStage parameter: this is only used within a render pass
-  virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
+  virtual void cmdTransitionLayout(const ldr::Span<TextureHandle>& textures,
+                                   VkImageLayout newLayout,
+                                   const lvk::StageAccess& extraDstAccess) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
