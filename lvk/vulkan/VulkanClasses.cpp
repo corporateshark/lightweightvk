@@ -355,8 +355,8 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
                           const lvk::VulkanImage& img,
                           VkImageLayout oldLayout,
                           VkImageLayout newLayout,
-                          StageAccess src,
-                          StageAccess dst,
+                          lvk::StageAccess src,
+                          lvk::StageAccess dst,
                           uint32_t srcQueueFamily,
                           uint32_t dstQueueFamily) {
   const VkImageMemoryBarrier2 barrier = {
@@ -1988,15 +1988,56 @@ void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>
   }
 }
 
-void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const {
+void lvk::CommandBuffer::cmdTransitionLayout(const ldr::Span<TextureHandle>& textures,
+                                             VkImageLayout newLayout,
+                                             const lvk::StageAccess& extraDstAccess) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
 
-
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
     lvk::VulkanImage& tex = *ctx_->texturesPool_.get(handle);
+
+    const VkImageSubresourceRange range{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS};
+
+    // Input attachment within a render pass: no cross-queue handoff, no extra dst access.
+    if (newLayout == VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR) {
+      LVK_ASSERT(!tex.isSwapchainImage_);
+      LVK_ASSERT_MSG(tex.vkUsageFlags_ & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+                     "Input attachment texture must have VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT (lvk::TextureUsageBits_InputAttachment)");
+      tex.transitionLayout(wrapper_->cmdBuf_, newLayout, range);
+      continue;
+    }
+
+    if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      LVK_ASSERT(!tex.isSwapchainImage_);
+
+      // transition only non-multisampled images - MSAA images cannot be accessed from shaders
+      if (tex.vkSamples_ != VK_SAMPLE_COUNT_1_BIT) {
+        continue;
+      }
+      LVK_ASSERT_MSG(tex.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
+                     "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
+
+      StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+      dst.stage |= extraDstAccess.stage;
+      dst.access |= extraDstAccess.access;
+
+      // Complete a pending cross-queue handoff (acquire half). It replays the producer's rendezvous layout.
+      if (acquireOwnershipIfPending(tex, dst) && tex.vkImageLayout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        continue; // acquired directly into the layout we need (e.g. compute->graphics handoff)
+      }
+
+      // Either no handoff, or acquired into a different rendezvous layout (e.g. GENERAL): finish with a same-queue transition.
+      tex.transitionLayout(wrapper_->cmdBuf_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range, extraDstAccess);
+      if (tex.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
+        tex.ownerQueueFamily_ = queueFamilyIndex_;
+      }
+      continue;
+    }
+
+    LVK_ASSERT(newLayout == VK_IMAGE_LAYOUT_GENERAL);
 
     StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_GENERAL);
     dst.stage |= extraDstAccess.stage;
@@ -2010,10 +2051,7 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
       tex.vkImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     }
 
-    tex.transitionLayout(wrapper_->cmdBuf_,
-                         VK_IMAGE_LAYOUT_GENERAL,
-                         VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
+    tex.transitionLayout(wrapper_->cmdBuf_, VK_IMAGE_LAYOUT_GENERAL, range, extraDstAccess);
     tex.ownerQueueFamily_ = queueFamilyIndex_;
 
     // Async-compute storage OUTPUTS are auto-released to graphics at submit(); an image just acquired as input is not re-released.
@@ -2028,60 +2066,6 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
             .srcStage = StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
         });
       }
-    }
-  }
-}
-
-void lvk::CommandBuffer::cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const {
-  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  for (TextureHandle handle : textures) {
-    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
-
-    LVK_ASSERT(!img.isSwapchainImage_);
-    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
-                   "Input attachment texture must have VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT (lvk::TextureUsageBits_InputAttachment)");
-
-    const VkImageAspectFlags flags = img.getImageAspectFlags();
-    img.transitionLayout(wrapper_->cmdBuf_,
-                         VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR,
-                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-  }
-}
-
-void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures,
-                                                       const lvk::StageAccess& extraDstAccess) const {
-  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  for (TextureHandle handle : textures) {
-    lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
-
-    LVK_ASSERT(!img.isSwapchainImage_);
-
-    // transition only non-multisampled images - MSAA images cannot be accessed from shaders
-    if (img.vkSamples_ != VK_SAMPLE_COUNT_1_BIT) {
-      continue;
-    }
-    LVK_ASSERT_MSG(img.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT,
-                   "Texture must have VK_IMAGE_USAGE_SAMPLED_BIT (lvk::TextureUsageBits_Sampled)");
-
-    StageAccess dst = getPipelineStageAccess(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    dst.stage |= extraDstAccess.stage;
-    dst.access |= extraDstAccess.access;
-
-    // Complete a pending cross-queue handoff (acquire half). It replays the producer's rendezvous layout.
-    if (acquireOwnershipIfPending(img, dst) && img.vkImageLayout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-      continue; // acquired directly into the layout we need (e.g. compute->graphics handoff)
-    }
-
-    // Either no handoff, or acquired into a different rendezvous layout (e.g. GENERAL): finish with a same-queue transition.
-    const VkImageAspectFlags flags = img.getImageAspectFlags();
-    img.transitionLayout(wrapper_->cmdBuf_,
-                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                         VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
-    if (img.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
-      img.ownerQueueFamily_ = queueFamilyIndex_;
     }
   }
 }
@@ -2145,8 +2129,8 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
-  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionLayout(deps.sampledImages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionLayout(deps.storageImages, VK_IMAGE_LAYOUT_GENERAL, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2167,8 +2151,8 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
-  cmdTransitionToGeneral(deps.storageImages, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionLayout(deps.sampledImages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
+  cmdTransitionLayout(deps.storageImages, VK_IMAGE_LAYOUT_GENERAL, {.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
@@ -2301,8 +2285,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   viewMask_ = renderPass.viewMask;
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages, {});
-  cmdTransitionToGeneral(deps.storageImages, {});
+  cmdTransitionLayout(deps.sampledImages, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, {});
+  cmdTransitionLayout(deps.storageImages, VK_IMAGE_LAYOUT_GENERAL, {});
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     VkPipelineStageFlags2 dstStageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
@@ -2362,7 +2346,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   {
     uint32_t i = 0;
     if (LVK_VERIFY(deps.inputAttachments.size() <= LVK_MAX_COLOR_ATTACHMENTS)) {
-      cmdTransitionToRenderingLocalRead(deps.inputAttachments);
+      cmdTransitionLayout(deps.inputAttachments, VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR, {});
       for (; i != deps.inputAttachments.size(); i++) {
         const lvk::TextureHandle handle = deps.inputAttachments[i];
         const lvk::VulkanImage* tex = ctx_->texturesPool_.get(handle);
@@ -2935,16 +2919,18 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
   LVK_ASSERT(!isRendering_);
 
   addCrossQueueDependencies(deps);
-  cmdTransitionToShaderReadOnly(deps.sampledImages,
-                                {
-                                    .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                                    .access = VK_ACCESS_2_SHADER_READ_BIT,
-                                });
-  cmdTransitionToGeneral(deps.storageImages,
-                         {
-                             .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                             .access = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
-                         });
+  cmdTransitionLayout(deps.sampledImages,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                      {
+                          .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                          .access = VK_ACCESS_2_SHADER_READ_BIT,
+                      });
+  cmdTransitionLayout(deps.storageImages,
+                      VK_IMAGE_LAYOUT_GENERAL,
+                      {
+                          .stage = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                          .access = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                      });
 
   for (size_t i = 0; i != deps.buffers.size(); i++) {
     bufferBarrier(deps.buffers[i],

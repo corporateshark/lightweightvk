@@ -767,10 +767,9 @@ class ICommandBuffer {
  public:
   virtual ~ICommandBuffer() = default;
 
-  virtual void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, const lvk::StageAccess& extraDstAccess) const = 0;
-  // no extraDstStage parameter: this is only used within a render pass
-  virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
+  virtual void cmdTransitionLayout(const ldr::Span<TextureHandle>& textures,
+                                   VkImageLayout newLayout,
+                                   const lvk::StageAccess& extraDstAccess) const = 0;
   // Hand graphics-produced images to the async-compute queue (queue-family ownership release). The matching acquire is emitted
   // automatically when the async-compute submit first uses the image. Pair with `Dependencies::waitGraphics` on that submit.
   virtual void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const = 0;

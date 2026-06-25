@@ -397,9 +397,9 @@ class CommandBuffer final : public ICommandBuffer {
 
   CommandBuffer& operator=(CommandBuffer&& other) = default;
 
-  void cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
-  void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, const StageAccess& extraDstAccess) const override;
-  void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const override;
+  void cmdTransitionLayout(const ldr::Span<TextureHandle>& textures,
+                           VkImageLayout newLayout,
+                           const StageAccess& extraDstAccess) const override;
   void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const override;
 
   void cmdBindRayTracingPipeline(lvk::RayTracingPipelineHandle handle) override;
