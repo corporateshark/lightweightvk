@@ -1992,7 +1992,7 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
   })
 , depthStencilState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .pNext = NULL,
+      .pNext = nullptr,
       .flags = 0,
       .depthTestEnable = VK_FALSE,
       .depthWriteEnable = VK_FALSE,
@@ -5743,8 +5743,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RayTracingPipelineHandle handle) {
   std::vector<uint8_t> shaderHandleStorage(sbtSize);
   VK_ASSERT(vkGetRayTracingShaderGroupHandlesKHR(vkDevice_, rtps->pipeline_, 0, numShaderGroups, sbtSize, shaderHandleStorage.data()));
 
-  const uint32_t sbtEntrySizeAligned = getAlignedSize(handleSizeAligned, props.shaderGroupBaseAlignment);
-  const uint32_t sbtBufferSize = numShaderGroups * sbtEntrySizeAligned;
+  const VkDeviceSize sbtEntrySizeAligned = getAlignedSize(handleSizeAligned, props.shaderGroupBaseAlignment);
+  const VkDeviceSize sbtBufferSize = numShaderGroups * sbtEntrySizeAligned;
 
   // repack SBT respecting `shaderGroupBaseAlignment`
   std::vector<uint8_t> sbtStorage(sbtBufferSize);

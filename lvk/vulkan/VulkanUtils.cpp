@@ -1123,7 +1123,7 @@ VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
       .memoryTypeIndex = findMemoryType(physDev, memRequirements->memoryRequirements.memoryTypeBits, props),
   };
 
-  return vkAllocateMemory(device, &ai, NULL, outMemory);
+  return vkAllocateMemory(device, &ai, nullptr, outMemory);
 }
 
 VkDescriptorSetLayoutBinding lvk::getDSLBinding(uint32_t binding,
