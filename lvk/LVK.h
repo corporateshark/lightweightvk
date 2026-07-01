@@ -1013,9 +1013,6 @@ class ICommandBuffer {
   virtual void cmdTransitionToShaderReadOnly(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const = 0;
   // no extraDstStage parameter: this is only used within a render pass
   virtual void cmdTransitionToRenderingLocalRead(const ldr::Span<TextureHandle>& textures) const = 0;
-  // Hand graphics-produced images to the async-compute queue (queue-family ownership release). The matching acquire is emitted
-  // automatically when the async-compute submit first uses the image. Pair with `Dependencies::waitGraphics` on that submit.
-  virtual void cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const = 0;
 
   virtual void cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
   virtual void cmdInsertDebugEventLabel(const char* label, uint32_t colorRGBA = 0xffffffff) const = 0;
@@ -1122,7 +1119,10 @@ class IContext {
 
   virtual ICommandBuffer& acquireCommandBuffer(bool dedicatedCompute = false) = 0;
 
-  virtual SubmitHandle submit(ICommandBuffer& commandBuffer, TextureHandle present = {}) = 0;
+  virtual SubmitHandle submit(ICommandBuffer& commandBuffer,
+                              TextureHandle present = {},
+                              const ldr::Span<TextureHandle>& release = {}) = 0; // hand these images to the other queue (destination
+                                                                                 // implied by the CB's queue); the acquire is automatic
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
 
   [[nodiscard]] virtual Holder<BufferHandle> createBuffer(const BufferDesc& desc,
