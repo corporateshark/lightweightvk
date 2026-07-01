@@ -192,8 +192,8 @@ class VulkanImmediateCommands final {
     SubmitHandle handle_ = {};
     VkFence fence_ = VK_NULL_HANDLE;
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
-    uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
-    bool isEncoding_ = false;
+    mutable uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
+    mutable bool isEncoding_ = false;
   };
 
   // returns the current command buffer (creates one if it does not exist)
@@ -516,7 +516,7 @@ class CommandBuffer final : public ICommandBuffer {
   uint64_t crossQueueGraphicsWaitValue_ = 0;
   // Images handed off to the other queue (compute->graphics or graphics->compute), released at this CB's `submit()`
   // The list lives with the CommandBuffer, so it is implicitly cleared when the slot is reset at the end of `submit()`
-  std::vector<PendingRelease> imagesToTransfer_;
+  mutable std::vector<PendingRelease> imagesToTransfer_;
   uint32_t queueFamilyIndex_ = 0;
 
   lvk::Framebuffer framebuffer_ = {};

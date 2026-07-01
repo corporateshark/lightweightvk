@@ -1789,7 +1789,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   if (signalSemaphore_.semaphore) {
     signalSemaphores[numSignalSemaphores++] = signalSemaphore_;
   }
-  const_cast<CommandBufferWrapper&>(wrapper).signaledTimelineValue_ = timelineValue;
+  wrapper.signaledTimelineValue_ = timelineValue;
 
   LVK_PROFILER_ZONE("vkQueueSubmit2()", LVK_PROFILER_COLOR_SUBMIT);
 #if LVK_VULKAN_PRINT_COMMANDS
@@ -1887,7 +1887,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
-  const_cast<CommandBufferWrapper&>(wrapper).isEncoding_ = false;
+  wrapper.isEncoding_ = false;
   submitCounter_++;
 
   if (!submitCounter_) {
@@ -2311,12 +2311,12 @@ void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>
     LVK_ASSERT(!handle.empty());
     const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
 
-    const bool already = std::any_of(
-        imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
+    const bool already =
+        std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
     if (already) {
       continue; // de-dup: one image, one release
     }
-    const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+    imagesToTransfer_.push_back(PendingRelease{
         .handle = handle,
         .dstQueueFamily = computeFamily,
         .dstLayout = VK_IMAGE_LAYOUT_GENERAL, // rendezvous layout valid for both sampled and storage reads on compute
@@ -2366,7 +2366,7 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
       const bool already = std::any_of(
           imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
       if (!already) {
-        const_cast<CommandBuffer*>(this)->imagesToTransfer_.push_back(PendingRelease{
+        imagesToTransfer_.push_back(PendingRelease{
             .handle = handle,
             .dstQueueFamily = ctx_->deviceQueues_.graphicsQueueFamilyIndex,
             .dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // rendezvous layout: graphics samples the compute output
