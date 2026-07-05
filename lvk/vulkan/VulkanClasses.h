@@ -84,7 +84,8 @@ struct VulkanImage final {
   void transitionLayout(VkCommandBuffer commandBuffer,
                         VkImageLayout newImageLayout,
                         const VkImageSubresourceRange& subresourceRange,
-                        StageAccess extraDstStage = {}) const;
+                        StageAccess extraDstStage = {},
+                        bool computeOnlyQueue = false) const;
 
   [[nodiscard]] VkImageAspectFlags getImageAspectFlags() const;
 
@@ -493,6 +494,7 @@ class CommandBuffer final : public ICommandBuffer {
   void addCrossQueueDependencies(const Dependencies& deps);
   // Completes a cross-queue ownership transfer for `img` if the producing queue armed one; returns true if an acquire was emitted
   bool acquireOwnershipIfPending(lvk::VulkanImage& img, StageAccess dst) const;
+  bool isComputeOnlyQueue() const;
 
  private:
   friend class VulkanContext;
