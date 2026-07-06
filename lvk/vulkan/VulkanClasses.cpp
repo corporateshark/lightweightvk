@@ -686,6 +686,19 @@ void transitionToColorAttachment(VkCommandBuffer buffer, lvk::VulkanImage* color
                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 }
 
+VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool computeOnlyQueue) {
+  constexpr VkPipelineStageFlags2 kGraphicsOnlyStages =
+      VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT | VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+      VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |
+      VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+
+  return computeOnlyQueue ? (stages & ~kGraphicsOnlyStages) : stages;
+}
+
 void emitImageQFOTransfer(VkCommandBuffer cb,
                           const lvk::VulkanImage& img,
                           VkImageLayout oldLayout,
@@ -926,7 +939,8 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
 void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
                                         VkImageLayout newImageLayout,
                                         const VkImageSubresourceRange& subresourceRange,
-                                        StageAccess extraDstStage) const {
+                                        StageAccess extraDstStage,
+                                        bool computeOnlyQueue) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
   const VkImageLayout oldImageLayout =
@@ -943,6 +957,9 @@ void lvk::VulkanImage::transitionLayout(VkCommandBuffer commandBuffer,
 
   dst.stage |= extraDstStage.stage;
   dst.access |= extraDstStage.access;
+
+  src.stage = stripGraphicsStages(src.stage, computeOnlyQueue);
+  dst.stage = stripGraphicsStages(dst.stage, computeOnlyQueue);
 
   if (isDepthAttachment() && isResolveAttachment) {
     // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#renderpass-resolve-operations
@@ -2242,6 +2259,10 @@ lvk::CommandBuffer::CommandBuffer(VulkanContext* ctx, VulkanImmediateCommands& i
 , immediate_(&immediate)
 , queueFamilyIndex_(queueFamilyIndex) {}
 
+bool lvk::CommandBuffer::isComputeOnlyQueue() const {
+  return ctx_->immediateCompute_ && immediate_ == ctx_->immediateCompute_.get();
+}
+
 lvk::CommandBuffer::~CommandBuffer() {
   // did you forget to call cmdEndRendering()?
   LVK_ASSERT(!isRendering_);
@@ -2283,6 +2304,7 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
   }
 
   // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
+  dst.stage = stripGraphicsStages(dst.stage, isComputeOnlyQueue());
   emitImageQFOTransfer(wrapper_->cmdBuf_,
                        img,
                        img.qfotSrcLayout_,
@@ -2297,34 +2319,6 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
   return true;
 }
 
-void lvk::CommandBuffer::cmdReleaseToAsyncCompute(const ldr::Span<TextureHandle>& textures) const {
-  LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
-
-  if (!ctx_->immediateCompute_) {
-    return; // no async-compute queue: nothing to hand off, the image stays on the graphics queue
-  }
-  LVK_ASSERT_MSG(immediate_ == ctx_->immediate_.get(), "cmdReleaseToAsyncCompute() must be called on a graphics command buffer");
-
-  const uint32_t computeFamily = ctx_->deviceQueues_.computeQueueFamilyIndex;
-
-  for (TextureHandle handle : textures) {
-    LVK_ASSERT(!handle.empty());
-    const lvk::VulkanImage& img = *ctx_->texturesPool_.get(handle);
-
-    const bool already =
-        std::any_of(imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
-    if (already) {
-      continue; // de-dup: one image, one release
-    }
-    imagesToTransfer_.push_back(PendingRelease{
-        .handle = handle,
-        .dstQueueFamily = computeFamily,
-        .dstLayout = VK_IMAGE_LAYOUT_GENERAL, // rendezvous layout valid for both sampled and storage reads on compute
-        .srcStage = getPipelineStageAccess(img.vkImageLayout_), // producer's last use of the image
-    });
-  }
-}
-
 void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& textures, lvk::ShaderStage extraDstStage) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_BARRIER);
 
@@ -2336,8 +2330,6 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
   if (extraDstStage >= lvk::Stage_RayGen && extraDstStage <= lvk::Stage_Callable) {
     extraDstAccess.stage |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
   }
-
-  const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
 
   for (TextureHandle handle : textures) {
     LVK_ASSERT(!handle.empty());
@@ -2358,22 +2350,9 @@ void lvk::CommandBuffer::cmdTransitionToGeneral(const ldr::Span<TextureHandle>& 
     tex.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_GENERAL,
                          VkImageSubresourceRange{tex.getImageAspectFlags(), 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
+                         extraDstAccess,
+                         isComputeOnlyQueue());
     tex.ownerQueueFamily_ = queueFamilyIndex_;
-
-    // Async-compute storage OUTPUTS are auto-released to graphics at submit(); an image just acquired as input is not re-released.
-    if (isCompute && !acquired) {
-      const bool already = std::any_of(
-          imagesToTransfer_.begin(), imagesToTransfer_.end(), [&](const PendingRelease& r) { return r.handle == handle; });
-      if (!already) {
-        imagesToTransfer_.push_back(PendingRelease{
-            .handle = handle,
-            .dstQueueFamily = ctx_->deviceQueues_.graphicsQueueFamilyIndex,
-            .dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // rendezvous layout: graphics samples the compute output
-            .srcStage = StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT},
-        });
-      }
-    }
   }
 }
 
@@ -2432,7 +2411,8 @@ void lvk::CommandBuffer::cmdTransitionToShaderReadOnly(const ldr::Span<TextureHa
     img.transitionLayout(wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VkImageSubresourceRange{flags, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
-                         extraDstAccess);
+                         extraDstAccess,
+                         isComputeOnlyQueue());
     if (img.ownerQueueFamily_ == VK_QUEUE_FAMILY_IGNORED) {
       img.ownerQueueFamily_ = queueFamilyIndex_;
     }
@@ -2597,6 +2577,10 @@ void lvk::CommandBuffer::bufferBarrier(BufferHandle handle,
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(handle);
 
   LVK_ASSERT(buf);
+
+  const bool computeOnlyQueue = isComputeOnlyQueue();
+  srcStage = stripGraphicsStages(srcStage, computeOnlyQueue);
+  dstStage = stripGraphicsStages(dstStage, computeOnlyQueue);
 
   VkBufferMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
@@ -4371,7 +4355,9 @@ lvk::ICommandBuffer& lvk::VulkanContext::acquireCommandBuffer(bool dedicatedComp
   return commandBuffer;
 }
 
-lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present) {
+lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
+                                             TextureHandle present,
+                                             const ldr::Span<TextureHandle>& release) {
   LVK_PROFILER_FUNCTION();
 
   CommandBuffer* vkCmdBuffer = static_cast<CommandBuffer*>(&commandBuffer);
@@ -4391,7 +4377,9 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
     tex.transitionLayout(vkCmdBuffer->wrapper_->cmdBuf_,
                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+                         VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS},
+                         {},
+                         vkCmdBuffer->isComputeOnlyQueue());
   }
 
   const bool shouldPresent = hasSwapchain() && present;
@@ -4408,19 +4396,30 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   LVK_ASSERT(vkCmdBuffer->immediate_);
   lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
 
-  // QFOT release: hand off every image this CB collected (compute->graphics auto-collected outputs, or graphics->compute
-  // images declared via cmdReleaseToAsyncCompute()) to its destination queue. The matching acquire is emitted by the consumer.
-  const uint32_t producerFamily = (&imm == immediateCompute_.get()) ? deviceQueues_.computeQueueFamilyIndex
-                                                                    : deviceQueues_.graphicsQueueFamilyIndex;
-  for (const CommandBuffer::PendingRelease& r : vkCmdBuffer->imagesToTransfer_) {
-    lvk::VulkanImage& img = *texturesPool_.get(r.handle);
-    const VkImageLayout oldLayout = img.vkImageLayout_;
-    emitImageQFOTransfer(
-        vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, r.dstLayout, r.srcStage, StageAccess{}, producerFamily, r.dstQueueFamily);
-    img.qfotSrcLayout_ = oldLayout;
-    img.qfotDstLayout_ = r.dstLayout;
-    img.vkImageLayout_ = r.dstLayout;
-    img.pendingAcquireSrcFamily_ = producerFamily; // the destination queue completes the transfer on first use
+  // QFOT release: hand the named images to the other queue (destination implied by this CB's queue). The matching acquire is
+  // emitted automatically when the destination queue first uses the image
+  if (immediateCompute_ && !release.empty()) {
+    const bool isCompute = vkCmdBuffer->isComputeOnlyQueue();
+    const uint32_t srcQueueFamily = isCompute ? deviceQueues_.computeQueueFamilyIndex : deviceQueues_.graphicsQueueFamilyIndex;
+    const uint32_t dstQueueFamily = isCompute ? deviceQueues_.graphicsQueueFamilyIndex : deviceQueues_.computeQueueFamilyIndex;
+    // compute->graphics: graphics samples the storage output as SHADER_READ_ONLY_OPTIMAL
+    // graphics->compute: GENERAL is valid for both sampled and storage reads on compute
+    const VkImageLayout dstLayout = isCompute ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+    for (TextureHandle handle : release) {
+      LVK_ASSERT(!handle.empty());
+      lvk::VulkanImage& img = *texturesPool_.get(handle);
+      const VkImageLayout oldLayout = img.vkImageLayout_;
+      // compute->graphics: the producer's scope is the compute storage write; graphics->compute: implied by the final layout
+      const StageAccess srcStage =
+          isCompute ? StageAccess{.stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, .access = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT}
+                    : getPipelineStageAccess(oldLayout);
+      emitImageQFOTransfer(
+          vkCmdBuffer->wrapper_->cmdBuf_, img, oldLayout, dstLayout, srcStage, StageAccess{}, srcQueueFamily, dstQueueFamily);
+      img.qfotSrcLayout_ = oldLayout;
+      img.qfotDstLayout_ = dstLayout;
+      img.vkImageLayout_ = dstLayout;
+      img.pendingAcquireSrcFamily_ = srcQueueFamily; // the destination queue completes the transfer on first use
+    }
   }
 
   if (&imm == immediateCompute_.get()) {
@@ -5151,7 +5150,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   lvk::ICommandBuffer& buffer = acquireCommandBuffer();
   vkCmdBuildAccelerationStructuresKHR(
       lvk::getVkCommandBuffer(buffer), 1, &accelerationBuildGeometryInfo, accelerationBuildStructureRangeInfos);
-  wait(submit(buffer, {}));
+  wait(submit(buffer, {}, {}));
 
   const VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
@@ -5230,7 +5229,7 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
   lvk::ICommandBuffer& buffer = acquireCommandBuffer();
   vkCmdBuildAccelerationStructuresKHR(
       lvk::getVkCommandBuffer(buffer), 1, &accelerationBuildGeometryInfo, accelerationBuildStructureRangeInfos);
-  wait(submit(buffer, {}));
+  wait(submit(buffer, {}, {}));
 
   const VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {
       .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
