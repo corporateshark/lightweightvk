@@ -7819,6 +7819,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
 
   volkLoadDevice(vkDevice_);
 
+  // promoted to Vulkan 1.4
+  if (!vkTransitionImageLayout)
+    vkTransitionImageLayout = vkTransitionImageLayoutEXT;
+  if (!vkCopyMemoryToImage)
+    vkCopyMemoryToImage = vkCopyMemoryToImageEXT;
+
   vkGetDeviceQueue(vkDevice_, deviceQueues_.graphicsQueueFamilyIndex, 0, &deviceQueues_.graphicsQueue);
   vkGetDeviceQueue(vkDevice_, deviceQueues_.computeQueueFamilyIndex, 0, &deviceQueues_.computeQueue);
 
