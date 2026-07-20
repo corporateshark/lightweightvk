@@ -1262,6 +1262,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_R8_UINT:
   case VK_FORMAT_R8_SINT:
   case VK_FORMAT_A8_UNORM:
+  case VK_FORMAT_S8_UINT:
     return 1;
   case VK_FORMAT_R16_UNORM:
   case VK_FORMAT_R16_SFLOAT:
@@ -1293,6 +1294,7 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
   case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
   case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
   case VK_FORMAT_D32_SFLOAT:
   case VK_FORMAT_D24_UNORM_S8_UINT:
     return 4;
