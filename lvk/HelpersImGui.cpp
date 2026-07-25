@@ -275,7 +275,7 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
 
   const float fb_width = dd->DisplaySize.x * dd->FramebufferScale.x;
   const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
-  if (fb_width <= 0 || fb_height <= 0 || dd->CmdListsCount == 0) {
+  if (fb_width <= 0 || fb_height <= 0 || dd->CmdLists.Size == 0) {
     return;
   }
 
