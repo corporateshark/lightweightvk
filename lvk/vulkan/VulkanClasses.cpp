@@ -2828,9 +2828,28 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
+  // optional fragment density map (VK_EXT_fragment_density_map)
+  VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
+      .imageView = VK_NULL_HANDLE,
+      .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+  };
+  if (fb.fragmentDensityMap) {
+    LVK_ASSERT_MSG(ctx_->has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
+    LVK_ASSERT_MSG(ctx_->vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
+                   "fragmentDensityMapNonSubsampledImages is required to use a fragment density map with LVK's non-subsampled attachments");
+    lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
+    LVK_ASSERT_MSG(fdmImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
+                   "Fragment density map must be created with TextureUsageBits_FragmentDensityMap");
+    fdmImage.transitionLayout(wrapper_->cmdBuf_,
+                              VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    fragmentDensityMapInfo.imageView = fdmImage.imageView_;
+  }
+
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .pNext = nullptr,
+      .pNext = fb.fragmentDensityMap ? &fragmentDensityMapInfo : nullptr,
       .flags = 0,
       .renderArea = {VkOffset2D{(int32_t)scissor.x, (int32_t)scissor.y}, VkExtent2D{scissor.width, scissor.height}},
       .layerCount = renderPass.layerCount,
@@ -4723,6 +4742,10 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   if (desc.usage & lvk::TextureUsageBits_InputAttachment) {
     LVK_ASSERT_MSG(desc.usage & lvk::TextureUsageBits_Attachment, "Input attachments must be TextureUsageBits_Attachment");
     usageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+  }
+  if (desc.usage & lvk::TextureUsageBits_FragmentDensityMap) {
+    LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
+    usageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
   }
 
   if (desc.storage != lvk::StorageType_Memoryless) {
@@ -7314,6 +7337,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
+    // check whether non-subsampled attachments are supported
+    vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
   }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
@@ -7570,6 +7596,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
       .fragmentDensityMap = VK_TRUE,
+      .fragmentDensityMapDynamic = vkFragmentDensityMapFeatures_.fragmentDensityMapDynamic,
+      .fragmentDensityMapNonSubsampledImages = vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
   };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {

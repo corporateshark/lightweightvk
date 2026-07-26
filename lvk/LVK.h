@@ -789,6 +789,7 @@ struct Framebuffer final {
 
   AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
   AttachmentDesc depthStencil;
+  TextureHandle fragmentDensityMap; // optional R8G8_UNORM map for VK_EXT_fragment_density_map; with TextureUsageBits_FragmentDensityMap
 
   const char* debugName = "";
 
@@ -847,6 +848,7 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_Storage = 1 << 1,
   TextureUsageBits_Attachment = 1 << 2,
   TextureUsageBits_InputAttachment = 1 << 3,
+  TextureUsageBits_FragmentDensityMap = 1 << 4,
 };
 
 enum Swizzle : uint8_t {
