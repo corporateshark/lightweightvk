@@ -7312,6 +7312,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (hasExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
   }
+  if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
+  }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
@@ -7564,6 +7567,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
       .hostImageCopy = VK_TRUE,
   };
+  VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
+      .fragmentDensityMap = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7639,6 +7646,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
+  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
