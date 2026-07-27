@@ -693,8 +693,8 @@ VkPipelineStageFlags2 stripGraphicsStages(VkPipelineStageFlags2 stages, bool com
       VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT | VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT |
       VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
       VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
-      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT |
-      VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT |
+      VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
 
   return computeOnlyQueue ? (stages & ~kGraphicsOnlyStages) : stages;
 }
@@ -2305,14 +2305,8 @@ bool lvk::CommandBuffer::acquireOwnershipIfPending(lvk::VulkanImage& img, StageA
 
   // acquire half of a cross-queue ownership transfer: it must replay the producer's release layouts (src/dst) exactly
   dst.stage = stripGraphicsStages(dst.stage, isComputeOnlyQueue());
-  emitImageQFOTransfer(wrapper_->cmdBuf_,
-                       img,
-                       img.qfotSrcLayout_,
-                       img.qfotDstLayout_,
-                       StageAccess{},
-                       dst,
-                       img.pendingAcquireSrcFamily_,
-                       queueFamilyIndex_);
+  emitImageQFOTransfer(
+      wrapper_->cmdBuf_, img, img.qfotSrcLayout_, img.qfotDstLayout_, StageAccess{}, dst, img.pendingAcquireSrcFamily_, queueFamilyIndex_);
   img.pendingAcquireSrcFamily_ = VK_QUEUE_FAMILY_IGNORED;
   img.ownerQueueFamily_ = queueFamilyIndex_;
   img.vkImageLayout_ = img.qfotDstLayout_;
@@ -3860,7 +3854,8 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
             .bufferRowLength = bufferRowLength,
             .bufferImageHeight = 0,
             .imageSubresource =
-                VkImageSubresourceLayers{numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, currentLayer, 1},
+                VkImageSubresourceLayers{
+                    numPlanes > 1 ? VK_IMAGE_ASPECT_PLANE_0_BIT << plane : imageAspect, currentMipLevel, currentLayer, 1},
             .imageOffset = {.x = region.offset.x, .y = region.offset.y, .z = 0},
             .imageExtent = {.width = region.extent.width, .height = region.extent.height, .depth = 1u},
         };
