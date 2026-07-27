@@ -78,6 +78,7 @@ struct VulkanImage final {
                                                                                 .b = VK_COMPONENT_SWIZZLE_IDENTITY,
                                                                                 .a = VK_COMPONENT_SWIZZLE_IDENTITY},
                                             const VkSamplerYcbcrConversionInfo* ycbcr = nullptr,
+                                            VkImageViewCreateFlags flags = 0,
                                             const char* debugName = nullptr) const;
 
   void generateMipmap(VkCommandBuffer commandBuffer) const;
@@ -855,6 +856,7 @@ class VulkanContext final : public IContext {
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
   bool has_EXT_fragment_density_map_ = false;
+  bool has_EXT_fragment_density_map2_ = false;
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 

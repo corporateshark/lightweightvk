@@ -917,12 +917,14 @@ VkImageView lvk::VulkanImage::createImageView(VkDevice device,
                                               uint32_t numLayers,
                                               const VkComponentMapping components,
                                               const VkSamplerYcbcrConversionInfo* ycbcr,
+                                              VkImageViewCreateFlags flags,
                                               const char* debugName) const {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_CREATE);
 
   const VkImageViewCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .pNext = ycbcr,
+      .flags = flags,
       .image = vkImage_,
       .viewType = type,
       .format = format,
@@ -1186,6 +1188,7 @@ VkImageView lvk::VulkanImage::getOrCreateVkImageViewForFramebuffer(VulkanContext
                                      numViews,
                                      {},
                                      nullptr,
+                                     0,
                                      debugNameImageView);
 
   if (viewMask) {
@@ -1406,6 +1409,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
                                              1,
                                              {},
                                              nullptr,
+                                             0,
                                              debugNameImageView);
 
     swapchainTextures_[i] = ctx_.texturesPool_.create(std::move(image));
@@ -4971,14 +4975,31 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   // a sampled view of a multiplanar (YUV) format always needs the Y'CbCr conversion chained in, regardless of whether the image is disjoint
   const VkSamplerYcbcrConversionInfo* ycbcrInfo = isMultiplanar ? getOrCreateYcbcrConversionInfo(desc.format) : nullptr;
 
-  image.imageView_ = image.createImageView(
-      vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, components, ycbcrInfo, debugNameImageView);
+  // defer the host FDM read-lock to vkEndCommandBuffer() via VK_EXT_fragment_density_map2,
+  // so the map can be updated after cmdBeginRendering() (e.g. late gaze latching). Applied automatically when supported
+  const VkImageViewCreateFlags viewFlags =
+      (desc.usage & lvk::TextureUsageBits_FragmentDensityMap) && has_EXT_fragment_density_map2_
+          ? VK_IMAGE_VIEW_CREATE_FRAGMENT_DENSITY_MAP_DEFERRED_BIT_EXT // fragmentDensityMapDeferred is mandatory when FDM2 is present
+          : 0;
+
+  image.imageView_ = image.createImageView(vkDevice_,
+                                           vkImageViewType,
+                                           vkFormat,
+                                           aspect,
+                                           0,
+                                           VK_REMAINING_MIP_LEVELS,
+                                           0,
+                                           numLayers,
+                                           components,
+                                           ycbcrInfo,
+                                           viewFlags,
+                                           debugNameImageView);
 
   if (image.vkUsageFlags_ & VK_IMAGE_USAGE_STORAGE_BIT) {
     if (!desc.components.identity()) {
       // use identity swizzle for storage images
       image.imageViewStorage_ = image.createImageView(
-          vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, debugNameImageView);
+          vkDevice_, vkImageViewType, vkFormat, aspect, 0, VK_REMAINING_MIP_LEVELS, 0, numLayers, {}, ycbcrInfo, 0, debugNameImageView);
       LVK_ASSERT(image.imageViewStorage_ != VK_NULL_HANDLE);
     }
   }
@@ -5076,6 +5097,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                            desc.numLayers,
                                            components,
                                            nullptr,
+                                           0,
                                            debugName);
 
   if (!LVK_VERIFY(image.imageView_ != VK_NULL_HANDLE)) {
@@ -5096,6 +5118,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
                                                       desc.numLayers,
                                                       {},
                                                       nullptr,
+                                                      0,
                                                       debugName);
       LVK_ASSERT(image.imageViewStorage_ != VK_NULL_HANDLE);
     }
@@ -7594,6 +7617,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .fragmentDensityMapDynamic = vkFragmentDensityMapFeatures_.fragmentDensityMapDynamic,
       .fragmentDensityMapNonSubsampledImages = vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
   };
+  VkPhysicalDeviceFragmentDensityMap2FeaturesEXT fragmentDensityMap2Features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT,
+      .fragmentDensityMapDeferred = VK_TRUE,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7670,6 +7697,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_EXT_SHADER_TILE_IMAGE_EXTENSION_NAME, has_EXT_shader_tile_image, &shaderTileImageFeatures);
   addOptionalExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, has_EXT_mesh_shader_, &meshShaderFeatures);
   addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
+  addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME, has_EXT_fragment_density_map2_, &fragmentDensityMap2Features);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
