@@ -462,7 +462,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, (void*)glfwGetWin32Window(window));
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
-  void* hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+  void* hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
   if (!hwnd) {
     LVK_ASSERT_MSG(false, "Failed to get Win32 window handle");
     return nullptr;
@@ -483,8 +483,8 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   ctx = std::make_unique<VulkanContext>(cfg, (void*)waylandWindow, (void*)glfwGetWaylandDisplay());
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
-  void* waylandSurface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, NULL);
-  void* waylandDisplay = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, NULL);
+  void* waylandSurface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
+  void* waylandDisplay = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
   if (!cfg.enableHeadlessSurface && (!waylandSurface || !waylandDisplay)) {
     LVK_ASSERT_MSG(false, "Failed to get Wayland window/display");
     return nullptr;
@@ -497,7 +497,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
   Sint64 x11Window = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
-  void* x11Display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+  void* x11Display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
   if (!cfg.enableHeadlessSurface && (!x11Window || !x11Display)) {
     LVK_ASSERT_MSG(false, "Failed to get X11 window/display");
     return nullptr;
@@ -510,7 +510,7 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
   void* nativeWindow = (void*)glfwGetCocoaWindow(window);
 #elif defined(LVK_WITH_SDL3)
   SDL_PropertiesID props = SDL_GetWindowProperties(window);
-  void* nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+  void* nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
   if (!nativeWindow) {
     LVK_ASSERT_MSG(false, "Failed to get Cocoa window");
     return nullptr;
