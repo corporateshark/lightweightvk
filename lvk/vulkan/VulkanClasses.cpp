@@ -728,22 +728,20 @@ void emitImageQFOTransfer(VkCommandBuffer cb,
   vkCmdPipelineBarrier2(cb, &di);
 }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats,
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormat2KHR>& formats,
                                            lvk::ColorSpace requestedColorSpace,
                                            bool hasSwapchainColorspaceExt) {
   LVK_ASSERT(!formats.empty());
 
-  auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormatKHR>& formats) -> bool {
-    for (const VkSurfaceFormatKHR& fmt : formats) {
-      // The preferred format should be the one which is closer to the beginning of the formats
-      // container. If BGR is encountered earlier, it should be picked as the format of choice. If RGB
-      // happens to be earlier, take it.
-      if (fmt.format == VK_FORMAT_R8G8B8A8_UNORM || fmt.format == VK_FORMAT_R8G8B8A8_SRGB ||
-          fmt.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+  auto isNativeSwapChainBGR = [](const std::vector<VkSurfaceFormat2KHR>& formats) -> bool {
+    for (const VkSurfaceFormat2KHR& format : formats) {
+      const VkFormat fmt = format.surfaceFormat.format;
+      // The preferred format should be the one which is closer to the beginning of the formats container.
+      // If BGR is encountered earlier, it should be picked as the format of choice. If RGB happens to be earlier, take it.
+      if (fmt == VK_FORMAT_R8G8B8A8_UNORM || fmt == VK_FORMAT_R8G8B8A8_SRGB || fmt == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
         return false;
       }
-      if (fmt.format == VK_FORMAT_B8G8R8A8_UNORM || fmt.format == VK_FORMAT_B8G8R8A8_SRGB ||
-          fmt.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+      if (fmt == VK_FORMAT_B8G8R8A8_UNORM || fmt == VK_FORMAT_B8G8R8A8_SRGB || fmt == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
         return true;
       }
     }
@@ -773,22 +771,22 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
   const VkSurfaceFormatKHR preferred =
       colorSpaceToVkSurfaceFormat(requestedColorSpace, isNativeSwapChainBGR(formats), hasSwapchainColorspaceExt);
 
-  for (const VkSurfaceFormatKHR& fmt : formats) {
-    if (fmt.format == preferred.format && fmt.colorSpace == preferred.colorSpace) {
-      return fmt;
+  for (const VkSurfaceFormat2KHR& fmt : formats) {
+    if (fmt.surfaceFormat.format == preferred.format && fmt.surfaceFormat.colorSpace == preferred.colorSpace) {
+      return fmt.surfaceFormat;
     }
   }
 
   // if we can't find a matching format and color space, fallback on matching only format
-  for (const VkSurfaceFormatKHR& fmt : formats) {
-    if (fmt.format == preferred.format) {
-      return fmt;
+  for (const VkSurfaceFormat2KHR& fmt : formats) {
+    if (fmt.surfaceFormat.format == preferred.format) {
+      return fmt.surfaceFormat;
     }
   }
 
   LLOGL("Could not find a native swap chain format that matched our designed swapchain format. Defaulting to first supported format.");
 
-  return formats[0];
+  return formats[0].surfaceFormat;
 }
 
 } // namespace
@@ -1235,8 +1233,17 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     return VK_PRESENT_MODE_FIFO_KHR;
   };
 
-  VkSurfaceCapabilitiesKHR caps = {};
-  VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps));
+  VkSurfaceCapabilities2KHR caps = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
+  if (ctx.has_KHR_swapchain_maintenance1_) {
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .surface = ctx.vkSurface_,
+    };
+    vkGetPhysicalDeviceSurfaceCapabilities2KHR(ctx.getVkPhysicalDevice(), &surfaceInfo, &caps);
+  } else {
+    // legacy
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.getVkPhysicalDevice(), ctx.vkSurface_, &caps.surfaceCapabilities));
+  }
 
   VkFormatProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
@@ -1244,8 +1251,8 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
   vkGetPhysicalDeviceFormatProperties2(ctx.getVkPhysicalDevice(), surfaceFormat_.format, &props);
 
   // trim the image extent
-  width_ = width = std::min(width, caps.maxImageExtent.width);
-  height_ = height = std::min(height, caps.maxImageExtent.height);
+  width_ = width = std::min(width, caps.surfaceCapabilities.maxImageExtent.width);
+  height_ = height = std::min(height, caps.surfaceCapabilities.maxImageExtent.height);
 
   auto chooseUsageFlags = [](const VkSurfaceCapabilitiesKHR& caps, const VkFormatProperties& props) -> VkImageUsageFlags {
     VkImageUsageFlags usageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -1312,8 +1319,9 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
     (void)LVK_VERIFY(setCurrentPresentMode(currentPresentMode_));
   }
 
-  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps, props.formatProperties);
-  const bool isCompositeAlphaOpaqueSupported = (ctx.deviceSurfaceCaps_.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+  const VkImageUsageFlags usageFlags = chooseUsageFlags(caps.surfaceCapabilities, props.formatProperties);
+  const bool isCompositeAlphaOpaqueSupported =
+      (ctx.deviceSurfaceCaps_.surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
 
   const VkSwapchainPresentModesCreateInfoKHR pmci = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_KHR,
@@ -1324,7 +1332,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
       .pNext = numRegisteredPresentModes_ ? &pmci : nullptr,
       .surface = ctx.vkSurface_,
-      .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_),
+      .minImageCount = chooseSwapImageCount(ctx.deviceSurfaceCaps_.surfaceCapabilities),
       .imageFormat = surfaceFormat_.format,
       .imageColorSpace = surfaceFormat_.colorSpace,
       .imageExtent = {.width = width, .height = height},
@@ -1336,7 +1344,7 @@ lvk::VulkanSwapchain::VulkanSwapchain(VulkanContext& ctx, uint32_t width, uint32
 #if defined(ANDROID)
       .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 #else
-      .preTransform = ctx.deviceSurfaceCaps_.currentTransform,
+      .preTransform = ctx.deviceSurfaceCaps_.surfaceCapabilities.currentTransform,
 #endif
       .compositeAlpha = isCompositeAlphaOpaqueSupported ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
       .presentMode = currentPresentMode_,
@@ -8628,22 +8636,38 @@ void lvk::VulkanContext::querySurfaceCapabilities() {
     return;
   }
 
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice_, vkSurface_, &deviceSurfaceCaps_);
-
-  uint32_t formatCount;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, nullptr);
-
-  if (formatCount) {
-    deviceSurfaceFormats_.resize(formatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, deviceSurfaceFormats_.data());
+  if (has_KHR_swapchain_maintenance1_) {
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .surface = vkSurface_,
+    };
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilities2KHR(vkPhysicalDevice_, &surfaceInfo, &deviceSurfaceCaps_));
+    uint32_t formatCount; // uninitialized
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormats2KHR(vkPhysicalDevice_, &surfaceInfo, &formatCount, nullptr));
+    if (formatCount) {
+      deviceSurfaceFormats_.resize(formatCount, VkSurfaceFormat2KHR{.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR});
+      VK_ASSERT(vkGetPhysicalDeviceSurfaceFormats2KHR(vkPhysicalDevice_, &surfaceInfo, &formatCount, deviceSurfaceFormats_.data()));
+    }
+  } else {
+    // legacy
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice_, vkSurface_, &deviceSurfaceCaps_.surfaceCapabilities));
+    uint32_t formatCount; // uninitialized
+    VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, nullptr));
+    if (formatCount) {
+      std::vector<VkSurfaceFormatKHR> formats(formatCount);
+      VK_ASSERT(vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice_, vkSurface_, &formatCount, formats.data()));
+      for (const VkSurfaceFormatKHR& f : formats) {
+        deviceSurfaceFormats_.push_back(VkSurfaceFormat2KHR{.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR, .surfaceFormat = f});
+      }
+    }
   }
 
   uint32_t presentModeCount;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, nullptr);
+  VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, nullptr));
 
   if (presentModeCount) {
     devicePresentModes_.resize(presentModeCount);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, devicePresentModes_.data());
+    VK_ASSERT(vkGetPhysicalDeviceSurfacePresentModesKHR(vkPhysicalDevice_, vkSurface_, &presentModeCount, devicePresentModes_.data()));
   }
 }
 
