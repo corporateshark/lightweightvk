@@ -1995,12 +1995,8 @@ void showTimeGPU() {
     ImPlot::SetNextAxesLimits(0, count - 1, min_v, max_v, ImGuiCond_Always);
     if (ImPlot::BeginPlot(id, size, ImPlotFlags_CanvasOnly)) {
       ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_NoDecorations);
-      ImPlot::PushStyleColor(ImPlotCol_Line, col);
-      ImPlot::PlotLine(id, values, count, 1, 0);
-      ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
-      ImPlot::PlotShaded(id, values, count, 0, 1, 0);
-      ImPlot::PopStyleVar();
-      ImPlot::PopStyleColor();
+      ImPlot::PlotShaded(id, values, count, 0, 1, 0, ImPlotSpec(ImPlotProp_LineColor, col, ImPlotProp_FillAlpha, 0.40f));
+      ImPlot::PlotLine(id, values, count, 1, 0, ImPlotSpec(ImPlotProp_LineColor, col));
       ImPlot::EndPlot();
     }
     ImPlot::PopStyleVar();
