@@ -7014,16 +7014,29 @@ lvk::Result lvk::VulkanContext::createInstance() {
 
   const VkBool32 gpuav_enable = enableGpuAV ? VK_TRUE : VK_FALSE;
   const VkBool32 gpuav_post_process_descriptor_indexing = VK_FALSE; // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/9222
-#define LAYER_SETTINGS_BOOL32(name, var)                                                                                        \
+  const VkBool32 legacy_detection = config_.enableValidation ? VK_TRUE : VK_FALSE;
+  const char* legacy_detection_mode = "ONLY_SUPPORTED";
+#define LAYER_SETTINGS_BOOL32(name, var)         \
+  VkLayerSettingEXT{                             \
+      .pLayerName = kDefaultValidationLayers[0], \
+      .pSettingName = name,                      \
+      .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT,  \
+      .valueCount = 1,                           \
+      .pValues = var,                            \
+  }
+#define LAYER_SETTINGS_STRING(name, var)                                                                                        \
   VkLayerSettingEXT {                                                                                                           \
-    .pLayerName = kDefaultValidationLayers[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT, .valueCount = 1, \
+    .pLayerName = kDefaultValidationLayers[0], .pSettingName = name, .type = VK_LAYER_SETTING_TYPE_STRING_EXT, .valueCount = 1, \
     .pValues = var,                                                                                                             \
   }
   const VkLayerSettingEXT settings[] = {
       LAYER_SETTINGS_BOOL32("gpuav_enable", &gpuav_enable),
       LAYER_SETTINGS_BOOL32("gpuav_post_process_descriptor_indexing", &gpuav_post_process_descriptor_indexing),
+      LAYER_SETTINGS_BOOL32("legacy_detection", &legacy_detection),
+      LAYER_SETTINGS_STRING("legacy_detection_mode", &legacy_detection_mode),
   };
 #undef LAYER_SETTINGS_BOOL32
+#undef LAYER_SETTINGS_STRING
   const VkLayerSettingsCreateInfoEXT layerSettingsCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
       .settingCount = (uint32_t)LVK_ARRAY_NUM_ELEMENTS(settings),
