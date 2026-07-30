@@ -27,6 +27,9 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
    * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
    * optional **VK_KHR_ray_query** (Windows, Linux, Android)
+   * optional **VK_EXT_fragment_density_map** (Windows, Linux, Android)
+   * optional **VK_EXT_fragment_density_map2** (Windows, Linux, Android)
+   * optional **VK_EXT_layer_settings **
    * optional **VK_EXT_mesh_shader** (Windows, Linux, Android)
 
 ## Supported platforms
