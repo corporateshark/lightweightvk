@@ -687,6 +687,15 @@ class VulkanContext final : public IContext {
   const VkPhysicalDeviceProperties& getVkPhysicalDeviceProperties() const {
     return vkPhysicalDeviceProperties2_.properties;
   }
+  const VkPhysicalDeviceVulkan11Properties& getVkPhysicalDeviceVulkan11Properties() const {
+    return vkPhysicalDeviceVulkan11Properties_;
+  }
+  const VkPhysicalDeviceVulkan12Properties& getVkPhysicalDeviceVulkan12Properties() const {
+    return vkPhysicalDeviceVulkan12Properties_;
+  }
+  const VkPhysicalDeviceVulkan13Properties& getVkPhysicalDeviceVulkan13Properties() const {
+    return vkPhysicalDeviceVulkan13Properties_;
+  }
 
   // OpenXR needs Vulkan instance to find physical device
   VkInstance getVkInstance() const {
