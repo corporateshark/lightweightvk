@@ -6669,7 +6669,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
     source = sourcePatched.c_str();
   }
 
-  const glslang_resource_t glslangResource = lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits);
+  const glslang_resource_t glslangResource =
+      lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &meshShaderProperties_ : nullptr);
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource));
@@ -7373,6 +7374,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   if (hasExtension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
+  }
+  if (hasExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&meshShaderProperties_);
   }
   if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
