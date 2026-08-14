@@ -508,7 +508,9 @@ enum Format : uint8_t {
 
   Format_R_UN8,
   Format_R_UI16,
+  Format_R_I16,
   Format_R_UI32,
+  Format_R_I32,
   Format_R_UN16,
   Format_R_F16,
   Format_R_F32,
@@ -517,13 +519,18 @@ enum Format : uint8_t {
 
   Format_RG_UN8,
   Format_RG_UI16,
+  Format_RG_I16,
   Format_RG_UI32,
+  Format_RG_I32,
   Format_RG_UN16,
   Format_RG_F16,
   Format_RG_F32,
 
   Format_RGBA_UN8,
+  Format_RGBA_UI16,
+  Format_RGBA_I16,
   Format_RGBA_UI32,
+  Format_RGBA_I32,
   Format_RGBA_F16,
   Format_RGBA_F32,
   Format_RGBA_SRGB8,
@@ -534,6 +541,10 @@ enum Format : uint8_t {
   Format_A2B10G10R10_UN,
   Format_A2R10G10B10_UN,
   Format_A1B5G5R5_UN,
+
+  // packed floating-point formats, as used for HDR render targets and irradiance data
+  Format_B10G11R11_UF,
+  Format_E5B9G9R9_UF,
 
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
