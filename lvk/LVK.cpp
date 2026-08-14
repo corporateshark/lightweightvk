@@ -97,7 +97,7 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(BC7_RGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
     PROPS(BC7_SRGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
     PROPS(Z_UN16, 2, .depth = true),
-    PROPS(Z_UN24, 3, .depth = true),
+    PROPS(Z_UN24, 4, .depth = true), // implemented as `VK_FORMAT_D24_UNORM_S8_UINT`
     PROPS(Z_F32, 4, .depth = true),
     PROPS(Z_UN24_S_UI8, 4, .depth = true, .stencil = true),
     PROPS(Z_F32_S_UI8, 5, .depth = true, .stencil = true),
