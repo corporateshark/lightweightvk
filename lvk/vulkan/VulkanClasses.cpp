@@ -4316,7 +4316,9 @@ lvk::VulkanContext::VulkanContext(const lvk::ContextConfig& config, void* window
 
   pimpl_ = std::make_unique<VulkanContextImpl>();
 
-  if (volkInitialize() != VK_SUCCESS) {
+  if (config_.customVkGetInstanceProcAddr) {
+    volkInitializeCustom((PFN_vkGetInstanceProcAddr)config_.customVkGetInstanceProcAddr);
+  } else if (volkInitialize() != VK_SUCCESS) {
     LLOGW("volkInitialize() failed\n");
     exit(255);
   };

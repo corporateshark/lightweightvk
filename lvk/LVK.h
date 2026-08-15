@@ -1268,6 +1268,7 @@ struct ContextConfig {
   const char* extensionsInstance[kMaxCustomExtensions] = {}; // add extra instance extensions on top of required ones
   const char* extensionsDevice[kMaxCustomExtensions] = {}; // add extra device extensions on top of required ones
   void* extensionsDeviceFeatures = nullptr; // inserted into VkPhysicalDeviceVulkan11Features::pNext
+  void* customVkGetInstanceProcAddr = nullptr; // PFN_vkGetInstanceProcAddr of an interposing loader
 
   // LVK knows about these extensions and can manage them automatically upon request
   bool enableHeadlessSurface = false; // VK_EXT_headless_surface
