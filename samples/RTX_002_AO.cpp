@@ -77,7 +77,6 @@ struct PerObject {
 struct PushConstants {
   PerFrame* perFrame;
   PerObject* perObject;
-  uint64_t padding; // materials
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -581,7 +580,6 @@ layout(std430, buffer_reference) readonly buffer PerObject {
 layout(push_constant) uniform constants {
   PerFrame perFrame;
   PerObject perObject;
-  vec2 padding; // materials
 } pc;
 
 void main() {
@@ -1458,14 +1456,12 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(renderPassZPrepass_, fbOffscreen);
       buffer.cmdPushDebugGroupLabel("Render Mesh ZPrepass", 0xff0000ff);
       buffer.cmdBindRenderPipeline(res.renderPipelineState_MeshZPrepass_);
-      struct {
+      const struct {
         uint64_t perFrame;
         uint64_t perObject;
-        uint64_t materials;
       } pc = {
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
           .perObject = ctx_->gpuAddress(res.ubPerObject_),
-          .materials = ctx_->gpuAddress(res.sbMaterials_),
       };
       buffer.cmdPushConstants(pc);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
