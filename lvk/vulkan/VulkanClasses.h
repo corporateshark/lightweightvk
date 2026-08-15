@@ -486,6 +486,10 @@ class CommandBuffer final : public ICommandBuffer {
     return wrapper_ ? wrapper_->cmdBuf_ : VK_NULL_HANDLE;
   }
 
+  void invalidateBoundPipeline() {
+    lastPipelineBound_ = VK_NULL_HANDLE;
+  }
+
  private:
   void bufferBarrier(BufferHandle handle,
                      VkPipelineStageFlags2 srcStage,
