@@ -6700,6 +6700,10 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
     }
   };
 
+  // Slang `v2026.11+` hard-codes a fast path for builtin matrix operators which skips `operator*` overload resolution
+  // (https://github.com/shader-slang/slang/pull/11493 and https://github.com/shader-slang/slang/issues/11877).
+  // Importing `glsl` puts the module into "GLSL operator scope", so the overloads below are used again.
+  sourcePatched += "import glsl;\n";
   // overloaded operators to mimic GLSL matrix operations
   sourcePatched +=
       "float2x2 operator*(float2x2 a, float2x2 b) { return mul(b, a); }\n"

@@ -934,7 +934,11 @@ lvk::Result lvk::compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
 #if defined(LVK_WITH_SLANG) && LVK_WITH_SLANG
   if (!slangGlobalSession) {
     Slang::ComPtr<slang::IGlobalSession> globalSession;
-    if (SLANG_FAILED(slang::createGlobalSession(globalSession.writeRef()))) {
+    // `enableGLSL` makes the `glsl` module importable, which our shader preamble needs to restore overloaded GLSL-style matrix operators
+    const SlangGlobalSessionDesc globalSessionDesc = {
+        .enableGLSL = true,
+    };
+    if (SLANG_FAILED(slang::createGlobalSession(&globalSessionDesc, globalSession.writeRef()))) {
       return Result(Result::Code::RuntimeError, "slang::createGlobalSession() failed");
     }
     slangGlobalSession = globalSession.detach();
