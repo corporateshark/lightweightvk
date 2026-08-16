@@ -8084,6 +8084,8 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
     VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
     // the guard fence belongs to the swapchain we are about to destroy
     immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    // so does a pending acquire semaphore: drop it, otherwise the next submit() would wait on a destroyed semaphore
+    immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
     swapchain_ = nullptr;
     vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }

@@ -219,6 +219,8 @@ class VulkanImmediateCommands final {
   void waitAll();
 
  private:
+  friend class lvk::VulkanContext;
+
   void purge();
 
  private:
