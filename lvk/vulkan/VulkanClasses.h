@@ -259,8 +259,7 @@ struct RenderPipelineState final {
   VkVertexInputBindingDescription vkBindings_[VertexInput::LVK_VERTEX_BUFFER_MAX] = {};
   VkVertexInputAttributeDescription vkAttributes_[VertexInput::LVK_VERTEX_ATTRIBUTES_MAX] = {};
 
-  // non-owning, the last seen VkDescriptorSetLayout from VulkanContext::vkDSL_ (if the context has a new layout, invalidate all VkPipeline
-  // objects)
+  // non-owning, the last seen VkDescriptorSetLayout from VulkanContext::vkDSL_ (if the context has a new layout, invalidate all VkPipelines)
   VkDescriptorSetLayout lastVkDescriptorSetLayout_ = VK_NULL_HANDLE;
 
   VkShaderStageFlags shaderStageFlags_ = 0;
@@ -742,6 +741,8 @@ class VulkanContext final : public IContext {
   const VkSamplerYcbcrConversionInfo* getOrCreateYcbcrConversionInfo(lvk::Format format);
   VkSampler getOrCreateYcbcrSampler(lvk::Format format);
   void addNextPhysicalDeviceProperties(void* properties);
+  // whether to add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to the image described by `ci` (`ci.usage` must not include it yet)
+  [[nodiscard]] bool shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const;
 
   void getBuildInfoBLAS(const AccelStructDesc& desc,
                         VkAccelerationStructureGeometryKHR& geom,
@@ -860,6 +861,10 @@ class VulkanContext final : public IContext {
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
   bool has_EXT_fragment_density_map_ = false;
   bool has_EXT_fragment_density_map2_ = false;
+  // VK_EXT_host_image_copy
+  bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
+  bool hostImageCopyIdenticalMemoryTypeRequirements_ = false; // HOST_TRANSFER preserves memory type requirements
+  uint32_t deviceLocalMemoryTypeMask_ = 0; // bitmask of device-local memory type indices
   std::vector<const char*> enabledInstanceExtensionNames_;
   std::vector<const char*> enabledDeviceExtensionNames_;
 
