@@ -3690,18 +3690,22 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     return;
   }
 
-  lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
-
-  LVK_ASSERT(stagingBuffer);
+  // capture the destination handle: an oversized upload grows the staging buffer below (prevent dangling buffer references)
+  const VkBuffer dstVkBuffer = buffer.vkBuffer_;
 
   const size_t origDstOffset = dstOffset;
   const size_t origSize = size;
 
   while (size) {
-    // get next staging buffer free offset
+    // next free staging offset (grows the staging buffer if the upload doesn't fit)
     MemoryRegionDesc desc = getNextFreeOffset(size);
     const VkDeviceSize chunkSize = std::min<VkDeviceSize>(size, desc.size_);
     const bool isLast = (chunkSize == size);
+
+    // fetch the staging buffer after getNextFreeOffset() so the pointer is valid even if it just grew
+    lvk::VulkanBuffer* stagingBuffer = ctx_.buffersPool_.get(stagingBuffer_);
+
+    LVK_ASSERT(stagingBuffer);
 
     // copy data into staging buffer
     stagingBuffer->bufferSubData(ctx_, desc.offset_, chunkSize, data);
@@ -3714,7 +3718,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
     };
 
     const lvk::VulkanImmediateCommands::CommandBufferWrapper& wrapper = ctx_.immediate_->acquire();
-    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, buffer.vkBuffer_, 1, &copy);
+    vkCmdCopyBuffer(wrapper.cmdBuf_, stagingBuffer->vkBuffer_, dstVkBuffer, 1, &copy);
     // one barrier covering the full destination range
     if (isLast) {
       const VkBufferMemoryBarrier2 barrier = {
@@ -3725,7 +3729,7 @@ void lvk::VulkanStagingDevice::bufferSubData(VulkanBuffer& buffer, size_t dstOff
           .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-          .buffer = buffer.vkBuffer_,
+          .buffer = dstVkBuffer,
           .offset = origDstOffset,
           .size = origSize,
       };
@@ -3771,6 +3775,70 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
   if (numMipLevels > 1 || numLayers > 1) {
     LVK_ASSERT(!bufferRowLength);
     LVK_ASSERT_MSG(coversFullImage, "Uploading mip-levels with an image region that is smaller than the base mip-level is not supported");
+  }
+
+  // Fast path: copy from host memory (no staging buffer or submit) using VK_EXT_host_image_copy.
+  //
+  // Only the 1st, full-image upload of a freshly created image (layout still UNDEFINED): host image copies are NOT synced, so
+  // re-uploading a texture the GPU may still be sampling would race.
+  // Once `vkImageLayout_` leaves UNDEFINED the image may be in use, so later uploads fall through to the traditional synced staging path.
+  const bool isFirstUpload = coversFullImage && image.vkImageLayout_ == VK_IMAGE_LAYOUT_UNDEFINED;
+  // a combined depth+stencil image is rejected here: `VkMemoryToImageCopy::imageSubresource` accepts only one aspect at a time
+  const VkImageAspectFlags hostCopyAspect = image.getImageAspectFlags();
+  const bool isSingleAspect = (hostCopyAspect & (hostCopyAspect - 1)) == 0;
+  const bool isSinglePlane = lvk::getNumImagePlanes(image.vkImageFormat_) == 1; // multi-planar images fall through to the staging path
+  const bool hasHostTransfer = image.vkUsageFlags_ & VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+  if (isFirstUpload && isSingleAspect && isSinglePlane && hasHostTransfer) {
+    std::vector<VkMemoryToImageCopy> regions;
+    regions.reserve((size_t)numMipLevels * numLayers);
+
+    // `data` is laid out mip-major, layer-minor (same accounting as `storageSize` below)
+    uint64_t srcOffset = 0;
+    for (uint32_t mipLevel = 0; mipLevel != numMipLevels; mipLevel++) {
+      for (uint32_t layer = 0; layer != numLayers; layer++) {
+        const uint32_t currentMipLevel = baseMipLevel + mipLevel;
+        const uint32_t currentLayer = baseLayer + layer;
+
+        LVK_ASSERT(currentMipLevel < image.numLevels_);
+        LVK_ASSERT(currentLayer < image.numLayers_);
+
+        regions.push_back(VkMemoryToImageCopy{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY,
+            .pHostPointer = (const uint8_t*)data + srcOffset,
+            .memoryRowLength = bufferRowLength,
+            .memoryImageHeight = 0,
+            .imageSubresource = VkImageSubresourceLayers{hostCopyAspect, currentMipLevel, currentLayer, 1},
+            .imageOffset = {.x = imageRegion.offset.x >> mipLevel, .y = imageRegion.offset.y >> mipLevel, .z = 0},
+            .imageExtent = {.width = std::max(1u, imageRegion.extent.width >> mipLevel),
+                            .height = std::max(1u, imageRegion.extent.height >> mipLevel),
+                            .depth = 1u},
+        });
+        srcOffset += lvk::getTextureBytesPerLayer(
+            bufferRowLength ? bufferRowLength : imageRegion.extent.width, imageRegion.extent.height, texFormat, mipLevel);
+      }
+    }
+
+    // oldLayout is UNDEFINED because the fast path only runs on a freshly created image (see `isFirstUpload` above)
+    const VkHostImageLayoutTransitionInfo transition = {
+        .sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO,
+        .image = image.vkImage_,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .subresourceRange = {hostCopyAspect, baseMipLevel, numMipLevels, baseLayer, numLayers},
+    };
+    VK_ASSERT(vkTransitionImageLayout(ctx_.vkDevice_, 1, &transition));
+
+    const VkCopyMemoryToImageInfo copyInfo = {
+        .sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO,
+        .dstImage = image.vkImage_,
+        .dstImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .regionCount = (uint32_t)regions.size(),
+        .pRegions = regions.data(),
+    };
+    VK_ASSERT(vkCopyMemoryToImage(ctx_.vkDevice_, &copyInfo));
+
+    image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    return;
   }
 
   // find the storage size for all mip-levels being uploaded
@@ -4814,6 +4882,27 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   LVK_ASSERT(vkExtent.width > 0);
   LVK_ASSERT(vkExtent.height > 0);
   LVK_ASSERT(vkExtent.depth > 0);
+
+  // add VK_IMAGE_USAGE_HOST_TRANSFER_BIT to eligible single-plane images to enable the staging-free imageData2D() path
+  if (desc.storage != lvk::StorageType_Memoryless && lvk::getNumImagePlanes(desc.format) == 1) {
+    const VkImageCreateInfo hostCopyProbe = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .flags = vkCreateFlags,
+        .imageType = vkImageType,
+        .format = vkFormat,
+        .extent = vkExtent,
+        .mipLevels = numLevels,
+        .arrayLayers = numLayers,
+        .samples = vkSamples,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = usageFlags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    if (shouldEnableHostImageCopy(hostCopyProbe)) {
+      usageFlags |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+    }
+  }
 
   lvk::VulkanImage image = {
       .vkUsageFlags_ = usageFlags,
@@ -7237,6 +7326,48 @@ void lvk::VulkanContext::addNextPhysicalDeviceProperties(void* properties) {
   vkPhysicalDeviceProperties2_.pNext = properties;
 }
 
+bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) const {
+  if (!has_EXT_host_image_copy_) {
+    return false;
+  }
+
+  // only sampled/transfer images: host-copying device-written (storage/attachment) images hangs some drivers
+  if (ci.usage & (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT)) {
+    return false;
+  }
+
+  // format must support host image transfer
+  VkFormatProperties3 formatProps3 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
+  VkFormatProperties2 formatProps2 = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &formatProps3};
+  vkGetPhysicalDeviceFormatProperties2(vkPhysicalDevice_, ci.format, &formatProps2);
+  if (!(formatProps3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT)) {
+    return false;
+  }
+
+  // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL, so it must be a supported copy-destination layout
+  if (!hostImageCopyToShaderReadOnly_) {
+    return false;
+  }
+
+  // if HOST_TRANSFER never changes the memory type requirements, it is always free
+  if (hostImageCopyIdenticalMemoryTypeRequirements_) {
+    return true;
+  }
+
+  // otherwise enable it only if the image can still be device-local with HOST_TRANSFER (e.g. resizable BAR), not forced into host memory
+  VkImageCreateInfo ciWithHostTransfer = ci;
+  ciWithHostTransfer.usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT;
+  const VkDeviceImageMemoryRequirements imageReqInfo = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS,
+      .pCreateInfo = &ciWithHostTransfer,
+  };
+  VkMemoryRequirements2 memReq = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+  vkGetDeviceImageMemoryRequirements(vkDevice_, &imageReqInfo, &memReq);
+
+  return (memReq.memoryRequirements.memoryTypeBits & deviceLocalMemoryTypeMask_) != 0;
+}
+
 void lvk::VulkanContext::getBuildInfoBLAS(const AccelStructDesc& desc,
                                           VkAccelerationStructureGeometryKHR& outGeometry,
                                           VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const {
@@ -7730,6 +7861,41 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
+
+  if (has_EXT_host_image_copy_) {
+    // query VK_EXT_host_image_copy properties (copy dst layouts + memory-type requirements)
+    VkPhysicalDeviceHostImageCopyProperties props = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_PROPERTIES,
+    };
+    VkPhysicalDeviceProperties2 props2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &props,
+    };
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+    std::vector<VkImageLayout> dstLayouts(props.copyDstLayoutCount);
+    props.copySrcLayoutCount = 0;
+    props.pCopyDstLayouts = dstLayouts.data();
+    vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
+
+    // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL, so this is the only destination layout we ever need
+    hostImageCopyToShaderReadOnly_ =
+        std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) != dstLayouts.end();
+    hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
+
+    // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local
+    VkPhysicalDeviceMemoryProperties memoryProps;
+    vkGetPhysicalDeviceMemoryProperties(vkPhysicalDevice_, &memoryProps);
+    deviceLocalMemoryTypeMask_ = 0;
+    for (uint32_t i = 0; i < memoryProps.memoryTypeCount; ++i) {
+      if (memoryProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+        deviceLocalMemoryTypeMask_ |= (1u << i);
+      }
+    }
+
+    LLOGD("VK_EXT_host_image_copy: enabled (identicalMemoryTypeRequirements: %s, SHADER_READ_ONLY_OPTIMAL: %s)\n",
+          hostImageCopyIdenticalMemoryTypeRequirements_ ? "true" : "false",
+          hostImageCopyToShaderReadOnly_ ? "true" : "false");
+  }
 
   // check extensions
   {
