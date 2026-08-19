@@ -28,7 +28,7 @@
     "source": {
         "type": "git",
         "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
-        "revision": "a665e21f3061f34064b39937cf00fe8d8769f4ef"
+        "revision": "v2026.3"
     }
 },
 {
