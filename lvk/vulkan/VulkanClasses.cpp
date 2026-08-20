@@ -6761,7 +6761,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
   }
 
   const glslang_resource_t glslangResource =
-      lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &meshShaderProperties_ : nullptr);
+      lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &vkMeshShaderProperties_ : nullptr);
 
   std::vector<uint8_t> spirv;
   lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource));
@@ -7513,10 +7513,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addNextPhysicalDeviceProperties(&rayTracingPipelineProperties_);
   }
   if (hasExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, allDeviceExtensions)) {
-    addNextPhysicalDeviceProperties(&meshShaderProperties_);
+    addNextPhysicalDeviceProperties(&vkMeshShaderProperties_);
   }
   if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
-    addNextPhysicalDeviceProperties(&fragmentDensityMapProperties_);
+    addNextPhysicalDeviceProperties(&vkFragmentDensityMapProperties_);
     // check whether non-subsampled attachments are supported
     vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
@@ -7526,7 +7526,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
     vkFeatures13_.pNext = &vkFeatures14_;
   } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
-    addNextPhysicalDeviceProperties(&maintenance6Properties_);
+    addNextPhysicalDeviceProperties(&vkMaintenance6Properties_);
   }
 
   vkGetPhysicalDeviceFeatures2(vkPhysicalDevice_, &vkFeatures10_);
@@ -7538,7 +7538,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     pimpl_->maxCombinedImageSamplerDescriptorCount_ = vkPhysicalDeviceVulkan14Properties_.maxCombinedImageSamplerDescriptorCount;
   } else if (hasExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME, allDeviceExtensions)) {
-    pimpl_->maxCombinedImageSamplerDescriptorCount_ = maintenance6Properties_.maxCombinedImageSamplerDescriptorCount;
+    pimpl_->maxCombinedImageSamplerDescriptorCount_ = vkMaintenance6Properties_.maxCombinedImageSamplerDescriptorCount;
   }
 
   const uint32_t apiVersion = vkPhysicalDeviceProperties2_.properties.apiVersion;
