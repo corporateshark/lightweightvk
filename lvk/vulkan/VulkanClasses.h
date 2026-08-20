@@ -797,6 +797,9 @@ class VulkanContext final : public IContext {
   // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_fragment_density_map is supported
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT vkFragmentDensityMapFeatures_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
+  // queried (not chained by default) - only added to vkFeatures10_ when VK_KHR_fragment_shading_rate is supported
+  VkPhysicalDeviceFragmentShadingRateFeaturesKHR vkFragmentShadingRateFeatures_ = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
@@ -822,6 +825,8 @@ class VulkanContext final : public IContext {
       &vkPhysicalDeviceVulkan11Properties_,
       VkPhysicalDeviceProperties{},
   };
+  VkPhysicalDeviceFragmentShadingRatePropertiesKHR vkFragmentShadingRateProperties_ = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_PROPERTIES_KHR};
 
   std::vector<VkFormat> deviceDepthFormats_;
   std::vector<VkSurfaceFormat2KHR> deviceSurfaceFormats_;
@@ -871,6 +876,7 @@ class VulkanContext final : public IContext {
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4
+  bool has_KHR_fragment_shading_rate_ = false;
   bool has_EXT_fragment_density_map_ = false;
   bool has_EXT_fragment_density_map2_ = false;
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4

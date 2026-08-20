@@ -7521,6 +7521,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
   }
+  if (hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
+    addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
+    // check which features are supported before enabling them
+    vkFragmentShadingRateFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkFragmentShadingRateFeatures_;
+  }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
     addNextPhysicalDeviceProperties(&vkPhysicalDeviceVulkan14Properties_);
@@ -7783,6 +7789,12 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_2_FEATURES_EXT,
       .fragmentDensityMapDeferred = VK_TRUE,
   };
+  VkPhysicalDeviceFragmentShadingRateFeaturesKHR fragmentShadingRateFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR,
+      .pipelineFragmentShadingRate = vkFragmentShadingRateFeatures_.pipelineFragmentShadingRate,
+      .primitiveFragmentShadingRate = vkFragmentShadingRateFeatures_.primitiveFragmentShadingRate,
+      .attachmentFragmentShadingRate = vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
+  };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
     if (!hasExtension(name, allDeviceExtensions)) {
@@ -7863,6 +7875,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);
+  addOptionalExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, has_KHR_fragment_shading_rate_, &fragmentShadingRateFeatures);
 
   if (has_EXT_host_image_copy_) {
     // query VK_EXT_host_image_copy properties (copy dst layouts + memory-type requirements)
