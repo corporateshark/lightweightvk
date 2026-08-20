@@ -24,13 +24,15 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * mandatory **VK_KHR_push_descriptor**
    * mandatory **VK_EXT_surface_maintenance1**
    * optional **VK_KHR_maintenance6**
-   * optional **VK_KHR_acceleration_structure** (Windows, Linux, Android)
-   * optional **VK_KHR_ray_tracing_pipeline** (Windows, Linux, Android)
-   * optional **VK_KHR_ray_query** (Windows, Linux, Android)
-   * optional **VK_EXT_fragment_density_map** (Windows, Linux, Android)
-   * optional **VK_EXT_fragment_density_map2** (Windows, Linux, Android)
+   * optional **VK_KHR_acceleration_structure**
+   * optional **VK_KHR_ray_tracing_pipeline**
+   * optional **VK_KHR_ray_query**
+   * optional **VK_KHR_fragment_shading_rate**
+   * optional **VK_EXT_fragment_density_map**
+   * optional **VK_EXT_fragment_density_map2**
+   * optional **VK_EXT_host_image_copy**
    * optional **VK_EXT_layer_settings**
-   * optional **VK_EXT_mesh_shader** (Windows, Linux, Android)
+   * optional **VK_EXT_mesh_shader**
 
 ## Supported platforms
 
