@@ -209,6 +209,10 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_UNDEFINED;
   case lvk::Format_R_UN8:
     return VK_FORMAT_R8_UNORM;
+  case lvk::Format_R_UI8:
+    return VK_FORMAT_R8_UINT;
+  case lvk::Format_R_I8:
+    return VK_FORMAT_R8_SINT;
   case lvk::Format_A_UN8:
     return VK_FORMAT_A8_UNORM;
   case lvk::Format_R_UN16:
@@ -225,6 +229,10 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_R32_SINT;
   case lvk::Format_RG_UN8:
     return VK_FORMAT_R8G8_UNORM;
+  case lvk::Format_RG_UI8:
+    return VK_FORMAT_R8G8_UINT;
+  case lvk::Format_RG_I8:
+    return VK_FORMAT_R8G8_SINT;
   case lvk::Format_RG_UI16:
     return VK_FORMAT_R16G16_UINT;
   case lvk::Format_RG_I16:
@@ -239,6 +247,10 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_B8G8R8A8_UNORM;
   case lvk::Format_RGBA_UN8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case lvk::Format_RGBA_UI8:
+    return VK_FORMAT_R8G8B8A8_UINT;
+  case lvk::Format_RGBA_I8:
+    return VK_FORMAT_R8G8B8A8_SINT;
   case lvk::Format_RGBA_SRGB8:
     return VK_FORMAT_R8G8B8A8_SRGB;
   case lvk::Format_BGRA_SRGB8:
@@ -322,6 +334,10 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_Invalid;
   case VK_FORMAT_R8_UNORM:
     return Format_R_UN8;
+  case VK_FORMAT_R8_UINT:
+    return Format_R_UI8;
+  case VK_FORMAT_R8_SINT:
+    return Format_R_I8;
   case VK_FORMAT_A8_UNORM:
     return Format_A_UN8;
   case VK_FORMAT_R16_UNORM:
@@ -332,16 +348,28 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_R_UI16;
   case VK_FORMAT_R16_SINT:
     return Format_R_I16;
+  case VK_FORMAT_R32_UINT:
+    return Format_R_UI32;
   case VK_FORMAT_R32_SINT:
     return Format_R_I32;
+  case VK_FORMAT_R32G32_UINT:
+    return Format_RG_UI32;
   case VK_FORMAT_R32G32_SINT:
     return Format_RG_I32;
   case VK_FORMAT_R8G8_UNORM:
     return Format_RG_UN8;
+  case VK_FORMAT_R8G8_UINT:
+    return Format_RG_UI8;
+  case VK_FORMAT_R8G8_SINT:
+    return Format_RG_I8;
   case VK_FORMAT_B8G8R8A8_UNORM:
     return Format_BGRA_UN8;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return Format_RGBA_UN8;
+  case VK_FORMAT_R8G8B8A8_UINT:
+    return Format_RGBA_UI8;
+  case VK_FORMAT_R8G8B8A8_SINT:
+    return Format_RGBA_I8;
   case VK_FORMAT_R8G8B8A8_SRGB:
     return Format_RGBA_SRGB8;
   case VK_FORMAT_B8G8R8A8_SRGB:

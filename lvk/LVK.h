@@ -507,6 +507,8 @@ enum Format : uint8_t {
   Format_Invalid = 0,
 
   Format_R_UN8,
+  Format_R_UI8,
+  Format_R_I8,
   Format_R_UI16,
   Format_R_I16,
   Format_R_UI32,
@@ -518,6 +520,8 @@ enum Format : uint8_t {
   Format_A_UN8,
 
   Format_RG_UN8,
+  Format_RG_UI8,
+  Format_RG_I8,
   Format_RG_UI16,
   Format_RG_I16,
   Format_RG_UI32,
@@ -527,6 +531,8 @@ enum Format : uint8_t {
   Format_RG_F32,
 
   Format_RGBA_UN8,
+  Format_RGBA_UI8,
+  Format_RGBA_I8,
   Format_RGBA_UI16,
   Format_RGBA_I16,
   Format_RGBA_UI32,
