@@ -1474,6 +1474,11 @@ StageAccess lvk::getPipelineStageAccess(VkImageLayout layout) {
         .stage = VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT,
         .access = VK_ACCESS_2_FRAGMENT_DENSITY_MAP_READ_BIT_EXT,
     };
+  case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
+    return {
+        .stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
+        .access = VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR,
+    };
   default:
     LVK_ASSERT_MSG(false, "Unsupported image layout transition!");
     return {
