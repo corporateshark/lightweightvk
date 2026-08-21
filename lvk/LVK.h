@@ -814,7 +814,9 @@ struct Framebuffer final {
 
   AttachmentDesc color[LVK_MAX_COLOR_ATTACHMENTS] = {};
   AttachmentDesc depthStencil;
-  TextureHandle fragmentDensityMap; // optional R8G8_UNORM map for VK_EXT_fragment_density_map; with TextureUsageBits_FragmentDensityMap
+  TextureHandle fragmentDensityMap; // optional RG_UN8 map for VK_EXT_fragment_density_map; with TextureUsageBits_FragmentDensityMap
+  TextureHandle shadingRateAttachment; // optional R_UI8 map for VK_KHR_fragment_shading_rate; with TextureUsageBits_ShadingRateAttachment
+  Dimensions shadingRateAttachmentTexelSize; // size in pixels of one texel of `shadingRateAttachment`
 
   const char* debugName = "";
 
@@ -874,6 +876,7 @@ enum TextureUsageBits : uint8_t {
   TextureUsageBits_Attachment = 1 << 2,
   TextureUsageBits_InputAttachment = 1 << 3,
   TextureUsageBits_FragmentDensityMap = 1 << 4,
+  TextureUsageBits_ShadingRateAttachment = 1 << 5,
 };
 
 enum Swizzle : uint8_t {

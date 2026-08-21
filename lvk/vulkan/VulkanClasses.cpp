@@ -2859,7 +2859,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     LVK_ASSERT_MSG(ctx_->has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
     LVK_ASSERT_MSG(ctx_->vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
                    "fragmentDensityMapNonSubsampledImages is required to use a fragment density map with LVK's non-subsampled attachments");
-    lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
+    const lvk::VulkanImage& fdmImage = *ctx_->texturesPool_.get(fb.fragmentDensityMap);
     LVK_ASSERT_MSG(fdmImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT,
                    "Fragment density map must be created with TextureUsageBits_FragmentDensityMap");
     fdmImage.transitionLayout(wrapper_->cmdBuf_,
@@ -2868,9 +2868,37 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     fragmentDensityMapInfo.imageView = fdmImage.imageView_;
   }
 
+  // optional shading rate attachment (VK_KHR_fragment_shading_rate)
+  const VkRenderingFragmentShadingRateAttachmentInfoKHR shadingRateInfo = [this, &fb]() {
+    if (!fb.shadingRateAttachment)
+      return VkRenderingFragmentShadingRateAttachmentInfoKHR{};
+
+    LVK_ASSERT_MSG(ctx_->vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
+                   "attachmentFragmentShadingRate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+
+    const Dimensions& texelSize = fb.shadingRateAttachmentTexelSize;
+    const VkExtent2D& minTexelSize = ctx_->vkFragmentShadingRateProperties_.minFragmentShadingRateAttachmentTexelSize;
+    const VkExtent2D& maxTexelSize = ctx_->vkFragmentShadingRateProperties_.maxFragmentShadingRateAttachmentTexelSize;
+    LVK_ASSERT_MSG(texelSize.width >= minTexelSize.width && texelSize.width <= maxTexelSize.width &&
+                       texelSize.height >= minTexelSize.height && texelSize.height <= maxTexelSize.height,
+                   "Framebuffer::shadingRateAttachmentTexelSize is outside min/maxFragmentShadingRateAttachmentTexelSize");
+    const lvk::VulkanImage& sraImage = *ctx_->texturesPool_.get(fb.shadingRateAttachment);
+    LVK_ASSERT_MSG(sraImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
+                   "Shading rate attachment must be created with TextureUsageBits_ShadingRateAttachment");
+    sraImage.transitionLayout(wrapper_->cmdBuf_,
+                             VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
+                             VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+    return VkRenderingFragmentShadingRateAttachmentInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_INFO_KHR,
+        .imageView = sraImage.imageView_,
+        .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
+        .shadingRateAttachmentTexelSize = {texelSize.width, texelSize.height},
+    };
+  }();
+
   const VkRenderingInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .pNext = fb.fragmentDensityMap ? &fragmentDensityMapInfo : nullptr,
+      .pNext = fb.fragmentDensityMap ? (const void*)&fragmentDensityMapInfo : (fb.shadingRateAttachment ? &shadingRateInfo : nullptr),
       .flags = 0,
       .renderArea = {VkOffset2D{(int32_t)scissor.x, (int32_t)scissor.y}, VkExtent2D{scissor.width, scissor.height}},
       .layerCount = renderPass.layerCount,
@@ -4853,6 +4881,11 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
   if (desc.usage & lvk::TextureUsageBits_FragmentDensityMap) {
     LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
     usageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
+  }
+  if (desc.usage & lvk::TextureUsageBits_ShadingRateAttachment) {
+    LVK_ASSERT_MSG(vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
+                   "attachmentFragmentShadingRate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+    usageFlags |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
   }
 
   if (desc.storage != lvk::StorageType_Memoryless) {
