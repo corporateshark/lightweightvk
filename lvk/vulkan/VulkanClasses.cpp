@@ -6678,6 +6678,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_nonuniform_qualifier : require\n"
           "#extension GL_EXT_samplerless_texture_functions : require\n"
           "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n";
+      addCode("gl_PrimitiveShadingRateEXT", "#extension GL_EXT_fragment_shading_rate : require\n");
     }
     if (vkStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
       // Note how nonuniformEXT() should be used:
