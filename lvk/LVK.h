@@ -1278,6 +1278,9 @@ struct ContextConfig {
 
   // LVK knows about these extensions and can manage them automatically upon request
   bool enableHeadlessSurface = false; // VK_EXT_headless_surface
+  // VK_KHR_fragment_shading_rate is mutually exclusive with VK_EXT_fragment_density_map. When the device supports FSR, requesting it here
+  // disables FDM (otherwise fragment density map is enabled as usual)
+  bool enableFragmentShadingRate = false;
 
   uint64_t maxStagingBufferSize = 128ull * 1024ull * 1024ull; // a reasonable default
 };
