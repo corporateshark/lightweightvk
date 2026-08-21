@@ -1327,7 +1327,8 @@ uint32_t lvk::getBytesPerPixel(VkFormat format) {
   case VK_FORMAT_D24_UNORM_S8_UINT:
     return 4;
   case VK_FORMAT_D32_SFLOAT_S8_UINT:
-    return 5; // 4 bytes of depth plus 1 byte of stencil, though drivers pad it
+    return 5; // nominal block size from the Vulkan registry; no actual layout is 5 bytes - drivers store this as 8 bytes or 2 planes, and
+              // host copies are per-aspect (4 bytes of depth, 1 byte of stencil)
   case VK_FORMAT_R16G16B16_SFLOAT:
     return 6;
   case VK_FORMAT_R16G16B16A16_SFLOAT:

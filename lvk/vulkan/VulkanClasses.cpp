@@ -6442,6 +6442,13 @@ lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const Textur
     return Result(Result::Code::RuntimeError);
   }
 
+  // VUID-VkBufferImageCopy2-aspectMask-09103: a buffer-image copy region can reference only one image aspect, so combined
+  // depth/stencil textures would need one copy region per aspect
+  if (texture->isDepthFormat_ && texture->isStencilFormat_) {
+    LVK_ASSERT_MSG(false, "Cannot download combined depth/stencil textures");
+    return Result(Result::Code::ArgumentOutOfRange, "Cannot download combined depth/stencil textures");
+  }
+
   const Result result = validateRange(texture->vkExtent_, texture->numLevels_, range);
 
   if (!LVK_VERIFY(result.isOk())) {
