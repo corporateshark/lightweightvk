@@ -276,7 +276,7 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder();
   ~VulkanPipelineBuilder() = default;
 
-  VulkanPipelineBuilder& dynamicState(VkDynamicState state);
+  VulkanPipelineBuilder& dynamicState(VkDynamicState state, bool enable = true);
   VulkanPipelineBuilder& primitiveTopology(VkPrimitiveTopology topology);
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
   VulkanPipelineBuilder& alphaToCoverage(bool enable);

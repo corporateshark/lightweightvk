@@ -2057,7 +2057,10 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .patchControlPoints = 0,
   }) {}
 
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicState state) {
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicState state, bool enable) {
+  if (!enable) {
+    return *this;
+  }
   LVK_ASSERT(numDynamicStates_ < LVK_MAX_DYNAMIC_STATES);
   dynamicStates_[numDynamicStates_++] = state;
   return *this;
