@@ -6737,6 +6737,7 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "#extension GL_EXT_nonuniform_qualifier : require\n"
           "#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
           "#extension GL_EXT_mesh_shader : require\n";
+      addCode("gl_PrimitiveShadingRateEXT", "#extension GL_EXT_fragment_shading_rate : require\n");
     }
     if (vkStage == VK_SHADER_STAGE_VERTEX_BIT || vkStage == VK_SHADER_STAGE_COMPUTE_BIT ||
         vkStage == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT || vkStage == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
@@ -7592,6 +7593,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   if (hasExtension(VK_EXT_MESH_SHADER_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&vkMeshShaderProperties_);
+    // check which features are supported before enabling them
+    vkMeshShaderFeatures_.pNext = vkFeatures10_.pNext;
+    vkFeatures10_.pNext = &vkMeshShaderFeatures_;
   }
   if (hasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&vkFragmentDensityMapProperties_);
@@ -7848,6 +7852,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
       .taskShader = VK_TRUE,
       .meshShader = VK_TRUE,
+      // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-primitiveFragmentShadingRateMeshShader-07033 requires `primitiveFragmentShadingRate`
+      .primitiveFragmentShadingRateMeshShader = vkMeshShaderFeatures_.primitiveFragmentShadingRateMeshShader &&
+                                                vkFragmentShadingRateFeatures_.primitiveFragmentShadingRate,
   };
   VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR presentModeLatestReadyFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
