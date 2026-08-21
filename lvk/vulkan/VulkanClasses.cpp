@@ -2850,12 +2850,10 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   const bool isStencilFormat = (renderPass.stencil.loadOp != lvk::LoadOp_DontCare) || (renderPass.stencil.storeOp != lvk::StoreOp_DontCare);
 
   // optional fragment density map (VK_EXT_fragment_density_map)
-  VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
-      .imageView = VK_NULL_HANDLE,
-      .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
-  };
-  if (fb.fragmentDensityMap) {
+  const VkRenderingFragmentDensityMapAttachmentInfoEXT fragmentDensityMapInfo = [this, &fb]() {
+    if (!fb.fragmentDensityMap)
+      return VkRenderingFragmentDensityMapAttachmentInfoEXT{};
+
     LVK_ASSERT_MSG(ctx_->has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not supported");
     LVK_ASSERT_MSG(ctx_->vkFragmentDensityMapFeatures_.fragmentDensityMapNonSubsampledImages,
                    "fragmentDensityMapNonSubsampledImages is required to use a fragment density map with LVK's non-subsampled attachments");
@@ -2865,8 +2863,12 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     fdmImage.transitionLayout(wrapper_->cmdBuf_,
                               VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
                               VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-    fragmentDensityMapInfo.imageView = fdmImage.imageView_;
-  }
+    return VkRenderingFragmentDensityMapAttachmentInfoEXT{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_INFO_EXT,
+        .imageView = fdmImage.imageView_,
+        .imageLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+    };
+  }();
 
   // optional shading rate attachment (VK_KHR_fragment_shading_rate)
   const VkRenderingFragmentShadingRateAttachmentInfoKHR shadingRateInfo = [this, &fb]() {
@@ -2886,8 +2888,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     LVK_ASSERT_MSG(sraImage.vkUsageFlags_ & VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR,
                    "Shading rate attachment must be created with TextureUsageBits_ShadingRateAttachment");
     sraImage.transitionLayout(wrapper_->cmdBuf_,
-                             VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
-                             VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+                              VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR,
+                              VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
     return VkRenderingFragmentShadingRateAttachmentInfoKHR{
         .sType = VK_STRUCTURE_TYPE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_INFO_KHR,
         .imageView = sraImage.imageView_,
@@ -5710,6 +5712,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, has_KHR_fragment_shading_rate_)
+      // from VK_EXT_fragment_density_map
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, has_EXT_fragment_density_map_)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
