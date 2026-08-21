@@ -2071,6 +2071,13 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::dynamicState(VkDynamicSt
   return *this;
 }
 
+lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::createFlags(VkPipelineCreateFlags flags, bool enable) {
+  if (enable) {
+    flags_ |= flags;
+  }
+  return *this;
+}
+
 lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::primitiveTopology(VkPrimitiveTopology topology) {
   inputAssembly_.topology = topology;
   return *this;
@@ -2239,7 +2246,7 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
   const VkGraphicsPipelineCreateInfo ci = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
       .pNext = &renderingInfo,
-      .flags = 0,
+      .flags = flags_,
       .stageCount = numShaderStages_,
       .pStages = shaderStages_,
       .pVertexInputState = &vertexInputState_,
@@ -5669,6 +5676,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, has_KHR_fragment_shading_rate_)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)

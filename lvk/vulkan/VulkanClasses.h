@@ -277,6 +277,7 @@ class VulkanPipelineBuilder final {
   ~VulkanPipelineBuilder() = default;
 
   VulkanPipelineBuilder& dynamicState(VkDynamicState state, bool enable = true);
+  VulkanPipelineBuilder& createFlags(VkPipelineCreateFlags flags, bool enable = true);
   VulkanPipelineBuilder& primitiveTopology(VkPrimitiveTopology topology);
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
   VulkanPipelineBuilder& alphaToCoverage(bool enable);
@@ -312,6 +313,7 @@ class VulkanPipelineBuilder final {
  private:
   enum { LVK_MAX_DYNAMIC_STATES = 128 };
   uint32_t numDynamicStates_ = 0;
+  VkPipelineCreateFlags flags_ = 0;
   VkDynamicState dynamicStates_[LVK_MAX_DYNAMIC_STATES] = {};
 
   uint32_t numShaderStages_ = 0;
