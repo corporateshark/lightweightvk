@@ -51,6 +51,11 @@ static_assert(lvk::Swizzle_R == (uint32_t)VK_COMPONENT_SWIZZLE_R);
 static_assert(lvk::Swizzle_G == (uint32_t)VK_COMPONENT_SWIZZLE_G);
 static_assert(lvk::Swizzle_B == (uint32_t)VK_COMPONENT_SWIZZLE_B);
 static_assert(lvk::Swizzle_A == (uint32_t)VK_COMPONENT_SWIZZLE_A);
+static_assert(lvk::ShadingRateCombinerOp_Keep == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
+static_assert(lvk::ShadingRateCombinerOp_Replace == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_REPLACE_KHR);
+static_assert(lvk::ShadingRateCombinerOp_Min == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR);
+static_assert(lvk::ShadingRateCombinerOp_Max == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR);
+static_assert(lvk::ShadingRateCombinerOp_Mul == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
@@ -3326,6 +3331,21 @@ void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
 }
 
+void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
+                                                   ShadingRateCombinerOp primitiveOp,
+                                                   ShadingRateCombinerOp attachmentOp) {
+  LVK_ASSERT_MSG(ctx_->has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
+
+  const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
+  const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
+      (VkFragmentShadingRateCombinerOpKHR)primitiveOp,
+      (VkFragmentShadingRateCombinerOpKHR)attachmentOp,
+  };
+  vkCmdSetFragmentShadingRateKHR(wrapper_->cmdBuf_, &vkFragmentSize, combinerOps);
+}
+
 void lvk::CommandBuffer::cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) {
   VkQueryPool vkPool = *ctx_->queriesPool_.get(pool);
 
@@ -5647,6 +5667,8 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
+      // from VK_KHR_fragment_shading_rate
+      .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
@@ -7532,7 +7554,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     vkFragmentDensityMapFeatures_.pNext = vkFeatures10_.pNext;
     vkFeatures10_.pNext = &vkFragmentDensityMapFeatures_;
   }
-  if (hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
+  if (config_.enableFragmentShadingRate && hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
     // check which features are supported before enabling them
     vkFragmentShadingRateFeatures_.pNext = vkFeatures10_.pNext;

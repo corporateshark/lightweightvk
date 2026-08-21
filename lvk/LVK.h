@@ -440,6 +440,14 @@ enum PolygonMode : uint8_t {
   PolygonMode_Point = 2,
 };
 
+enum ShadingRateCombinerOp : uint8_t {
+  ShadingRateCombinerOp_Keep = 0,
+  ShadingRateCombinerOp_Replace,
+  ShadingRateCombinerOp_Min,
+  ShadingRateCombinerOp_Max,
+  ShadingRateCombinerOp_Mul,
+};
+
 enum VertexFormat : uint8_t {
   VertexFormat_Invalid = 0,
 
@@ -1109,6 +1117,9 @@ class ICommandBuffer {
   // the argument order is correct, so the `clamp` parameter can have a default value
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
+  virtual void cmdSetFragmentShadingRate(const Dimensions& fragmentSize, // 2D, e.g. 1x1 (full rate) or 2x2
+                                         ShadingRateCombinerOp primitiveOp = ShadingRateCombinerOp_Keep,
+                                         ShadingRateCombinerOp attachmentOp = ShadingRateCombinerOp_Keep) = 0;
 
   virtual void cmdResetQueryPool(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount) = 0;
   virtual void cmdWriteTimestamp(QueryPoolHandle pool, uint32_t query) = 0;
