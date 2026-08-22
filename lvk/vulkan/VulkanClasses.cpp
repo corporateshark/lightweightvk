@@ -2506,8 +2506,11 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
+    // include COMPUTE in the source scope so a chained compute dispatch (one dispatch writes a buffer, the next one reads it)
+    // is synchronized per the Vulkan spec instead of relying on driver conservatism
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
@@ -2528,8 +2531,11 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
     [[maybe_unused]] const lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(deps.buffers[i]);
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
+    // include COMPUTE in the source scope so a chained compute dispatch (one dispatch writes a buffer, the next one reads it)
+    // is synchronized per the Vulkan spec instead of relying on driver conservatism
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
