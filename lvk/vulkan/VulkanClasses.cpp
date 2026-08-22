@@ -2507,7 +2507,8 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
@@ -2529,7 +2530,8 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
     LVK_ASSERT_MSG(buf->vkUsageFlags_ & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                    "Did you forget to specify BufferUsageBits_Storage on your buffer?");
     bufferBarrier(deps.buffers[i],
-                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                   VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   }
 
