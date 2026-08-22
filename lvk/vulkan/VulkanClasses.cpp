@@ -3820,6 +3820,12 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
                                            uint32_t bufferRowLength) {
   LVK_PROFILER_FUNCTION();
 
+  // only images which can be sampled or read as input attachments are allowed to use VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  // (fragment density maps and shading rate attachments are not)
+  const VkImageLayout layoutAfterUpload = (image.vkUsageFlags_ & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+                                              ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                              : VK_IMAGE_LAYOUT_GENERAL;
+
   LVK_ASSERT(numMipLevels <= LVK_MAX_MIP_LEVELS);
 
   const Format texFormat = vkFormatToFormat(format);
@@ -3883,7 +3889,7 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
         .sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO,
         .image = image.vkImage_,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .newLayout = layoutAfterUpload,
         .subresourceRange = {hostCopyAspect, baseMipLevel, numMipLevels, baseLayer, numLayers},
     };
     VK_ASSERT(vkTransitionImageLayout(ctx_.vkDevice_, 1, &transition));
@@ -3891,13 +3897,13 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
     const VkCopyMemoryToImageInfo copyInfo = {
         .sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO,
         .dstImage = image.vkImage_,
-        .dstImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .dstImageLayout = layoutAfterUpload,
         .regionCount = (uint32_t)regions.size(),
         .pRegions = regions.data(),
     };
     VK_ASSERT(vkCopyMemoryToImage(ctx_.vkDevice_, &copyInfo));
 
-    image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image.vkImageLayout_ = layoutAfterUpload;
     return;
   }
 
@@ -4011,21 +4017,21 @@ void lvk::VulkanStagingDevice::imageData2D(VulkanImage& image,
         planeOffset += lvk::getTextureBytesPerPlane(imageRegion.extent.width, imageRegion.extent.height, vkFormatToFormat(format), plane);
       }
 
-      // 3. Transition TRANSFER_DST_OPTIMAL into SHADER_READ_ONLY_OPTIMAL
+      // 3. Transition TRANSFER_DST_OPTIMAL into the layout the image can actually use
       lvk::imageMemoryBarrier2(
           wrapper.cmdBuf_,
           image.vkImage_,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          layoutAfterUpload,
           VkImageSubresourceRange{imageAspect, currentMipLevel, 1, currentLayer, 1});
 
       offset += lvk::getTextureBytesPerLayer(imageRegion.extent.width, imageRegion.extent.height, texFormat, currentMipLevel);
     }
   }
 
-  image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  image.vkImageLayout_ = layoutAfterUpload;
 
   desc.handle_ = ctx_.immediate_->submit(wrapper);
   insertRegion(desc);
@@ -4038,6 +4044,9 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
                                            const void* data) {
   LVK_PROFILER_FUNCTION();
   LVK_ASSERT_MSG(image.numLevels_ == 1, "Can handle only 3D images with exactly 1 mip-level");
+  // only images which can be sampled are allowed to use VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  const VkImageLayout layoutAfterUpload = (image.vkUsageFlags_ & VK_IMAGE_USAGE_SAMPLED_BIT) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                                                                             : VK_IMAGE_LAYOUT_GENERAL;
 
   const uint64_t sliceBytes64 = (uint64_t)extent.width * extent.height * getBytesPerPixel(format);
   LVK_ASSERT_MSG(sliceBytes64 <= UINT32_MAX, "Single depth slice exceeds 4 GB");
@@ -4098,7 +4107,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
     };
     vkCmdCopyBufferToImage2(wrapper.cmdBuf_, &copyInfo);
 
-    // last batch: transition the whole image TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+    // last batch: transition the whole image out of TRANSFER_DST_OPTIMAL
     if (remainingSlices == batchSlices) {
       lvk::imageMemoryBarrier2(
           wrapper.cmdBuf_,
@@ -4106,7 +4115,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
           StageAccess{.stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .access = VK_ACCESS_2_TRANSFER_WRITE_BIT},
           StageAccess{.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .access = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT},
           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          layoutAfterUpload,
           VkImageSubresourceRange{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1});
     }
 
@@ -4118,7 +4127,7 @@ void lvk::VulkanStagingDevice::imageData3D(VulkanImage& image,
     remainingSlices -= batchSlices;
   }
 
-  image.vkImageLayout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  image.vkImageLayout_ = layoutAfterUpload;
 }
 
 void lvk::VulkanStagingDevice::getImageData(VulkanImage& image,
@@ -7427,8 +7436,10 @@ bool lvk::VulkanContext::shouldEnableHostImageCopy(const VkImageCreateInfo& ci) 
     return false;
   }
 
-  // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL, so it must be a supported copy-destination layout
-  if (!hostImageCopyToShaderReadOnly_) {
+  // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL for sampled images and GENERAL otherwise, so that layout must be a
+  // supported copy destination
+  const bool isSampled = (ci.usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) != 0;
+  if (!(isSampled ? hostImageCopyToShaderReadOnly_ : hostImageCopyToGeneral_)) {
     return false;
   }
 
@@ -7981,9 +7992,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     props.pCopyDstLayouts = dstLayouts.data();
     vkGetPhysicalDeviceProperties2(vkPhysicalDevice_, &props2);
 
-    // imageData2D() copies into SHADER_READ_ONLY_OPTIMAL, so this is the only destination layout we ever need
+    // imageData2D() copies into whichever layout the uploaded image can use
     hostImageCopyToShaderReadOnly_ =
         std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) != dstLayouts.end();
+    hostImageCopyToGeneral_ = std::find(dstLayouts.begin(), dstLayouts.end(), VK_IMAGE_LAYOUT_GENERAL) != dstLayouts.end();
     hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
 
     // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local

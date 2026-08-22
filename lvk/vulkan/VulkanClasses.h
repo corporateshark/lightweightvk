@@ -889,6 +889,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
   // VK_EXT_host_image_copy
   bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
+  bool hostImageCopyToGeneral_ = false; // GENERAL is a usable copy destination (for images which cannot be sampled)
   bool hostImageCopyIdenticalMemoryTypeRequirements_ = false; // HOST_TRANSFER preserves memory type requirements
   uint32_t deviceLocalMemoryTypeMask_ = 0; // bitmask of device-local memory type indices
   std::vector<const char*> enabledInstanceExtensionNames_;
