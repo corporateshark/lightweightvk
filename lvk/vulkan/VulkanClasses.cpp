@@ -3374,6 +3374,15 @@ void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSiz
   LVK_ASSERT_MSG(ctx_->has_KHR_fragment_shading_rate_,
                  "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
   LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
+  // `VkPhysicalDeviceFragmentShadingRateKHR::sampleCounts` restricts some fragment sizes to fewer samples (e.g. 4x4 to 1 sample).
+  // It is not checked here because the pipeline used for the draw is not known yet - this is dynamic state
+  LVK_ASSERT_MSG(std::find_if(ctx_->deviceFragmentShadingRates_.cbegin(),
+                              ctx_->deviceFragmentShadingRates_.cend(),
+                              [&fragmentSize](const VkPhysicalDeviceFragmentShadingRateKHR& rate) {
+                                return rate.fragmentSize.width == fragmentSize.width &&
+                                       rate.fragmentSize.height == fragmentSize.height;
+                              }) != ctx_->deviceFragmentShadingRates_.cend(),
+                 "This fragment size is not in vkGetPhysicalDeviceFragmentShadingRatesKHR()");
 
   const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
   const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
@@ -8011,6 +8020,15 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     LLOGD("VK_EXT_host_image_copy: enabled (identicalMemoryTypeRequirements: %s, SHADER_READ_ONLY_OPTIMAL: %s)\n",
           hostImageCopyIdenticalMemoryTypeRequirements_ ? "true" : "false",
           hostImageCopyToShaderReadOnly_ ? "true" : "false");
+  }
+
+  if (has_KHR_fragment_shading_rate_) {
+    uint32_t numRates = 0;
+    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, nullptr));
+    deviceFragmentShadingRates_.assign(numRates,
+                                       VkPhysicalDeviceFragmentShadingRateKHR{
+                                           .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
+    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, deviceFragmentShadingRates_.data()));
   }
 
   // check extensions

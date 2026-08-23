@@ -837,6 +837,7 @@ class VulkanContext final : public IContext {
 
   std::vector<VkFormat> deviceDepthFormats_;
   std::vector<VkSurfaceFormat2KHR> deviceSurfaceFormats_;
+  std::vector<VkPhysicalDeviceFragmentShadingRateKHR> deviceFragmentShadingRates_; // vkGetPhysicalDeviceFragmentShadingRatesKHR()
   VkSurfaceCapabilities2KHR deviceSurfaceCaps_ = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
   std::vector<VkPresentModeKHR> devicePresentModes_;
 
