@@ -7403,14 +7403,14 @@ uint32_t lvk::VulkanContext::queryDevices(HWDeviceDesc* outDevices, uint32_t max
 
   for (uint32_t i = 0; i < deviceCount; ++i) {
     VkPhysicalDevice physicalDevice = vkDevices[i];
-    VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+    VkPhysicalDeviceProperties2 props2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
 
-    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(deviceProperties.deviceType);
+    const HWDeviceType deviceType = convertVulkanDeviceTypeToLVK(props2.properties.deviceType);
 
     if (outDevices && numCompatibleDevices < maxOutDevices) {
       outDevices[numCompatibleDevices] = {.guid = (uintptr_t)vkDevices[i], .type = deviceType};
-      strncpy(outDevices[numCompatibleDevices].name, deviceProperties.deviceName, strlen(deviceProperties.deviceName));
+      strncpy(outDevices[numCompatibleDevices].name, props2.properties.deviceName, strlen(props2.properties.deviceName));
       numCompatibleDevices++;
     }
   }
@@ -8010,11 +8010,11 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     hostImageCopyIdenticalMemoryTypeRequirements_ = props.identicalMemoryTypeRequirements == VK_TRUE;
 
     // device-local memory type mask, used to check whether HOST_TRANSFER images stay device-local
-    VkPhysicalDeviceMemoryProperties memoryProps;
-    vkGetPhysicalDeviceMemoryProperties(vkPhysicalDevice_, &memoryProps);
+    VkPhysicalDeviceMemoryProperties2 memProps2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+    vkGetPhysicalDeviceMemoryProperties2(vkPhysicalDevice_, &memProps2);
     deviceLocalMemoryTypeMask_ = 0;
-    for (uint32_t i = 0; i < memoryProps.memoryTypeCount; ++i) {
-      if (memoryProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+    for (uint32_t i = 0; i < memProps2.memoryProperties.memoryTypeCount; ++i) {
+      if (memProps2.memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
         deviceLocalMemoryTypeMask_ |= (1u << i);
       }
     }
