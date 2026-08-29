@@ -95,6 +95,8 @@ struct VulkanAppConfig {
   vec3 initialCameraUpVector = vec3(0.0f, 1.0f, 0.0f);
   uint64_t screenshotFrameNumber = 0; // frames start from 1
   const char* screenshotFileName = "screenshot.png";
+  const char* contentSubdir = "third-party/content/"; // searched for above the current directory
+  const char* thirdPartySubdir = "third-party/deps/src/"; // resolved against the same directory
   lvk::ContextConfig contextConfig;
 #if LVK_WITH_OPENXR
   bool enableOpenXR = false;

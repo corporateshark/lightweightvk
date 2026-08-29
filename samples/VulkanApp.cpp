@@ -347,17 +347,18 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       tarReader_ = std::make_unique<TarFileReader>(tarPath.c_str());
     }
 #else
-    path subdir("third-party/content/");
+    path subdir(cfg_.contentSubdir);
     path dir = current_path();
     // find the content somewhere above our current build directory
     while (dir != current_path().root_path() && !exists(dir / subdir)) {
       dir = dir.parent_path();
     }
     if (!exists(dir / subdir)) {
-      LLOGW("Cannot find the content directory. Run `deploy_content.py` before running this app.");
+      LLOGW("Cannot find the content directory `%s`. Run `deploy_content.py` or set VulkanAppConfig::contentSubdir.",
+            cfg_.contentSubdir);
       LVK_ASSERT(false);
     }
-    folderThirdParty_ = (dir / path("third-party/deps/src/")).string();
+    folderThirdParty_ = (dir / path(cfg_.thirdPartySubdir)).string();
     folderContentRoot_ = (dir / subdir).string();
 #endif // ANDROID
   }
