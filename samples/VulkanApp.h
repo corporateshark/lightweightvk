@@ -39,7 +39,9 @@ double glfwGetTime();
 #endif
 // clang-format on
 
+#if !defined(GLM_ENABLE_EXPERIMENTAL)
 #define GLM_ENABLE_EXPERIMENTAL
+#endif
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <shared/Camera.h>
@@ -61,6 +63,7 @@ double glfwGetTime();
 double glfwGetTime(); // backporting
 using KeyCallback = std::function<void(SDL_Window*, SDL_KeyboardEvent*)>;
 using MouseButtonCallback = std::function<void(SDL_Window*, SDL_MouseButtonEvent*)>;
+using ScrollCallback = std::function<void(SDL_Window*, SDL_MouseWheelEvent*)>;
 #endif
 
 using glm::mat3;
@@ -129,12 +132,18 @@ class VulkanApp {
   void addKeyCallback(GLFWkeyfun cb) {
     callbacksKey.push_back(cb);
   }
+  void addScrollCallback(GLFWscrollfun cb) {
+    callbacksScroll.push_back(cb);
+  }
 #elif LVK_WITH_SDL3
   void addMouseButtonCallback(MouseButtonCallback cb) {
     callbacksMouseButton.push_back(cb);
   }
   void addKeyCallback(KeyCallback cb) {
     callbacksKey.push_back(cb);
+  }
+  void addScrollCallback(ScrollCallback cb) {
+    callbacksScroll.push_back(cb);
   }
 #endif // ANDROID
 #if LVK_WITH_OPENXR
@@ -181,9 +190,11 @@ class VulkanApp {
 #if LVK_WITH_GLFW
   std::vector<GLFWmousebuttonfun> callbacksMouseButton;
   std::vector<GLFWkeyfun> callbacksKey;
+  std::vector<GLFWscrollfun> callbacksScroll;
 #elif LVK_WITH_SDL3
   std::vector<MouseButtonCallback> callbacksMouseButton;
   std::vector<KeyCallback> callbacksKey;
+  std::vector<ScrollCallback> callbacksScroll;
 #endif
 
   uint64_t frameCount_ = 0;

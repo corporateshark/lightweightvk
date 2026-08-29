@@ -469,6 +469,15 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
         cb(window, key, scancode, action, mods);
       }
     });
+    glfwSetScrollCallback(window_, [](GLFWwindow* window, double dx, double dy) {
+      VulkanApp* app = (VulkanApp*)glfwGetWindowUserPointer(window);
+      if (ImGui::GetIO().WantCaptureMouse) {
+        return;
+      }
+      for (auto& cb : app->callbacksScroll) {
+        cb(window, dx, dy);
+      }
+    });
   }
 #endif // LVK_WITH_GLFW
 
@@ -745,6 +754,11 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       case SDL_EVENT_MOUSE_WHEEL:
         io.MouseWheelH = event.wheel.x;
         io.MouseWheel = event.wheel.y;
+        if (!io.WantCaptureMouse) {
+          for (auto& cb : callbacksScroll) {
+            cb(window_, &event.wheel);
+          }
+        }
         break;
 
       case SDL_EVENT_MOUSE_MOTION:
