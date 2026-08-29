@@ -8803,6 +8803,30 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
   return swapchain_ ? Result() : Result(Result::Code::RuntimeError, "Failed to create swapchain");
 }
 
+lvk::Result lvk::VulkanContext::recreateSurface(void* window, void* display, uint32_t width, uint32_t height) {
+  if (!vkDevice_ || !immediate_) {
+    LLOGW("Call initContext() first");
+    return Result(Result::Code::RuntimeError, "Call initContext() first");
+  }
+
+  VK_ASSERT(vkDeviceWaitIdle(vkDevice_));
+
+  if (swapchain_) {
+    // the guard fence and any pending acquire belong to the swapchain that is going away
+    immediate_->setLastPresentSemaphore(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
+    swapchain_ = nullptr;
+  }
+
+  // the swapchain is gone, so the surface it was created from can go too
+  vkDestroySurfaceKHR(vkInstance_, vkSurface_, nullptr);
+  vkSurface_ = VK_NULL_HANDLE;
+
+  createSurface(window, display);
+
+  return initSwapchain(width, height);
+}
+
 lvk::Result lvk::VulkanContext::growDescriptorPool(VulkanContext::DescriptorSet& dset,
                                                    uint32_t maxTextures,
                                                    uint32_t maxSamplers,
