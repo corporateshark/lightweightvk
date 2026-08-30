@@ -2919,6 +2919,11 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, VK_FALSE);
 
+  if (ctx_->has_KHR_fragment_shading_rate_) {
+    // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
+    cmdSetFragmentShadingRate({}, ShadingRateCombinerOp_Keep, ShadingRateCombinerOp_Keep);
+  }
+
   vkCmdBeginRendering(wrapper_->cmdBuf_, &renderingInfo);
 }
 

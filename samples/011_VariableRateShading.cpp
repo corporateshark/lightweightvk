@@ -385,10 +385,6 @@ VULKAN_APP_MAIN {
       buffer.cmdBeginRendering(
           {.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, fbSwapchain, {.sampledImages = {offscreen_}});
       buffer.cmdBindRenderPipeline(pipelineUpscale_);
-      if (hasFSR) {
-        // the shading rate is dynamic state and would otherwise still apply to the upscale and UI
-        buffer.cmdSetFragmentShadingRate(lvk::Dimensions{1, 1});
-      }
       pc.texture0 = offscreen_.index();
       buffer.cmdPushConstants(pc);
       buffer.cmdDraw(3);
