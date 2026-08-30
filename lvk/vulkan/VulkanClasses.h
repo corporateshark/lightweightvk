@@ -804,9 +804,6 @@ class VulkanContext final : public IContext {
   // queried (not chained by default) - only added to vkFeatures10_ when VK_EXT_fragment_density_map is supported
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT vkFragmentDensityMapFeatures_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT};
-  // queried (not chained by default) - only added to vkFeatures10_ when VK_KHR_fragment_shading_rate is supported
-  VkPhysicalDeviceFragmentShadingRateFeaturesKHR vkFragmentShadingRateFeatures_ = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR};
   // provided by Vulkan 1.4
   VkPhysicalDeviceVulkan14Properties vkPhysicalDeviceVulkan14Properties_ = {
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,

@@ -2877,9 +2877,6 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     if (!fb.shadingRateAttachment)
       return VkRenderingFragmentShadingRateAttachmentInfoKHR{};
 
-    LVK_ASSERT_MSG(ctx_->vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
-                   "attachmentFragmentShadingRate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
-
     const Dimensions& texelSize = fb.shadingRateAttachmentTexelSize;
     const VkExtent2D& minTexelSize = ctx_->vkFragmentShadingRateProperties_.minFragmentShadingRateAttachmentTexelSize;
     const VkExtent2D& maxTexelSize = ctx_->vkFragmentShadingRateProperties_.maxFragmentShadingRateAttachmentTexelSize;
@@ -4905,8 +4902,8 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     usageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
   }
   if (desc.usage & lvk::TextureUsageBits_ShadingRateAttachment) {
-    LVK_ASSERT_MSG(vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
-                   "attachmentFragmentShadingRate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+    LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                   "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
     usageFlags |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
   }
 
@@ -7628,9 +7625,6 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   }
   if (config_.enableFragmentShadingRate && hasExtension(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, allDeviceExtensions)) {
     addNextPhysicalDeviceProperties(&vkFragmentShadingRateProperties_);
-    // check which features are supported before enabling them
-    vkFragmentShadingRateFeatures_.pNext = vkFeatures10_.pNext;
-    vkFeatures10_.pNext = &vkFragmentShadingRateFeatures_;
   }
 
   if (config_.vulkanVersion >= VulkanVersion_1_4) {
@@ -7877,7 +7871,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .meshShader = VK_TRUE,
       // VUID-VkPhysicalDeviceMeshShaderFeaturesEXT-primitiveFragmentShadingRateMeshShader-07033 requires `primitiveFragmentShadingRate`
       .primitiveFragmentShadingRateMeshShader = vkMeshShaderFeatures_.primitiveFragmentShadingRateMeshShader &&
-                                                vkFragmentShadingRateFeatures_.primitiveFragmentShadingRate,
+                                                has_KHR_fragment_shading_rate_,
   };
   VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR presentModeLatestReadyFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_MODE_FIFO_LATEST_READY_FEATURES_KHR,
@@ -7899,9 +7893,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   };
   VkPhysicalDeviceFragmentShadingRateFeaturesKHR fragmentShadingRateFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR,
-      .pipelineFragmentShadingRate = vkFragmentShadingRateFeatures_.pipelineFragmentShadingRate,
-      .primitiveFragmentShadingRate = vkFragmentShadingRateFeatures_.primitiveFragmentShadingRate,
-      .attachmentFragmentShadingRate = vkFragmentShadingRateFeatures_.attachmentFragmentShadingRate,
+      .pipelineFragmentShadingRate = VK_TRUE,
+      .primitiveFragmentShadingRate = VK_TRUE,
+      .attachmentFragmentShadingRate = VK_TRUE,
   };
 
   auto addExtension = [&allDeviceExtensions, this, &createInfoNext](const char* name, void* features = nullptr) mutable -> void {
