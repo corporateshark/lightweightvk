@@ -2878,8 +2878,8 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       return VkRenderingFragmentShadingRateAttachmentInfoKHR{};
 
     const Dimensions& texelSize = fb.shadingRateAttachmentTexelSize;
-    const VkExtent2D& minTexelSize = ctx_->vkFragmentShadingRateProperties_.minFragmentShadingRateAttachmentTexelSize;
-    const VkExtent2D& maxTexelSize = ctx_->vkFragmentShadingRateProperties_.maxFragmentShadingRateAttachmentTexelSize;
+    const Dimensions minTexelSize = ctx_->getShadingRateAttachmentMinTexelSize();
+    const Dimensions maxTexelSize = ctx_->getShadingRateAttachmentMaxTexelSize();
     LVK_ASSERT_MSG(texelSize.width >= minTexelSize.width && texelSize.width <= maxTexelSize.width &&
                        texelSize.height >= minTexelSize.height && texelSize.height <= maxTexelSize.height,
                    "Framebuffer::shadingRateAttachmentTexelSize is outside min/maxFragmentShadingRateAttachmentTexelSize");
@@ -3378,8 +3378,7 @@ void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSiz
   LVK_ASSERT_MSG(std::find_if(ctx_->deviceFragmentShadingRates_.cbegin(),
                               ctx_->deviceFragmentShadingRates_.cend(),
                               [&fragmentSize](const VkPhysicalDeviceFragmentShadingRateKHR& rate) {
-                                return rate.fragmentSize.width == fragmentSize.width &&
-                                       rate.fragmentSize.height == fragmentSize.height;
+                                return rate.fragmentSize.width == fragmentSize.width && rate.fragmentSize.height == fragmentSize.height;
                               }) != ctx_->deviceFragmentShadingRates_.cend(),
                  "This fragment size is not in vkGetPhysicalDeviceFragmentShadingRatesKHR()");
 
@@ -7041,6 +7040,20 @@ uint32_t lvk::VulkanContext::getFramebufferMSAABitMask() const {
   return limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
 }
 
+lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMinTexelSize() const {
+  LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  const VkExtent2D& size = vkFragmentShadingRateProperties_.minFragmentShadingRateAttachmentTexelSize;
+  return {.width = size.width, .height = size.height};
+}
+
+lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMaxTexelSize() const {
+  LVK_ASSERT_MSG(has_KHR_fragment_shading_rate_,
+                 "VK_KHR_fragment_shading_rate is not enabled (see `ContextConfig::enableFragmentShadingRate`)");
+  const VkExtent2D& size = vkFragmentShadingRateProperties_.maxFragmentShadingRateAttachmentTexelSize;
+  return {.width = size.width, .height = size.height};
+}
+
 double lvk::VulkanContext::getTimestampPeriodToMs() const {
   return double(getVkPhysicalDeviceProperties().limits.timestampPeriod) * 1e-6;
 }
@@ -8021,9 +8034,8 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (has_KHR_fragment_shading_rate_) {
     uint32_t numRates = 0;
     VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, nullptr));
-    deviceFragmentShadingRates_.assign(numRates,
-                                       VkPhysicalDeviceFragmentShadingRateKHR{
-                                           .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
+    deviceFragmentShadingRates_.assign(
+        numRates, VkPhysicalDeviceFragmentShadingRateKHR{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
     VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, deviceFragmentShadingRates_.data()));
   }
 

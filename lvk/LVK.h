@@ -1229,6 +1229,10 @@ class IContext {
   // MSAA level is supported if ((samples & bitmask) != 0), where samples must be power of two.
   virtual uint32_t getFramebufferMSAABitMask() const = 0;
 
+  // valid range for `Framebuffer::shadingRateAttachmentTexelSize` (requires VK_KHR_fragment_shading_rate)
+  [[nodiscard]] virtual Dimensions getShadingRateAttachmentMinTexelSize() const = 0;
+  [[nodiscard]] virtual Dimensions getShadingRateAttachmentMaxTexelSize() const = 0;
+
   virtual bool isExtensionEnabled(const char* ext) const = 0;
   virtual bool supportsAsyncCompute() const = 0;
 
