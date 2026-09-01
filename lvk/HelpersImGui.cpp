@@ -273,12 +273,6 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
 
   ImDrawData* dd = ImGui::GetDrawData();
 
-  const float fb_width = dd->DisplaySize.x * dd->FramebufferScale.x;
-  const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
-  if (fb_width <= 0 || fb_height <= 0 || dd->CmdLists.Size == 0) {
-    return;
-  }
-
   if (dd->Textures) {
     for (ImTextureData* tex : *dd->Textures) {
       switch (tex->Status) {
@@ -328,6 +322,13 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
         continue;
       }
     }
+  }
+
+  // textures were updated above even when there is nothing to render
+  const float fb_width = dd->DisplaySize.x * dd->FramebufferScale.x;
+  const float fb_height = dd->DisplaySize.y * dd->FramebufferScale.y;
+  if (fb_width <= 0 || fb_height <= 0 || !dd->CmdLists.Size) {
+    return;
   }
 
   cmdBuffer.cmdPushDebugGroupLabel("ImGui Rendering", 0xff00ff00);
