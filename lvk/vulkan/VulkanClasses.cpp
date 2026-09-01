@@ -16,9 +16,9 @@
 #include "VulkanClasses.h"
 #include "VulkanUtils.h"
 
-#include <SPIRV-Reflect/spirv_reflect.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <ldrutils/lutils/ScopeExit.h>
+#include <spirv_reflect.h>
 
 #if defined(VK_USE_PLATFORM_METAL_EXT)
 #include <vulkan/vulkan_metal.h>

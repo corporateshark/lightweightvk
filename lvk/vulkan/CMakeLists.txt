@@ -24,58 +24,67 @@ lvk_set_folder(LVKVulkan "LVK")
 lvk_setup_groups("${SRC_FILES}")
 lvk_setup_groups("${HEADER_FILES}")
 
-# SPIRV-Headers and SPIRV-Tools are added before glslang so its `if(NOT TARGET SPIRV-Tools-opt)` check skips its bundled External/ path.
-# cmake-format: off
-set(SPIRV_SKIP_TESTS        ON  CACHE BOOL "")
-set(SPIRV_SKIP_EXECUTABLES  ON  CACHE BOOL "")
-set(SPIRV_WERROR            OFF CACHE BOOL "")
-add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Headers "SPIRV-Headers")
-add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Tools   "SPIRV-Tools")
-foreach(t IN ITEMS
-    SPIRV-Headers
-    SPIRV-Tools-static
-    SPIRV-Tools-shared
-    SPIRV-Tools-opt
-    SPIRV-Tools-link
-    SPIRV-Tools-lint
-    SPIRV-Tools-reduce
-    SPIRV-Tools-diff
-    core_tables
-    extinst_tables
-    spirv-tools-tables
-    spirv-tools-build-version
-    spirv-tools-pkg-config
-    spirv-tools-vimsyntax
-    spirv-tools-header-DebugInfo
-    spirv-tools-header-OpenCLDebugInfo100
-    spirv-tools-header-NonSemanticShaderDebugInfo100
-    spirv-tools-check-python-types
-    spirv-tools-check-python-tests)
-  if(TARGET ${t})
-    lvk_set_folder(${t} "third-party/SPIRV-Tools")
+if(LVK_GLSLANG_EXTERNAL)
+  # Debian ships `glslang-config.cmake` in `glslang-dev`, which provides the namespaced targets used below.
+  # `SPIRV-Headers` and `SPIRV-Tools` are needed only to build the bundled `glslang`, so they are skipped here.
+  find_package(glslang CONFIG REQUIRED)
+  if(LVK_WITH_SPIRV_OPT)
+    find_package(SPIRV-Tools-opt CONFIG REQUIRED)
   endif()
-endforeach()
-if(TARGET spirv-tools-check-python-tests)
-  set_target_properties(spirv-tools-check-python-tests PROPERTIES EXCLUDE_FROM_ALL ON)
-endif()
-# cmake-format: on
+else()
+  # SPIRV-Headers and SPIRV-Tools are added before glslang so its `if(NOT TARGET SPIRV-Tools-opt)` check skips its bundled External/ path.
+  # cmake-format: off
+  set(SPIRV_SKIP_TESTS        ON  CACHE BOOL "")
+  set(SPIRV_SKIP_EXECUTABLES  ON  CACHE BOOL "")
+  set(SPIRV_WERROR            OFF CACHE BOOL "")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Headers "SPIRV-Headers")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Tools   "SPIRV-Tools")
+  foreach(t IN ITEMS
+      SPIRV-Headers
+      SPIRV-Tools-static
+      SPIRV-Tools-shared
+      SPIRV-Tools-opt
+      SPIRV-Tools-link
+      SPIRV-Tools-lint
+      SPIRV-Tools-reduce
+      SPIRV-Tools-diff
+      core_tables
+      extinst_tables
+      spirv-tools-tables
+      spirv-tools-build-version
+      spirv-tools-pkg-config
+      spirv-tools-vimsyntax
+      spirv-tools-header-DebugInfo
+      spirv-tools-header-OpenCLDebugInfo100
+      spirv-tools-header-NonSemanticShaderDebugInfo100
+      spirv-tools-check-python-types
+      spirv-tools-check-python-tests)
+    if(TARGET ${t})
+      lvk_set_folder(${t} "third-party/SPIRV-Tools")
+    endif()
+  endforeach()
+  if(TARGET spirv-tools-check-python-tests)
+    set_target_properties(spirv-tools-check-python-tests PROPERTIES EXCLUDE_FROM_ALL ON)
+  endif()
+  # cmake-format: on
 
-# glslang
-# cmake-format: off
-set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
-set(ENABLE_HLSL             OFF CACHE BOOL "")
-set(ENABLE_CTEST            OFF CACHE BOOL "")
-set(ENABLE_OPT              ON  CACHE BOOL "")
-set(ENABLE_SPVREMAPPER      OFF CACHE BOOL "")
-set(SKIP_GLSLANG_INSTALL    ON  CACHE BOOL "")
-add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/glslang "glslang")
-lvk_set_folder(GenericCodeGen     "third-party/glslang")
-lvk_set_folder(glslang            "third-party/glslang")
-lvk_set_folder(MachineIndependent "third-party/glslang")
-lvk_set_folder(OSDependent        "third-party/glslang")
-lvk_set_folder(SPIRV              "third-party/glslang")
-lvk_set_folder(glslang-default-resource-limits "third-party/glslang")
-# cmake-format: on
+  # glslang
+  # cmake-format: off
+  set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
+  set(ENABLE_HLSL             OFF CACHE BOOL "")
+  set(ENABLE_CTEST            OFF CACHE BOOL "")
+  set(ENABLE_OPT              ON  CACHE BOOL "")
+  set(ENABLE_SPVREMAPPER      OFF CACHE BOOL "")
+  set(SKIP_GLSLANG_INSTALL    ON  CACHE BOOL "")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/glslang "glslang")
+  lvk_set_folder(GenericCodeGen     "third-party/glslang")
+  lvk_set_folder(glslang            "third-party/glslang")
+  lvk_set_folder(MachineIndependent "third-party/glslang")
+  lvk_set_folder(OSDependent        "third-party/glslang")
+  lvk_set_folder(SPIRV              "third-party/glslang")
+  lvk_set_folder(glslang-default-resource-limits "third-party/glslang")
+  # cmake-format: on
+endif()
 
 # slang
 # cmake-format: off
@@ -130,10 +139,20 @@ endif()
 # cmake-format: on
 
 # SPIRV-Reflect
-set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "")
-set(SPIRV_REFLECT_STATIC_LIB ON  CACHE BOOL "")
-add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Reflect "SPIRV-Reflect")
-lvk_set_folder(spirv-reflect-static "third-party")
+if(LVK_SPIRV_REFLECT_EXTERNAL)
+  # Debian's `libspirv-reflect-dev` ships neither a CMake config nor a `.pc` file, so locate it by hand and
+  # wrap it into an imported target named like the bundled one.
+  find_path(LVK_SPIRV_REFLECT_INCLUDE_DIR spirv_reflect.h PATH_SUFFIXES spirv_reflect REQUIRED)
+  find_library(LVK_SPIRV_REFLECT_LIBRARY NAMES spirv-reflect-static REQUIRED)
+  add_library(spirv-reflect-static STATIC IMPORTED GLOBAL)
+  set_target_properties(spirv-reflect-static PROPERTIES IMPORTED_LOCATION "${LVK_SPIRV_REFLECT_LIBRARY}"
+                        INTERFACE_INCLUDE_DIRECTORIES "${LVK_SPIRV_REFLECT_INCLUDE_DIR}")
+else()
+  set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "")
+  set(SPIRV_REFLECT_STATIC_LIB ON  CACHE BOOL "")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Reflect "SPIRV-Reflect")
+  lvk_set_folder(spirv-reflect-static "third-party")
+endif()
 
 find_package(Vulkan REQUIRED)
 
@@ -143,7 +162,7 @@ if(LVK_WITH_SPIRV_OPT)
 endif()
 
 target_link_libraries(LVKVulkan INTERFACE LVKLibrary)
-target_link_libraries(LVKVulkan PRIVATE glslang SPIRV glslang-default-resource-limits)
+target_link_libraries(LVKVulkan PRIVATE glslang::glslang glslang::SPIRV glslang::glslang-default-resource-limits)
 target_link_libraries(LVKVulkan PRIVATE spirv-reflect-static)
 if(LVK_WITH_MINILOG)
   target_link_libraries(LVKVulkan INTERFACE minilog)
