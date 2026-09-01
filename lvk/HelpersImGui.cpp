@@ -435,6 +435,9 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     vtxOffset += cmdList->VtxBuffer.Size;
   }
 
+  // restore the full framebuffer scissor rect
+  cmdBuffer.cmdBindScissorRect({.width = uint32_t(fb_width), .height = uint32_t(fb_height)});
+
   cmdBuffer.cmdPopDebugGroupLabel();
 }
 
