@@ -651,6 +651,14 @@ struct VertexInput final {
   uint32_t getVertexSize() const;
 };
 
+enum ColorComponentBits : uint8_t {
+  ColorComponentBit_R = 1 << 0,
+  ColorComponentBit_G = 1 << 1,
+  ColorComponentBit_B = 1 << 2,
+  ColorComponentBit_A = 1 << 3,
+  ColorComponentBit_All = ColorComponentBit_R | ColorComponentBit_G | ColorComponentBit_B | ColorComponentBit_A,
+};
+
 struct ColorAttachment {
   Format format = Format_Invalid;
   bool blendEnabled = false;
@@ -660,6 +668,7 @@ struct ColorAttachment {
   BlendFactor srcAlphaBlendFactor = BlendFactor_One;
   BlendFactor dstRGBBlendFactor = BlendFactor_Zero;
   BlendFactor dstAlphaBlendFactor = BlendFactor_Zero;
+  uint8_t colorWriteMask = ColorComponentBit_All;
 };
 
 struct ShaderModuleDesc {

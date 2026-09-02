@@ -56,6 +56,10 @@ static_assert(lvk::ShadingRateCombinerOp_Replace == (uint32_t)VK_FRAGMENT_SHADIN
 static_assert(lvk::ShadingRateCombinerOp_Min == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MIN_KHR);
 static_assert(lvk::ShadingRateCombinerOp_Max == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MAX_KHR);
 static_assert(lvk::ShadingRateCombinerOp_Mul == (uint32_t)VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR);
+static_assert(lvk::ColorComponentBit_R == (uint32_t)VK_COLOR_COMPONENT_R_BIT);
+static_assert(lvk::ColorComponentBit_G == (uint32_t)VK_COLOR_COMPONENT_G_BIT);
+static_assert(lvk::ColorComponentBit_B == (uint32_t)VK_COLOR_COMPONENT_B_BIT);
+static_assert(lvk::ColorComponentBit_A == (uint32_t)VK_COLOR_COMPONENT_A_BIT);
 static_assert(sizeof(lvk::AccelStructInstance) == sizeof(VkAccelerationStructureInstanceKHR));
 static_assert(sizeof(lvk::mat3x4) == sizeof(VkTransformMatrixKHR));
 static_assert(sizeof(lvk::ClearColorValue) == sizeof(VkClearColorValue));
@@ -5627,7 +5631,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
           .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
           .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
           .alphaBlendOp = VK_BLEND_OP_ADD,
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
       };
     } else {
       colorBlendAttachmentStates[i] = VkPipelineColorBlendAttachmentState{
@@ -5638,7 +5642,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
           .srcAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.srcAlphaBlendFactor),
           .dstAlphaBlendFactor = blendFactorToVkBlendFactor(attachment.dstAlphaBlendFactor),
           .alphaBlendOp = blendOpToVkBlendOp(attachment.alphaBlendOp),
-          .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+          .colorWriteMask = (VkColorComponentFlags)attachment.colorWriteMask,
       };
     }
   }
