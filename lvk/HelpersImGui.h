@@ -45,6 +45,7 @@ class ImGuiRenderer {
   lvk::Holder<lvk::SamplerHandle> samplerClamp_;
   struct ImGuiRendererImpl* pimpl_ = nullptr;
   lvk::LVKwindow* window_ = nullptr;
+  bool hasUnusedAttachments_ = false; // VK_EXT_dynamic_rendering_unused_attachments
 
   uint32_t frameIndex_ = 0;
 

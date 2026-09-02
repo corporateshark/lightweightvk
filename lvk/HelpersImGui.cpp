@@ -156,7 +156,8 @@ ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, cons
 ImGuiRenderer::ImGuiRenderer(lvk::IContext& device, lvk::LVKwindow* window, const void* fontData, size_t fontDataSize, float fontSizePixels)
 : ctx_(device)
 , pimpl_(new ImGuiRendererImpl)
-, window_(window) {
+, window_(window)
+, hasUnusedAttachments_(device.isExtensionEnabled("VK_EXT_dynamic_rendering_unused_attachments")) {
   ImGui::CreateContext();
 #if defined(LVK_WITH_IMPLOT)
   ImPlot::CreateContext();
@@ -244,7 +245,9 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
 
   const lvk::Format colorFormat = ctx_.getFormat(desc.color[0].texture);
   if (pipeline_.empty() || pipelineColorFormat_ != colorFormat) {
-    pipeline_ = createNewPipelineState(desc);
+    // ImGui writes only into the first color attachment; `VK_EXT_dynamic_rendering_unused_attachments` allows us to leave all the
+    // other attachments out of the pipeline, so that it can be used with any framebuffer layout
+    pipeline_ = createNewPipelineState(hasUnusedAttachments_ ? lvk::Framebuffer{.color = {{.texture = desc.color[0].texture}}} : desc);
     pipelineColorFormat_ = colorFormat;
   }
 #if LVK_WITH_GLFW || LVK_WITH_SDL3
