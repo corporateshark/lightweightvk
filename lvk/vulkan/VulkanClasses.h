@@ -887,6 +887,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_fragment_density_map_ = false;
   bool has_EXT_fragment_density_map2_ = false;
   bool has_EXT_host_image_copy_ = false; // promoted to Vulkan 1.4
+  bool has_EXT_dynamic_rendering_unused_attachments_ = false;
   // VK_EXT_host_image_copy
   bool hostImageCopyToShaderReadOnly_ = false; // SHADER_READ_ONLY_OPTIMAL is a usable copy destination
   bool hostImageCopyToGeneral_ = false; // GENERAL is a usable copy destination (for images which cannot be sampled)

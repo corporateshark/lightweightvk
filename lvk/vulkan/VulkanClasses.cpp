@@ -2995,7 +2995,8 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
   const bool hasDepthAttachmentPipeline = rps->desc_.depthFormat != Format_Invalid;
   const bool hasDepthAttachmentPass = !framebuffer_.depthStencil.texture.empty();
 
-  if (hasDepthAttachmentPipeline != hasDepthAttachmentPass) {
+  // VK_EXT_dynamic_rendering_unused_attachments allows the depth attachments of a render pass and a render pipeline to mismatch
+  if (hasDepthAttachmentPipeline != hasDepthAttachmentPass && !ctx_->has_EXT_dynamic_rendering_unused_attachments_) {
     LVK_ASSERT(false);
     LLOGW("Make sure your render pass and render pipeline both have matching depth attachments");
   }
@@ -7899,6 +7900,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
       .hostImageCopy = VK_TRUE,
   };
+  VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT dynamicRenderingUnusedAttachmentsFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT,
+      .dynamicRenderingUnusedAttachments = VK_TRUE,
+  };
   VkPhysicalDeviceFragmentDensityMapFeaturesEXT fragmentDensityMapFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT,
       .fragmentDensityMap = VK_TRUE,
@@ -7996,6 +8001,9 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, has_EXT_fragment_density_map_, &fragmentDensityMapFeatures);
     addOptionalExtension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME, has_EXT_fragment_density_map2_, &fragmentDensityMap2Features);
   }
+  addOptionalExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME,
+                       has_EXT_dynamic_rendering_unused_attachments_,
+                       &dynamicRenderingUnusedAttachmentsFeatures);
   addOptionalExtension(VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME, has_KHR_shared_presentable_image_);
   addOptionalExtension(
       VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, has_KHR_present_mode_fifo_latest_ready_, &presentModeLatestReadyFeatures);

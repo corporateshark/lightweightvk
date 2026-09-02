@@ -30,6 +30,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * optional **VK_KHR_fragment_shading_rate**
    * optional **VK_EXT_fragment_density_map**
    * optional **VK_EXT_fragment_density_map2**
+   * optional **VK_EXT_dynamic_rendering_unused_attachments**
    * optional **VK_EXT_host_image_copy**
    * optional **VK_EXT_layer_settings**
    * optional **VK_EXT_mesh_shader**
