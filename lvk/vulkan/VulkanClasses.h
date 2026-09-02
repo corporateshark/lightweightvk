@@ -248,6 +248,15 @@ class VulkanImmediateCommands final {
   uint32_t submitCounter_ = 1;
 };
 
+// the properties of a "render pass" a VkPipeline is created for; the VkPipeline has to be recreated whenever they change
+struct RenderPassState final {
+  uint32_t viewMask = 0;
+  uint32_t hasAttachmentFDM : 1 = 0; // VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT
+  uint32_t hasAttachmentFSR : 1 = 0; // VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+
+  bool operator==(const RenderPassState&) const = default;
+};
+
 struct RenderPipelineState final {
   RenderPipelineDesc desc_;
 
@@ -268,7 +277,7 @@ struct RenderPipelineState final {
 
   void* specConstantDataStorage_ = nullptr;
 
-  uint32_t viewMask_ = 0;
+  RenderPassState renderPassState_ = {}; // the "render pass" this VkPipeline was created for
 };
 
 class VulkanPipelineBuilder final {
@@ -532,7 +541,7 @@ class CommandBuffer final : public ICommandBuffer {
   VkPipeline lastPipelineBound_ = VK_NULL_HANDLE;
 
   bool isRendering_ = false;
-  uint32_t viewMask_ = 0;
+  RenderPassState renderPassState_ = {}; // the "render pass" currently being recorded
 
   lvk::RenderPipelineHandle currentPipelineGraphics_ = {};
   lvk::ComputePipelineHandle currentPipelineCompute_ = {};
@@ -669,7 +678,7 @@ class VulkanContext final : public IContext {
   ///////////////
 
   VkPipeline getVkPipeline(ComputePipelineHandle handle);
-  VkPipeline getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask);
+  VkPipeline getVkPipeline(RenderPipelineHandle handle, RenderPassState passState);
   VkPipeline getVkPipeline(RayTracingPipelineHandle handle);
 
   uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);

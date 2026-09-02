@@ -2662,7 +2662,11 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   LVK_ASSERT(!isRendering_);
 
   isRendering_ = true;
-  viewMask_ = renderPass.viewMask;
+  renderPassState_ = {
+      .viewMask = renderPass.viewMask,
+      .hasAttachmentFDM = fb.fragmentDensityMap.valid(),
+      .hasAttachmentFSR = fb.shadingRateAttachment.valid(),
+  };
 
   addCrossQueueDependencies(deps);
   cmdTransitionToShaderReadOnly(deps.sampledImages, {});
@@ -2780,7 +2784,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     colorAttachments[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_),
+        .imageView = colorTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, renderPassState_.viewMask),
         .imageLayout = colorTexture.vkImageLayout_, // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = (colorSamples > 1) ? resolveModeToVkResolveModeFlagBits(descColor.resolveMode, VK_RESOLVE_MODE_FLAG_BITS_MAX_ENUM)
                                           : VK_RESOLVE_MODE_NONE,
@@ -2798,7 +2802,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer attachment should contain a resolve texture");
       lvk::VulkanImage& colorResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       colorAttachments[i].resolveImageView =
-          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, viewMask_);
+          colorResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descColor.level, descColor.layer, renderPassState_.viewMask);
       colorAttachments[i].resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
   }
@@ -2812,7 +2816,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     depthAttachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
-        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_),
+        .imageView = depthTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, renderPassState_.viewMask),
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
@@ -2829,7 +2833,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
       LVK_ASSERT_MSG(!attachment.resolveTexture.empty(), "Framebuffer depth attachment should contain a resolve texture");
       lvk::VulkanImage& depthResolveTexture = *ctx_->texturesPool_.get(attachment.resolveTexture);
       depthAttachment.resolveImageView =
-          depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, viewMask_);
+          depthResolveTexture.getOrCreateVkImageViewForFramebuffer(*ctx_, descDepth.level, descDepth.layer, renderPassState_.viewMask);
       depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       depthAttachment.resolveMode =
           resolveModeToVkResolveModeFlagBits(descDepth.resolveMode, ctx_->vkPhysicalDeviceVulkan12Properties_.supportedDepthResolveModes);
@@ -3005,7 +3009,7 @@ void lvk::CommandBuffer::cmdBindRenderPipeline(lvk::RenderPipelineHandle handle)
     LLOGW("Make sure your render pass and render pipeline both have matching depth attachments");
   }
 
-  VkPipeline pipeline = ctx_->getVkPipeline(handle, viewMask_);
+  VkPipeline pipeline = ctx_->getVkPipeline(handle, renderPassState_);
 
   LVK_ASSERT(pipeline != VK_NULL_HANDLE);
 
@@ -5567,7 +5571,7 @@ const VkSamplerYcbcrConversionInfo* lvk::VulkanContext::getOrCreateYcbcrConversi
   return &pimpl_->ycbcrConversionData_[format].info;
 }
 
-VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32_t viewMask) {
+VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, RenderPassState passState) {
   lvk::RenderPipelineState* rps = renderPipelinesPool_.get(handle);
 
   if (!rps) {
@@ -5591,14 +5595,14 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
 
   const DescriptorSet& dset = DSets_[lastUpdatedDSet_];
 
-  if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->viewMask_ != viewMask) {
+  if (rps->lastVkDescriptorSetLayout_ != dset.vkDSL || rps->renderPassState_ != passState) {
     deferredTask(std::packaged_task<void()>(
         [device = getVkDevice(), pipeline = rps->pipeline_]() { vkDestroyPipeline(device, pipeline, nullptr); }));
     deferredTask(std::packaged_task<void()>(
         [device = getVkDevice(), layout = rps->pipelineLayout_]() { vkDestroyPipelineLayout(device, layout, nullptr); }));
     rps->pipeline_ = VK_NULL_HANDLE;
     rps->lastVkDescriptorSetLayout_ = dset.vkDSL;
-    rps->viewMask_ = viewMask;
+    rps->renderPassState_ = passState;
   }
 
   if (rps->pipeline_ != VK_NULL_HANDLE) {
@@ -5737,9 +5741,9 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
-      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, has_KHR_fragment_shading_rate_)
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
       // from VK_EXT_fragment_density_map
-      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, has_EXT_fragment_density_map_)
+      .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT, passState.hasAttachmentFDM)
       .primitiveTopology(topologyToVkPrimitiveTopology(desc.topology))
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
@@ -5775,7 +5779,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, uint32
       .cullMode(cullModeToVkCullMode(desc.cullMode))
       .frontFace(windingModeToVkFrontFace(desc.frontFace))
       .vertexInputState(ciVertexInputState)
-      .viewMask(viewMask)
+      .viewMask(passState.viewMask)
       .colorAttachments(colorBlendAttachmentStates, colorAttachmentFormats, numColorAttachments)
       .depthAttachmentFormat(formatToVkFormat(desc.depthFormat))
       .stencilAttachmentFormat(formatToVkFormat(desc.stencilFormat))
