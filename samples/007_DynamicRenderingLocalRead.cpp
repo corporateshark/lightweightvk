@@ -97,10 +97,9 @@ DeferredVSOutput vertexMain(uint vertexId : SV_VertexID) {
 }
 
 struct DeferredFSOutput {
-  float4 fragColor : SV_Target0; // unused
-  float4 albedo    : SV_Target1;
-  float4 normal    : SV_Target2;
-  float4 worldPos  : SV_Target3;
+  [[vk::location(1)]] float4 albedo   : SV_Target1;
+  [[vk::location(2)]] float4 normal   : SV_Target2;
+  [[vk::location(3)]] float4 worldPos : SV_Target3;
 };
 
 static const float kHeightScale   = 0.03;
@@ -178,7 +177,6 @@ DeferredFSOutput fragmentMain(DeferredVSOutput input) {
   // mul(nm, TBN) = nm.x*T + nm.y*B + nm.z*N — tangent -> world
   float3 n  = normalize(mul(nm, TBN));
 
-  out.fragColor = float4(0, 0, 0, 1);
   out.albedo   = 10.0 * textureBindless2D(input.textureId, 0, uv);
   out.normal   = float4(n * 0.5 + 0.5, 1.0);
   out.worldPos = float4(input.worldPos, 1.0);
@@ -296,7 +294,6 @@ layout (location=4) in flat uint in_NormalId;
 layout (location=5) in flat uint in_HeightId;
 layout (location=6) in vec3 in_EyeDir;
 
-layout (location=0) out vec4 out_FragColor; // unused
 layout (location=1) out vec4 out_Albedo;
 layout (location=2) out vec4 out_Normal;
 layout (location=3) out vec4 out_WorldPos;
@@ -541,7 +538,8 @@ VULKAN_APP_MAIN {
         .smFrag = fragDeferred,
         .color =
             {
-                {.format = ctx->getSwapchainFormat()},
+                // this pass writes only into the G-buffer attachments below
+                {.format = ctx->getSwapchainFormat(), .colorWriteMask = 0},
                 {.format = ctx->getFormat(texAlbedo)},
                 {.format = ctx->getFormat(texNormal)},
                 {.format = ctx->getFormat(texWorldPos)},
@@ -556,9 +554,10 @@ VULKAN_APP_MAIN {
         .color =
             {
                 {.format = ctx->getSwapchainFormat()},
-                {.format = ctx->getFormat(texAlbedo)},
-                {.format = ctx->getFormat(texNormal)},
-                {.format = ctx->getFormat(texWorldPos)},
+                // these are read as input attachments here, this pass writes only into the swapchain image
+                {.format = ctx->getFormat(texAlbedo), .colorWriteMask = 0},
+                {.format = ctx->getFormat(texNormal), .colorWriteMask = 0},
+                {.format = ctx->getFormat(texWorldPos), .colorWriteMask = 0},
             },
         .debugName = "Pipeline: compose",
     });
