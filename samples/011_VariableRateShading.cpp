@@ -210,6 +210,7 @@ VULKAN_APP_MAIN {
 
     // one texel of the shading rate attachment covers this many pixels; must be within the min/max the device reports
     const lvk::Dimensions fsrTexelSize = hasFSR ? ctx->getShadingRateAttachmentMinTexelSize() : lvk::Dimensions{};
+    const lvk::Dimensions fdmTexelSize = hasFDM ? ctx->getFragmentDensityMapMinTexelSize() : lvk::Dimensions{};
 
 #if defined(LVK_DEMO_WITH_SLANG)
     const lvk::ShaderModuleDesc descVert = {codeSlang, "vertexMain", lvk::Stage_Vert, "Shader Module: main (vert)"};
@@ -276,22 +277,26 @@ VULKAN_APP_MAIN {
     lvk::Holder<lvk::TextureHandle> shadingRateMap_;
     lvk::Dimensions offscreenSize = {0, 0};
 
-    // maxFragmentDensityTexelSize is at least (1,1) and the map has only a lower size bound, so a full-resolution map is always valid.
-    // A real renderer would query the limit and use a much smaller map.
+    // one texel of the map covers `fdmTexelSize` pixels, so the map cannot be larger than `size / fdmTexelSize`
     const auto createDensityMap = [&](const lvk::Dimensions& size) {
+      const lvk::Dimensions mapSize = {(size.width + fdmTexelSize.width - 1) / fdmTexelSize.width,
+                                       (size.height + fdmTexelSize.height - 1) / fdmTexelSize.height};
       // RG_UN8: R = shading density along X, G = along Y, both in (0..1], 1.0 = full rate
-      std::vector<uint8_t> texels(size.width * size.height * 2);
-      for (uint32_t y = 0; y != size.height; y++) {
-        for (uint32_t x = 0; x != size.width; x++) {
-          // full density in the center falling off towards the edges; the distance is in [0, 1] so no clamping is needed
-          const uint8_t value = (uint8_t)(glm::mix(1.0f, 0.25f, radialDistance(x, y, size.width, size.height)) * 255.0f + 0.5f);
-          texels[(y * size.width + x) * 2 + 0] = value;
-          texels[(y * size.width + x) * 2 + 1] = value;
+      std::vector<uint8_t> texels(mapSize.width * mapSize.height * 2);
+      for (uint32_t y = 0; y != mapSize.height; y++) {
+        for (uint32_t x = 0; x != mapSize.width; x++) {
+          // the same foveation zones as the shading rate attachment; the distance is in [0, 1] so no clamping is needed
+          const float dist = radialDistance(x, y, mapSize.width, mapSize.height);
+          const uint32_t log2Size = dist < 0.33f ? 0u : (dist < 0.66f ? 1u : 2u);
+          // the density is the reciprocal of the fragment size: 1.0 -> 1x1, 0.5 -> 2x2, 0.25 -> 4x4
+          const uint8_t value = (uint8_t)(255.0f / (float)(1u << log2Size) + 0.5f);
+          texels[(y * mapSize.width + x) * 2 + 0] = value;
+          texels[(y * mapSize.width + x) * 2 + 1] = value;
         }
       }
       densityMap_ = ctx->createTexture({
           .format = lvk::Format_RG_UN8,
-          .dimensions = size,
+          .dimensions = mapSize,
           .usage = lvk::TextureUsageBits_FragmentDensityMap,
           .data = texels.data(),
           .debugName = "Fragment Density Map",
