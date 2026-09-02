@@ -7064,6 +7064,12 @@ lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMaxTexelSize() const
   return {.width = size.width, .height = size.height};
 }
 
+lvk::Dimensions lvk::VulkanContext::getFragmentDensityMapMinTexelSize() const {
+  LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not enabled");
+  const VkExtent2D& size = vkFragmentDensityMapProperties_.minFragmentDensityTexelSize;
+  return {.width = size.width, .height = size.height};
+}
+
 double lvk::VulkanContext::getTimestampPeriodToMs() const {
   return double(getVkPhysicalDeviceProperties().limits.timestampPeriod) * 1e-6;
 }

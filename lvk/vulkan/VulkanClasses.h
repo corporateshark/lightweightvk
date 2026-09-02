@@ -654,6 +654,7 @@ class VulkanContext final : public IContext {
   uint32_t getFramebufferMSAABitMask() const override;
   [[nodiscard]] Dimensions getShadingRateAttachmentMinTexelSize() const override;
   [[nodiscard]] Dimensions getShadingRateAttachmentMaxTexelSize() const override;
+  [[nodiscard]] Dimensions getFragmentDensityMapMinTexelSize() const override;
   bool isExtensionEnabled(const char* ext) const override;
   bool supportsAsyncCompute() const override {
     return immediateCompute_ != nullptr;

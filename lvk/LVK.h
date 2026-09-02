@@ -1242,6 +1242,10 @@ class IContext {
   [[nodiscard]] virtual Dimensions getShadingRateAttachmentMinTexelSize() const = 0;
   [[nodiscard]] virtual Dimensions getShadingRateAttachmentMaxTexelSize() const = 0;
 
+  // one texel of `Framebuffer::fragmentDensityMap` covers at least this many pixels,
+  // so the FDM can be at most `framebufferSize / minTexelSize` (requires VK_EXT_fragment_density_map)
+  [[nodiscard]] virtual Dimensions getFragmentDensityMapMinTexelSize() const = 0;
+
   virtual bool isExtensionEnabled(const char* ext) const = 0;
   virtual bool supportsAsyncCompute() const = 0;
 
