@@ -373,8 +373,8 @@ void ImGuiRenderer::endFrame(lvk::ICommandBuffer& cmdBuffer) {
     drawableData.numAllocatedVerteices_ = dd->TotalVtxCount;
   }
 
-  // upload vertex/index buffers
-  {
+  // upload vertex/index buffers; a non-empty list of draw commands can still contain no vertices (e.g. only user callbacks)
+  if (dd->TotalVtxCount) {
     ImDrawVert* vtx = (ImDrawVert*)ctx_.getMappedPtr(drawableData.vb_);
     uint16_t* idx = (uint16_t*)ctx_.getMappedPtr(drawableData.ib_);
     for (const ImDrawList* cmdList : dd->CmdLists) {
