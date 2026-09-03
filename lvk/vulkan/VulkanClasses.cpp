@@ -3063,10 +3063,13 @@ void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer
 void lvk::CommandBuffer::cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) {
   lvk::VulkanBuffer* buf = ctx_->buffersPool_.get(indexBuffer);
 
-  LVK_ASSERT(buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+  LVK_ASSERT(!buf || buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+  LVK_ASSERT_MSG(buf || ctx_->has_KHR_maintenance6_, "An empty index buffer requires `.maintenance6`");
+  LVK_ASSERT_MSG(buf || bufferOffset == 0, "An empty index buffer requires a zero `bufferOffset`");
 
   const VkIndexType type = indexFormatToVkIndexType(indexFormat);
-  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf->vkBuffer_, bufferOffset, bufferSize, type); // TODO: remove KHR to update to Vulkan 1.4
+  // TODO: remove KHR to update to Vulkan 1.4
+  vkCmdBindIndexBuffer2KHR(wrapper_->cmdBuf_, buf ? buf->vkBuffer_ : VK_NULL_HANDLE, bufferOffset, bufferSize, type);
 }
 
 void lvk::CommandBuffer::cmdPushConstants(const void* data, size_t size, size_t offset) {
