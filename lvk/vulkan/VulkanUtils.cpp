@@ -1179,7 +1179,10 @@ VkPipelineShaderStageCreateInfo lvk::getPipelineShaderStageCreateInfo(VkShaderSt
   };
 }
 
-static uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) {
+static uint32_t findMemoryType(VkPhysicalDevice physDev,
+                               uint32_t memoryTypeBits,
+                               VkMemoryPropertyFlags flags,
+                               VkMemoryPropertyFlags* outMemoryProperties = nullptr) {
   VkPhysicalDeviceMemoryProperties2 props = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
   };
@@ -1188,11 +1191,19 @@ static uint32_t findMemoryType(VkPhysicalDevice physDev, uint32_t memoryTypeBits
   for (uint32_t i = 0; i < props.memoryProperties.memoryTypeCount; i++) {
     const bool hasProperties = (props.memoryProperties.memoryTypes[i].propertyFlags & flags) == flags;
     if ((memoryTypeBits & (1 << i)) && hasProperties) {
+      if (outMemoryProperties) {
+        // the memory type can have more properties than the requested ones
+        *outMemoryProperties = props.memoryProperties.memoryTypes[i].propertyFlags;
+      }
       return i;
     }
   }
 
   assert(false);
+
+  if (outMemoryProperties) {
+    *outMemoryProperties = 0;
+  }
 
   return 0;
 }
@@ -1201,7 +1212,8 @@ VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
                               VkDevice device,
                               const VkMemoryRequirements2* memRequirements,
                               VkMemoryPropertyFlags props,
-                              VkDeviceMemory* outMemory) {
+                              VkDeviceMemory* outMemory,
+                              VkMemoryPropertyFlags* outMemoryProperties) {
   assert(memRequirements);
 
   const VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo = {
@@ -1212,7 +1224,7 @@ VkResult lvk::allocateMemory2(VkPhysicalDevice physDev,
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &memoryAllocateFlagsInfo,
       .allocationSize = memRequirements->memoryRequirements.size,
-      .memoryTypeIndex = findMemoryType(physDev, memRequirements->memoryRequirements.memoryTypeBits, props),
+      .memoryTypeIndex = findMemoryType(physDev, memRequirements->memoryRequirements.memoryTypeBits, props, outMemoryProperties),
   };
 
   return vkAllocateMemory(device, &ai, nullptr, outMemory);

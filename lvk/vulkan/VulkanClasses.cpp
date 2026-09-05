@@ -8699,12 +8699,12 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
           .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,
       };
       vkGetBufferMemoryRequirements2(vkDevice_, &ri, &requirements);
-      if (requirements.memoryRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
-        buf.isCoherentMemory_ = true;
-      }
 
-      VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &requirements, memFlags, &buf.vkMemory_));
+      // `memFlags` are only the required properties, hence ask which memory type we actually got
+      VkMemoryPropertyFlags allocMemFlags = 0;
+      VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &requirements, memFlags, &buf.vkMemory_, &allocMemFlags));
       VK_ASSERT(vkBindBufferMemory(vkDevice_, buf.vkBuffer_, buf.vkMemory_, 0));
+      buf.isCoherentMemory_ = (allocMemFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
       buf.vkMemorySize_ = requirements.memoryRequirements.size;
     }
 
