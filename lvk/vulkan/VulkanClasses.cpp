@@ -839,6 +839,31 @@ struct VulkanContextImpl final {
 
 } // namespace lvk
 
+namespace {
+
+// `vkFlushMappedMemoryRanges()` and `vkInvalidateMappedMemoryRanges()` require the range to be aligned to `nonCoherentAtomSize`
+VkMappedMemoryRange getAlignedMemoryRange(VkDeviceMemory memory,
+                                          VkDeviceSize offset,
+                                          VkDeviceSize size,
+                                          VkDeviceSize memorySize,
+                                          VkDeviceSize atomSize) {
+  LVK_ASSERT(atomSize);
+
+  const VkDeviceSize alignedOffset = (offset / atomSize) * atomSize;
+  const VkDeviceSize alignedEnd = ((offset + size + atomSize - 1) / atomSize) * atomSize;
+  // the range should end either on a `nonCoherentAtomSize` boundary or at the end of the memory allocation
+  const VkDeviceSize end = alignedEnd < memorySize ? alignedEnd : memorySize;
+
+  return VkMappedMemoryRange{
+      .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+      .memory = memory,
+      .offset = alignedOffset,
+      .size = end - alignedOffset,
+  };
+}
+
+} // namespace
+
 void lvk::VulkanBuffer::flushMappedMemory(const VulkanContext& ctx, VkDeviceSize offset, VkDeviceSize size) const {
   if (!LVK_VERIFY(isMapped())) {
     return;
@@ -847,12 +872,8 @@ void lvk::VulkanBuffer::flushMappedMemory(const VulkanContext& ctx, VkDeviceSize
   if (LVK_VULKAN_USE_VMA) {
     vmaFlushAllocation((VmaAllocator)ctx.getVmaAllocator(), vmaAllocation_, offset, size);
   } else {
-    const VkMappedMemoryRange range = {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = vkMemory_,
-        .offset = offset,
-        .size = size,
-    };
+    const VkMappedMemoryRange range =
+        getAlignedMemoryRange(vkMemory_, offset, size, vkMemorySize_, ctx.getVkPhysicalDeviceProperties().limits.nonCoherentAtomSize);
     vkFlushMappedMemoryRanges(ctx.getVkDevice(), 1, &range);
   }
 }
@@ -865,12 +886,8 @@ void lvk::VulkanBuffer::invalidateMappedMemory(const VulkanContext& ctx, VkDevic
   if (LVK_VULKAN_USE_VMA) {
     vmaInvalidateAllocation(static_cast<VmaAllocator>(ctx.getVmaAllocator()), vmaAllocation_, offset, size);
   } else {
-    const VkMappedMemoryRange range = {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = vkMemory_,
-        .offset = offset,
-        .size = size,
-    };
+    const VkMappedMemoryRange range =
+        getAlignedMemoryRange(vkMemory_, offset, size, vkMemorySize_, ctx.getVkPhysicalDeviceProperties().limits.nonCoherentAtomSize);
     vkInvalidateMappedMemoryRanges(ctx.getVkDevice(), 1, &range);
   }
 }
@@ -6532,6 +6549,14 @@ void lvk::VulkanContext::flushMappedMemory(BufferHandle handle, size_t offset, s
   buf->flushMappedMemory(*this, offset, size);
 }
 
+void lvk::VulkanContext::invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const {
+  const lvk::VulkanBuffer* buf = buffersPool_.get(handle);
+
+  LVK_ASSERT(buf);
+
+  buf->invalidateMappedMemory(*this, offset, size);
+}
+
 lvk::Result lvk::VulkanContext::download(lvk::TextureHandle handle, const TextureRangeDesc& range, void* outData) {
   if (!outData) {
     return Result(Result::Code::ArgumentOutOfRange);
@@ -8689,11 +8714,13 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
       VK_ASSERT(lvk::allocateMemory2(vkPhysicalDevice_, vkDevice_, &requirements, memFlags, &buf.vkMemory_));
       VK_ASSERT(vkBindBufferMemory(vkDevice_, buf.vkBuffer_, buf.vkMemory_, 0));
+      buf.vkMemorySize_ = requirements.memoryRequirements.size;
     }
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      VK_ASSERT(vkMapMemory(vkDevice_, buf.vkMemory_, 0, buf.bufferSize_, 0, &buf.mappedPtr_));
+      // map the entire allocation so that non-coherent memory can be flushed/invalidated in `nonCoherentAtomSize` chunks
+      VK_ASSERT(vkMapMemory(vkDevice_, buf.vkMemory_, 0, VK_WHOLE_SIZE, 0, &buf.mappedPtr_));
     }
   }
 

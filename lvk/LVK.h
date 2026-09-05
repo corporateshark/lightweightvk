@@ -1214,6 +1214,7 @@ class IContext {
   [[nodiscard]] virtual uint8_t* getMappedPtr(BufferHandle handle) const = 0;
   [[nodiscard]] virtual uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const = 0;
   virtual void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
+  virtual void invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const = 0;
   [[nodiscard]] virtual uint32_t getMaxStorageBufferRange() const = 0;
 #pragma endregion
 

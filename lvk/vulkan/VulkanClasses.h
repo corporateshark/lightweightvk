@@ -43,6 +43,7 @@ struct VulkanBuffer final {
  public:
   VkBuffer vkBuffer_ = VK_NULL_HANDLE;
   VkDeviceMemory vkMemory_ = VK_NULL_HANDLE;
+  VkDeviceSize vkMemorySize_ = 0; // the size of the `vkMemory_` allocation; used only when `LVK_VULKAN_USE_VMA` is 0
   VmaAllocation vmaAllocation_ = VK_NULL_HANDLE;
   VkDeviceAddress vkDeviceAddress_ = 0;
   VkDeviceSize bufferSize_ = 0;
@@ -644,6 +645,7 @@ class VulkanContext final : public IContext {
   uint8_t* getMappedPtr(BufferHandle handle) const override;
   uint64_t gpuAddress(BufferHandle handle, size_t offset = 0) const override;
   void flushMappedMemory(BufferHandle handle, size_t offset, size_t size) const override;
+  void invalidateMappedMemory(BufferHandle handle, size_t offset, size_t size) const override;
 
   Result upload(TextureHandle handle, const TextureRangeDesc& range, const void* data, uint32_t bufferRowLength = 0) override;
   Result download(TextureHandle handle, const TextureRangeDesc& range, void* outData) override;
