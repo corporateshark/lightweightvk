@@ -8666,23 +8666,9 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
       vmaAllocInfo = {
           .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
-          .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+          .requiredFlags = memFlags,
           .preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
       };
-    }
-
-    if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-      // Check if coherent buffer is available.
-      VK_ASSERT(vkCreateBuffer(vkDevice_, &ci, nullptr, &buf.vkBuffer_));
-      VkMemoryRequirements requirements = {};
-      vkGetBufferMemoryRequirements(vkDevice_, buf.vkBuffer_, &requirements);
-      vkDestroyBuffer(vkDevice_, buf.vkBuffer_, nullptr);
-      buf.vkBuffer_ = VK_NULL_HANDLE;
-
-      if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
-        vmaAllocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        buf.isCoherentMemory_ = true;
-      }
     }
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
@@ -8692,6 +8678,11 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
 
     // handle memory-mapped buffers
     if (memFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+      // `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` is only a preference here, hence ask VMA what we actually got
+      VkMemoryPropertyFlags allocMemFlags = 0;
+      vmaGetAllocationMemoryProperties((VmaAllocator)getVmaAllocator(), buf.vmaAllocation_, &allocMemFlags);
+      buf.isCoherentMemory_ = (allocMemFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+
       vmaMapMemory((VmaAllocator)getVmaAllocator(), buf.vmaAllocation_, &buf.mappedPtr_);
     }
   } else {
