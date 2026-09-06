@@ -287,6 +287,12 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
   case lvk::Format_ETC2_SRGB8:
     return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
+  case lvk::Format_EAC_RG11:
+    return VK_FORMAT_EAC_R11G11_UNORM_BLOCK;
+  case lvk::Format_BC3_RGBA:
+    return VK_FORMAT_BC3_UNORM_BLOCK;
+  case lvk::Format_BC3_SRGBA:
+    return VK_FORMAT_BC3_SRGB_BLOCK;
   case lvk::Format_BC5_RG:
     return VK_FORMAT_BC5_UNORM_BLOCK;
   case lvk::Format_BC5_RG_SN:
@@ -420,6 +426,12 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_ETC2_RGB8;
   case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
     return Format_ETC2_SRGB8;
+  case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+    return Format_EAC_RG11;
+  case VK_FORMAT_BC3_UNORM_BLOCK:
+    return Format_BC3_RGBA;
+  case VK_FORMAT_BC3_SRGB_BLOCK:
+    return Format_BC3_SRGBA;
   case VK_FORMAT_D16_UNORM:
     return Format_Z_UN16;
   case VK_FORMAT_BC5_UNORM_BLOCK:

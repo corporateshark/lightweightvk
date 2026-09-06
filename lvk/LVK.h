@@ -562,6 +562,9 @@ enum Format : uint8_t {
 
   Format_ETC2_RGB8,
   Format_ETC2_SRGB8,
+  Format_EAC_RG11,
+  Format_BC3_RGBA,
+  Format_BC3_SRGBA,
   Format_BC5_RG, // 2-channel block compression (tangent-space normal maps etc)
   Format_BC5_RG_SN, // signed variant of `Format_BC5_RG`
   Format_BC7_RGBA,
