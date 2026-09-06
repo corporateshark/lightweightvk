@@ -550,6 +550,7 @@ enum Format : uint8_t {
   Format_RGBA_SRGB8,
 
   Format_BGRA_UN8,
+  Format_BGRA_UI8,
   Format_BGRA_SRGB8,
 
   Format_A2B10G10R10_UN,

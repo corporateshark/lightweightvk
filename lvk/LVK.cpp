@@ -101,6 +101,7 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(RGBA_F32, 16),
     PROPS(RGBA_SRGB8, 4),
     PROPS(BGRA_UN8, 4),
+    PROPS(BGRA_UI8, 4),
     PROPS(BGRA_SRGB8, 4),
     PROPS(A2B10G10R10_UN, 4),
     PROPS(A2R10G10B10_UN, 4),
