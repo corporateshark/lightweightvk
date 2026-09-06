@@ -557,6 +557,9 @@ enum Format : uint8_t {
   Format_A2B10G10R10_UN,
   Format_A2R10G10B10_UN,
   Format_A1B5G5R5_UN,
+  Format_R4G4B4A4_UN,
+  Format_R5G5B5A1_UN,
+  Format_R5G6B5_UN,
 
   // packed floating-point formats, as used for HDR render targets and irradiance data
   Format_B10G11R11_UF,

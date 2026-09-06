@@ -283,6 +283,12 @@ VkFormat lvk::formatToVkFormat(lvk::Format format) {
     return VK_FORMAT_A2R10G10B10_UNORM_PACK32;
   case lvk::Format_A1B5G5R5_UN:
     return VK_FORMAT_A1B5G5R5_UNORM_PACK16;
+  case lvk::Format_R4G4B4A4_UN:
+    return VK_FORMAT_R4G4B4A4_UNORM_PACK16;
+  case lvk::Format_R5G5B5A1_UN:
+    return VK_FORMAT_R5G5B5A1_UNORM_PACK16;
+  case lvk::Format_R5G6B5_UN:
+    return VK_FORMAT_R5G6B5_UNORM_PACK16;
   case lvk::Format_B10G11R11_UF:
     return VK_FORMAT_B10G11R11_UFLOAT_PACK32;
   case lvk::Format_E5B9G9R9_UF:
@@ -428,6 +434,12 @@ lvk::Format lvk::vkFormatToFormat(VkFormat format) {
     return Format_A2R10G10B10_UN;
   case VK_FORMAT_A1B5G5R5_UNORM_PACK16:
     return Format_A1B5G5R5_UN;
+  case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+    return Format_R4G4B4A4_UN;
+  case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+    return Format_R5G5B5A1_UN;
+  case VK_FORMAT_R5G6B5_UNORM_PACK16:
+    return Format_R5G6B5_UN;
   case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
     return Format_B10G11R11_UF;
   case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
