@@ -123,6 +123,7 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(Z_F32, 4, .depth = true),
     PROPS(Z_UN24_S_UI8, 4, .depth = true, .stencil = true),
     PROPS(Z_F32_S_UI8, 5, .depth = true, .stencil = true),
+    PROPS(S_UI8, 1, .stencil = true),
     PROPS(YUV_NV12, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 2), // Subsampled 420
     PROPS(YUV_420p, 24, .blockWidth = 4, .blockHeight = 4, .compressed = true, .numPlanes = 3), // Subsampled 420
 };

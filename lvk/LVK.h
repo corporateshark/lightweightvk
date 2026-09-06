@@ -577,6 +577,7 @@ enum Format : uint8_t {
   Format_Z_F32,
   Format_Z_UN24_S_UI8,
   Format_Z_F32_S_UI8,
+  Format_S_UI8, // stencil-only
 
   Format_YUV_NV12,
   Format_YUV_420p,
