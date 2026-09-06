@@ -113,6 +113,8 @@ static constexpr TextureFormatProperties properties[] = {
     PROPS(BC5_RG_SN, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
     PROPS(BC7_RGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
     PROPS(BC7_SRGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
+    PROPS(ASTC_4x4_RGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
+    PROPS(ASTC_4x4_SRGBA, 16, .blockWidth = 4, .blockHeight = 4, .compressed = true),
     PROPS(Z_UN16, 2, .depth = true),
     PROPS(Z_UN24, 4, .depth = true), // implemented as `VK_FORMAT_D24_UNORM_S8_UINT`
     PROPS(Z_F32, 4, .depth = true),

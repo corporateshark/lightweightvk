@@ -566,6 +566,8 @@ enum Format : uint8_t {
   Format_BC5_RG_SN, // signed variant of `Format_BC5_RG`
   Format_BC7_RGBA,
   Format_BC7_SRGBA,
+  Format_ASTC_4x4_RGBA, // requires `textureCompressionASTC_LDR`
+  Format_ASTC_4x4_SRGBA, // requires `textureCompressionASTC_LDR`
 
   Format_Z_UN16,
   Format_Z_UN24,
