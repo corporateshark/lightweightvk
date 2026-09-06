@@ -4676,11 +4676,16 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
 void lvk::VulkanContext::wait(SubmitHandle handle) {
   // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
-  if (immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex) {
-    immediateCompute_->wait(handle);
-    return;
-  }
-  immediate_->wait(handle);
+  const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
+
+  (isComputeQueue ? immediateCompute_ : immediate_)->wait(handle);
+}
+
+bool lvk::VulkanContext::isReady(SubmitHandle handle) const {
+  // route to the queue the handle was produced on (a SubmitHandle is self-describing via its queue family index)
+  const bool isComputeQueue = immediateCompute_ && !handle.empty() && handle.queueFamilyIndex_ == deviceQueues_.computeQueueFamilyIndex;
+
+  return (isComputeQueue ? immediateCompute_ : immediate_)->isReady(handle);
 }
 
 lvk::Holder<lvk::BufferHandle> lvk::VulkanContext::createBuffer(const BufferDesc& requestedDesc, const char* debugName, Result* outResult) {

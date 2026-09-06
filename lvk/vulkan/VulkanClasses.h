@@ -609,6 +609,7 @@ class VulkanContext final : public IContext {
 
   SubmitHandle submit(lvk::ICommandBuffer& commandBuffer, TextureHandle present, const ldr::Span<TextureHandle>& release = {}) override;
   void wait(SubmitHandle handle) override;
+  [[nodiscard]] bool isReady(SubmitHandle handle) const override;
 
   Holder<BufferHandle> createBuffer(const BufferDesc& desc, const char* debugName, Result* outResult) override;
   Holder<SamplerHandle> createSampler(const SamplerStateDesc& desc, Result* outResult) override;

@@ -1166,6 +1166,7 @@ class IContext {
                               const ldr::Span<TextureHandle>& release = {}) = 0; // hand these images to the other queue (destination
                                                                                  // implied by the CB's queue); the acquire is automatic
   virtual void wait(SubmitHandle handle) = 0; // waiting on an empty handle results in vkDeviceWaitIdle()
+  [[nodiscard]] virtual bool isReady(SubmitHandle handle) const = 0; // non-blocking; an empty handle is always ready
 
   [[nodiscard]] virtual Holder<BufferHandle> createBuffer(const BufferDesc& desc,
                                                           const char* debugName = nullptr,
