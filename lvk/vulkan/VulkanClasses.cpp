@@ -6533,6 +6533,8 @@ void lvk::VulkanContext::destroy(Framebuffer& fb) {
   }
   destroyFbTexture(fb.depthStencil.texture);
   destroyFbTexture(fb.depthStencil.resolveTexture);
+  destroyFbTexture(fb.fragmentDensityMap);
+  destroyFbTexture(fb.shadingRateAttachment);
 }
 
 uint64_t lvk::VulkanContext::gpuAddress(AccelStructHandle handle) const {
