@@ -1269,6 +1269,8 @@ class IContext {
   // valid range for `Framebuffer::shadingRateAttachmentTexelSize` (requires VK_KHR_fragment_shading_rate)
   [[nodiscard]] virtual Dimensions getShadingRateAttachmentMinTexelSize() const = 0;
   [[nodiscard]] virtual Dimensions getShadingRateAttachmentMaxTexelSize() const = 0;
+  // fragment sizes accepted by `cmdSetFragmentShadingRate()`; empty unless VK_KHR_fragment_shading_rate is enabled
+  [[nodiscard]] virtual ldr::Span<const Dimensions> getSupportedFragmentShadingRates() const = 0;
 
   // one texel of `Framebuffer::fragmentDensityMap` covers at least this many pixels,
   // so the FDM can be at most `framebufferSize / minTexelSize` (requires VK_EXT_fragment_density_map)

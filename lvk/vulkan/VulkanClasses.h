@@ -666,6 +666,7 @@ class VulkanContext final : public IContext {
   uint32_t getFramebufferMSAABitMask() const override;
   [[nodiscard]] Dimensions getShadingRateAttachmentMinTexelSize() const override;
   [[nodiscard]] Dimensions getShadingRateAttachmentMaxTexelSize() const override;
+  [[nodiscard]] ldr::Span<const Dimensions> getSupportedFragmentShadingRates() const override;
   [[nodiscard]] Dimensions getFragmentDensityMapMinTexelSize() const override;
   bool isExtensionEnabled(const char* ext) const override;
   bool supportsAsyncCompute() const override {
@@ -849,7 +850,7 @@ class VulkanContext final : public IContext {
 
   std::vector<VkFormat> deviceDepthFormats_;
   std::vector<VkSurfaceFormat2KHR> deviceSurfaceFormats_;
-  std::vector<VkPhysicalDeviceFragmentShadingRateKHR> deviceFragmentShadingRates_; // vkGetPhysicalDeviceFragmentShadingRatesKHR()
+  std::vector<Dimensions> fragmentShadingRates_; // fragment sizes from vkGetPhysicalDeviceFragmentShadingRatesKHR()
   VkSurfaceCapabilities2KHR deviceSurfaceCaps_ = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR};
   std::vector<VkPresentModeKHR> devicePresentModes_;
 

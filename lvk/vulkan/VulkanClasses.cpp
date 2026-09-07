@@ -3455,12 +3455,9 @@ void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSiz
   LVK_ASSERT_MSG(fragmentSize.depth == 1, "The fragment shading rate is 2D: `depth` must be 1");
   // `VkPhysicalDeviceFragmentShadingRateKHR::sampleCounts` restricts some fragment sizes to fewer samples (e.g. 4x4 to 1 sample).
   // It is not checked here because the pipeline used for the draw is not known yet - this is dynamic state
-  LVK_ASSERT_MSG(std::find_if(ctx_->deviceFragmentShadingRates_.cbegin(),
-                              ctx_->deviceFragmentShadingRates_.cend(),
-                              [&fragmentSize](const VkPhysicalDeviceFragmentShadingRateKHR& rate) {
-                                return rate.fragmentSize.width == fragmentSize.width && rate.fragmentSize.height == fragmentSize.height;
-                              }) != ctx_->deviceFragmentShadingRates_.cend(),
-                 "This fragment size is not in vkGetPhysicalDeviceFragmentShadingRatesKHR()");
+  LVK_ASSERT_MSG(std::find(ctx_->fragmentShadingRates_.cbegin(), ctx_->fragmentShadingRates_.cend(), fragmentSize) !=
+                     ctx_->fragmentShadingRates_.cend(),
+                 "This fragment size is not in IContext::getSupportedFragmentShadingRates()");
 
   const VkExtent2D vkFragmentSize = {fragmentSize.width, fragmentSize.height};
   const VkFragmentShadingRateCombinerOpKHR combinerOps[2] = {
@@ -7186,6 +7183,11 @@ lvk::Dimensions lvk::VulkanContext::getShadingRateAttachmentMaxTexelSize() const
   return {.width = size.width, .height = size.height};
 }
 
+ldr::Span<const lvk::Dimensions> lvk::VulkanContext::getSupportedFragmentShadingRates() const {
+  // no assert: an empty span is how applications detect the lack of support
+  return ldr::Span<const Dimensions>(fragmentShadingRates_.data(), fragmentShadingRates_.size());
+}
+
 lvk::Dimensions lvk::VulkanContext::getFragmentDensityMapMinTexelSize() const {
   LVK_ASSERT_MSG(has_EXT_fragment_density_map_, "VK_EXT_fragment_density_map is not enabled");
   const VkExtent2D& size = vkFragmentDensityMapProperties_.minFragmentDensityTexelSize;
@@ -8179,9 +8181,14 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
   if (has_KHR_fragment_shading_rate_) {
     uint32_t numRates = 0;
     VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, nullptr));
-    deviceFragmentShadingRates_.assign(
+    std::vector<VkPhysicalDeviceFragmentShadingRateKHR> rates(
         numRates, VkPhysicalDeviceFragmentShadingRateKHR{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_KHR});
-    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, deviceFragmentShadingRates_.data()));
+    VK_ASSERT(vkGetPhysicalDeviceFragmentShadingRatesKHR(vkPhysicalDevice_, &numRates, rates.data()));
+    // `sampleCounts` is dropped here - the number of samples belongs to the pipeline, not to the fragment size
+    fragmentShadingRates_.reserve(numRates);
+    for (const VkPhysicalDeviceFragmentShadingRateKHR& rate : rates) {
+      fragmentShadingRates_.push_back({.width = rate.fragmentSize.width, .height = rate.fragmentSize.height, .depth = 1});
+    }
   }
 
   // check extensions
