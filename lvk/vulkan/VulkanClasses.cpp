@@ -6899,6 +6899,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
           "layout (set = 0, binding = 0) uniform texture3D   kTextures3D[];\n"
           "layout (set = 0, binding = 0) uniform textureCube kTexturesCube[];\n"
           "layout (set = 0, binding = 0) uniform texture2D   kTextures2DShadow[];\n"
+          "layout (set = 0, binding = 0) uniform utexture2D  kTextures2DUint[];\n" // integer format cannot be filtered
+          "layout (set = 0, binding = 0) uniform itexture2D  kTextures2DInt[];\n" // integer format cannot be filtered
           "layout (set = 0, binding = 1) uniform sampler       kSamplers[];\n"
           "layout (set = 0, binding = 1) uniform samplerShadow kSamplersShadow[];\n"
           "layout (set = 0, binding = 3) uniform sampler2D     kSamplersYUV[];\n";
@@ -6917,6 +6919,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
       addCode("textureBindlessSize2D(",
               "ivec2 textureBindlessSize2D(uint textureid) {\n"
               "  return textureSize(nonuniformEXT(kTextures2D[textureid]), 0);\n"
+              "}\n");
+      addCode("texelFetchBindlessUint2D(",
+              "uvec4 texelFetchBindlessUint2D(uint textureid, ivec2 coord, int lod) {\n"
+              "  return texelFetch(nonuniformEXT(kTextures2DUint[textureid]), coord, lod);\n"
+              "}\n");
+      addCode("texelFetchBindlessInt2D(",
+              "ivec4 texelFetchBindlessInt2D(uint textureid, ivec2 coord, int lod) {\n"
+              "  return texelFetch(nonuniformEXT(kTextures2DInt[textureid]), coord, lod);\n"
               "}\n");
       addCode("textureBindlessCube(",
               "vec4 textureBindlessCube(uint textureid, uint samplerid, vec3 uvw) {\n"
@@ -7015,6 +7025,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
       "[[vk::binding(0, 0)]] Texture3D    kTextures3D[];\n"
       "[[vk::binding(0, 0)]] TextureCube  kTexturesCube[];\n"
       "[[vk::binding(0, 0)]] Texture2D    kTextures2DShadow[];\n"
+      "[[vk::binding(0, 0)]] Texture2D<uint4> kTextures2DUint[];\n"
+      "[[vk::binding(0, 0)]] Texture2D<int4>  kTextures2DInt[];\n"
       "[[vk::binding(1, 0)]] SamplerState kSamplers[];\n"
       "[[vk::binding(1, 0)]] SamplerComparisonState kSamplersShadow[];\n"
       "[[vk::binding(3, 0)]] Sampler2D    kSamplersYUV[];\n";
@@ -7028,6 +7040,14 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromSlang(ShaderSta
           "float4 textureBindless2DLod(uint textureid, uint samplerid, float2 uv, float lod) {\n"
           "  return kTextures2D[NonUniformResourceIndex(textureid)].SampleLevel(\n"
           "    kSamplers[NonUniformResourceIndex(samplerid)], uv, lod);\n"
+          "}\n");
+  addCode("texelFetchBindlessUint2D(",
+          "uint4 texelFetchBindlessUint2D(uint textureid, int2 coord, int lod) {\n"
+          "  return kTextures2DUint[NonUniformResourceIndex(textureid)].Load(int3(coord, lod));\n"
+          "}\n");
+  addCode("texelFetchBindlessInt2D(",
+          "int4 texelFetchBindlessInt2D(uint textureid, int2 coord, int lod) {\n"
+          "  return kTextures2DInt[NonUniformResourceIndex(textureid)].Load(int3(coord, lod));\n"
           "}\n");
   addCode("textureBindlessCube(",
           "float4 textureBindlessCube(uint textureid, uint samplerid, float3 dir) {\n"
