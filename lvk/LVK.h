@@ -943,6 +943,11 @@ enum TextureAspect : uint8_t {
   TextureAspect_Default = 0, // color for color formats, depth for any format carrying a depth aspect, stencil for stencil-only formats
   TextureAspect_Depth,
   TextureAspect_Stencil,
+  // A single plane of a multi-planar texture, sampled as an ordinary color texture with the plane's own format
+  // (`Format_YUV_NV12`: R_UN8+RG_UN8 and `Format_YUV_420p`: R_UN8+R_UN8) and without a YCbCr conversion.
+  TextureAspect_Plane0,
+  TextureAspect_Plane1,
+  TextureAspect_Plane2,
 };
 
 struct TextureViewDesc {

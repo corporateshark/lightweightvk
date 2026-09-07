@@ -580,20 +580,41 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
  * barriers, and this one for image views.
  */
 VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, lvk::TextureAspect aspect) {
-  if (!isDepthFormat && !isStencilFormat) {
-    return VK_IMAGE_ASPECT_COLOR_BIT;
-  }
-
   switch (aspect) {
   case lvk::TextureAspect_Depth:
     return VK_IMAGE_ASPECT_DEPTH_BIT;
   case lvk::TextureAspect_Stencil:
     return VK_IMAGE_ASPECT_STENCIL_BIT;
+  case lvk::TextureAspect_Plane0:
+    return VK_IMAGE_ASPECT_PLANE_0_BIT;
+  case lvk::TextureAspect_Plane1:
+    return VK_IMAGE_ASPECT_PLANE_1_BIT;
+  case lvk::TextureAspect_Plane2:
+    return VK_IMAGE_ASPECT_PLANE_2_BIT;
   case lvk::TextureAspect_Default:
     break;
   }
 
+  if (!isDepthFormat && !isStencilFormat) {
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+
   return isDepthFormat ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_STENCIL_BIT;
+}
+
+/*
+ * Vulkan requires a single-plane view of a multi-planar image to use that plane's own compatible format rather than the
+ * image's; the view also drops the YCbCr conversion, so the plane reads back as an ordinary color texture.
+ */
+VkFormat getImagePlaneVkFormat(VkFormat format, uint32_t plane) {
+  switch (format) {
+  case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
+    return plane ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
+  case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
+    return VK_FORMAT_R8_UNORM;
+  default:
+    return VK_FORMAT_UNDEFINED;
+  }
 }
 
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
@@ -5294,7 +5315,35 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
     return {};
   }
 
+  const uint32_t numPlanes = lvk::getNumImagePlanes(image.vkImageFormat_);
+  const bool isPlaneView = desc.aspect >= TextureAspect_Plane0;
+
+  if (isPlaneView) {
+    if (!LVK_VERIFY(desc.aspect - TextureAspect_Plane0 < numPlanes)) {
+      Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "This texture does not have the requested plane");
+      return {};
+    }
+  } else if (!LVK_VERIFY(numPlanes == 1)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "A multiplanar texture can only be viewed one plane at a time");
+    return {};
+  }
+
   const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, desc.aspect);
+
+  if (isPlaneView) {
+    // the view takes on the plane's own format and extent, so it behaves like any other single-plane texture
+    const uint32_t plane = desc.aspect - TextureAspect_Plane0;
+    const VkFormat planeFormat = getImagePlaneVkFormat(image.vkImageFormat_, plane);
+    if (!LVK_VERIFY(planeFormat != VK_FORMAT_UNDEFINED)) {
+      Result::setResult(outResult, Result::Code::RuntimeError, "Unsupported multiplanar format");
+      return {};
+    }
+    const VkExtent2D extent = lvk::getImagePlaneExtent(VkExtent2D{image.vkExtent_.width, image.vkExtent_.height},
+                                                       vkFormatToFormat(image.vkImageFormat_),
+                                                       plane);
+    image.vkImageFormat_ = planeFormat;
+    image.vkExtent_ = VkExtent3D{extent.width, extent.height, 1u};
+  }
 
   VkImageViewType vkImageViewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
   switch (desc.type) {
@@ -5319,8 +5368,6 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
       .b = VkComponentSwizzle(desc.components.b),
       .a = VkComponentSwizzle(desc.components.a),
   };
-
-  LVK_ASSERT_MSG(lvk::getNumImagePlanes(image.vkImageFormat_) == 1, "Unsupported multiplanar image");
 
   image.imageView_ = image.createImageView(vkDevice_,
                                            vkImageViewType,
