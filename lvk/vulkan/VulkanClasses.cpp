@@ -574,6 +574,28 @@ VkFormat vertexFormatToVkFormat(lvk::VertexFormat fmt) {
   return VK_FORMAT_UNDEFINED;
 }
 
+/*
+ * A shader-visible (sampled or storage) view must expose exactly one aspect, so a combined depth/stencil format has to
+ * pick one. `VulkanImage::getImageAspectFlags()` reports every aspect the format has - use that one for attachments and
+ * barriers, and this one for image views.
+ */
+VkImageAspectFlags getViewAspectFlags(bool isDepthFormat, bool isStencilFormat, lvk::TextureAspect aspect) {
+  if (!isDepthFormat && !isStencilFormat) {
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+
+  switch (aspect) {
+  case lvk::TextureAspect_Depth:
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  case lvk::TextureAspect_Stencil:
+    return VK_IMAGE_ASPECT_STENCIL_BIT;
+  case lvk::TextureAspect_Default:
+    break;
+  }
+
+  return isDepthFormat ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_STENCIL_BIT;
+}
+
 std::vector<VkFormat> getCompatibleDepthStencilFormats(lvk::Format format) {
   switch (format) {
   case lvk::Format_Z_UN16:
@@ -5176,16 +5198,7 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTexture(const TextureD
     image.vkFormatProperties_ = props.formatProperties;
   }
 
-  VkImageAspectFlags aspect = 0;
-  if (image.isDepthFormat_ || image.isStencilFormat_) {
-    if (image.isDepthFormat_) {
-      aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    } else if (image.isStencilFormat_) {
-      aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-  } else {
-    aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-  }
+  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, lvk::TextureAspect_Default);
 
   const VkComponentMapping components = {
       .r = VkComponentSwizzle(desc.components.r),
@@ -5272,16 +5285,16 @@ lvk::Holder<lvk::TextureHandle> lvk::VulkanContext::createTextureView(lvk::Textu
   memset(&image.imageViewForFramebuffer_, 0, sizeof(image.imageViewForFramebuffer_));
   memset(&image.imageViewForFramebufferMultiview_, 0, sizeof(image.imageViewForFramebufferMultiview_));
 
-  VkImageAspectFlags aspect = 0;
-  if (image.isDepthFormat_ || image.isStencilFormat_) {
-    if (image.isDepthFormat_) {
-      aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    } else if (image.isStencilFormat_) {
-      aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-  } else {
-    aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+  if (!LVK_VERIFY(desc.aspect != TextureAspect_Depth || image.isDepthFormat_)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Depth needs a format with a depth aspect");
+    return {};
   }
+  if (!LVK_VERIFY(desc.aspect != TextureAspect_Stencil || image.isStencilFormat_)) {
+    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "TextureAspect_Stencil needs a format with a stencil aspect");
+    return {};
+  }
+
+  const VkImageAspectFlags aspect = getViewAspectFlags(image.isDepthFormat_, image.isStencilFormat_, desc.aspect);
 
   VkImageViewType vkImageViewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
   switch (desc.type) {

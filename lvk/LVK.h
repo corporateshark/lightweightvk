@@ -938,6 +938,13 @@ struct TextureDesc {
   const char* debugName = "";
 };
 
+// Shader-visible views expose exactly one aspect, so a combined depth/stencil texture needs one selected
+enum TextureAspect : uint8_t {
+  TextureAspect_Default = 0, // color for color formats, depth for any format carrying a depth aspect, stencil for stencil-only formats
+  TextureAspect_Depth,
+  TextureAspect_Stencil,
+};
+
 struct TextureViewDesc {
   TextureType type = TextureType_2D;
   uint32_t layer = 0;
@@ -945,6 +952,7 @@ struct TextureViewDesc {
   uint32_t mipLevel = 0;
   uint32_t numMipLevels = 1;
   ComponentMapping components = {};
+  TextureAspect aspect = TextureAspect_Default;
 };
 
 enum AccelStructType : uint8_t {
