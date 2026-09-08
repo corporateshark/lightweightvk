@@ -283,15 +283,15 @@ jobs:
             stripdown: true
 
         # The distro's Mesa 26.0.3 llvmpipe aborts vkCreateSwapchainKHR (VK_ERROR_OUT_OF_DEVICE_MEMORY) on the headless
-        # surface; this is fixed in Mesa 26.1. Launchpad PPAs only build amd64 (Ubuntu 26.04 is amd64v3), so install a
-        # prebuilt lavapipe 26.1 and point the Vulkan loader at it via VK_DRIVER_FILES. Done before the build so a broken
+        # surface; this is fixed in Mesa 26.1+. Launchpad PPAs only build amd64 (Ubuntu 26.04 is amd64v3), so install a
+        # prebuilt lavapipe 26.2 and point the Vulkan loader at it via VK_DRIVER_FILES. Done before the build so a broken
         # driver fails the job early.
-        - name: Install Mesa 26.1.2 lavapipe (prebuilt)
+        - name: Install Mesa 26.2.1 lavapipe (prebuilt)
           shell: bash
           run: |
             # libxcb-keysyms.so.1 runtime dependency of the prebuilt lavapipe driver
             sudo apt-get install -y libxcb-keysyms1
-            curl -fL -o lavapipe.zip https://github.com/rokuz/lavapipe-binaries/releases/download/mesa-mesa-26.1.2/lavapipe-linux-x86_64-release.zip
+            curl -fL -o lavapipe.zip https://github.com/rokuz/lavapipe-binaries/releases/download/mesa-mesa-26.2.1/lavapipe-linux-x86_64-release.zip
             unzip -o lavapipe.zip -d "$HOME/lavapipe"
             ICD=$(find "$HOME/lavapipe" -name 'lvp_icd*.json' | head -n1)
             SO=$(find "$HOME/lavapipe" -name 'libvulkan_lvp.so' | head -n1)
