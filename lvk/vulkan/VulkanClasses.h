@@ -292,12 +292,6 @@ class VulkanPipelineBuilder final {
   VulkanPipelineBuilder& rasterizationSamples(VkSampleCountFlagBits samples, float minSampleShading);
   VulkanPipelineBuilder& alphaToCoverage(bool enable);
   VulkanPipelineBuilder& shaderStage(VkPipelineShaderStageCreateInfo stage);
-  VulkanPipelineBuilder& stencilStateOps(VkStencilFaceFlags faceMask,
-                                         VkStencilOp failOp,
-                                         VkStencilOp passOp,
-                                         VkStencilOp depthFailOp,
-                                         VkCompareOp compareOp);
-  VulkanPipelineBuilder& stencilMasks(VkStencilFaceFlags faceMask, uint32_t compareMask, uint32_t writeMask, uint32_t reference);
   VulkanPipelineBuilder& cullMode(VkCullModeFlags mode);
   VulkanPipelineBuilder& frontFace(VkFrontFace mode);
   VulkanPipelineBuilder& polygonMode(VkPolygonMode mode);
@@ -435,6 +429,7 @@ class CommandBuffer final : public ICommandBuffer {
 
   void cmdBindRenderPipeline(lvk::RenderPipelineHandle handle) override;
   void cmdBindDepthState(const DepthState& state) override;
+  void cmdBindStencilState(const StencilState& state) override;
 
   void cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) override;
   void cmdBindIndexBuffer(BufferHandle indexBuffer, IndexFormat indexFormat, uint64_t bufferOffset, uint64_t bufferSize) override;

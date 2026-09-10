@@ -2225,55 +2225,6 @@ lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::shaderStage(VkPipelineSh
   return *this;
 }
 
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::stencilStateOps(VkStencilFaceFlags faceMask,
-                                                                        VkStencilOp failOp,
-                                                                        VkStencilOp passOp,
-                                                                        VkStencilOp depthFailOp,
-                                                                        VkCompareOp compareOp) {
-  depthStencilState_.stencilTestEnable = depthStencilState_.stencilTestEnable == VK_TRUE || failOp != VK_STENCIL_OP_KEEP ||
-                                                 passOp != VK_STENCIL_OP_KEEP || depthFailOp != VK_STENCIL_OP_KEEP ||
-                                                 compareOp != VK_COMPARE_OP_ALWAYS
-                                             ? VK_TRUE
-                                             : VK_FALSE;
-
-  if (faceMask & VK_STENCIL_FACE_FRONT_BIT) {
-    VkStencilOpState& s = depthStencilState_.front;
-    s.failOp = failOp;
-    s.passOp = passOp;
-    s.depthFailOp = depthFailOp;
-    s.compareOp = compareOp;
-  }
-
-  if (faceMask & VK_STENCIL_FACE_BACK_BIT) {
-    VkStencilOpState& s = depthStencilState_.back;
-    s.failOp = failOp;
-    s.passOp = passOp;
-    s.depthFailOp = depthFailOp;
-    s.compareOp = compareOp;
-  }
-  return *this;
-}
-
-lvk::VulkanPipelineBuilder& lvk::VulkanPipelineBuilder::stencilMasks(VkStencilFaceFlags faceMask,
-                                                                     uint32_t compareMask,
-                                                                     uint32_t writeMask,
-                                                                     uint32_t reference) {
-  if (faceMask & VK_STENCIL_FACE_FRONT_BIT) {
-    VkStencilOpState& s = depthStencilState_.front;
-    s.compareMask = compareMask;
-    s.writeMask = writeMask;
-    s.reference = reference;
-  }
-
-  if (faceMask & VK_STENCIL_FACE_BACK_BIT) {
-    VkStencilOpState& s = depthStencilState_.back;
-    s.compareMask = compareMask;
-    s.writeMask = writeMask;
-    s.reference = reference;
-  }
-  return *this;
-}
-
 VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
                                            VkPipelineCache pipelineCache,
                                            VkPipelineLayout pipelineLayout,
@@ -2984,6 +2935,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   cmdBindViewport(viewport);
   cmdBindScissorRect(scissor);
   cmdBindDepthState({});
+  cmdBindStencilState({});
 
   ctx_->checkAndUpdateDescriptorSets();
 
@@ -3107,6 +3059,39 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   }
 #endif
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, op);
+}
+
+void lvk::CommandBuffer::cmdBindStencilState(const StencilState& state) {
+  LVK_PROFILER_FUNCTION();
+
+  vkCmdSetStencilTestEnable(wrapper_->cmdBuf_, state.enable ? VK_TRUE : VK_FALSE);
+
+  if (!state.enable) {
+    // the rest of the stencil state is only required while the test is enabled
+    return;
+  }
+
+  const StencilFaceState& front = state.front;
+  const StencilFaceState& back = state.back;
+
+  const VkStencilOp frontFailOp = stencilOpToVkStencilOp(front.stencilFailureOp);
+  const VkStencilOp frontPassOp = stencilOpToVkStencilOp(front.depthStencilPassOp);
+  const VkStencilOp frontDepthFailOp = stencilOpToVkStencilOp(front.depthFailureOp);
+  const VkCompareOp frontCompareOp = compareOpToVkCompareOp(front.stencilCompareOp);
+  const VkStencilOp backFailOp = stencilOpToVkStencilOp(back.stencilFailureOp);
+  const VkStencilOp backPassOp = stencilOpToVkStencilOp(back.depthStencilPassOp);
+  const VkStencilOp backDepthFailOp = stencilOpToVkStencilOp(back.depthFailureOp);
+  const VkCompareOp backCompareOp = compareOpToVkCompareOp(back.stencilCompareOp);
+
+  vkCmdSetStencilCompareMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.readMask);
+  vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.writeMask);
+  vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, front.reference);
+  vkCmdSetStencilCompareMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.readMask);
+  vkCmdSetStencilWriteMask(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.writeMask);
+  vkCmdSetStencilReference(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, back.reference);
+
+  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_FRONT_BIT, frontFailOp, frontPassOp, frontDepthFailOp, frontCompareOp);
+  vkCmdSetStencilOp(wrapper_->cmdBuf_, VK_STENCIL_FACE_BACK_BIT, backFailOp, backPassOp, backDepthFailOp, backCompareOp);
 }
 
 void lvk::CommandBuffer::cmdBindVertexBuffer(uint32_t index, BufferHandle buffer, uint64_t bufferOffset, uint64_t bufferSize) {
@@ -5818,10 +5803,15 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_SCISSOR)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS)
       .dynamicState(VK_DYNAMIC_STATE_BLEND_CONSTANTS)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_REFERENCE)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE)
+      .dynamicState(VK_DYNAMIC_STATE_STENCIL_OP)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       // from VK_KHR_fragment_shading_rate
@@ -5833,18 +5823,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .rasterizationSamples(getVulkanSampleCountFlags(desc.samplesCount, getFramebufferMSAABitMask()), desc.minSampleShading)
       .alphaToCoverage(desc.alphaToCoverage)
       .polygonMode(polygonModeToVkPolygonMode(desc.polygonMode))
-      .stencilStateOps(VK_STENCIL_FACE_FRONT_BIT,
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.frontFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.frontFaceStencil.stencilCompareOp))
-      .stencilStateOps(VK_STENCIL_FACE_BACK_BIT,
-                       stencilOpToVkStencilOp(desc.backFaceStencil.stencilFailureOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthStencilPassOp),
-                       stencilOpToVkStencilOp(desc.backFaceStencil.depthFailureOp),
-                       compareOpToVkCompareOp(desc.backFaceStencil.stencilCompareOp))
-      .stencilMasks(VK_STENCIL_FACE_FRONT_BIT, 0xFF, desc.frontFaceStencil.writeMask, desc.frontFaceStencil.readMask)
-      .stencilMasks(VK_STENCIL_FACE_BACK_BIT, 0xFF, desc.backFaceStencil.writeMask, desc.backFaceStencil.readMask)
       .shaderStage(taskModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_TASK_BIT_EXT, taskModule->ci, desc.entryPointTask, &si)
                        : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})

@@ -420,13 +420,20 @@ struct SamplerStateDesc {
   const char* debugName = "";
 };
 
-struct StencilState {
+struct StencilFaceState {
   StencilOp stencilFailureOp = StencilOp_Keep;
   StencilOp depthFailureOp = StencilOp_Keep;
   StencilOp depthStencilPassOp = StencilOp_Keep;
   CompareOp stencilCompareOp = CompareOp_AlwaysPass;
   uint32_t readMask = (uint32_t)~0;
   uint32_t writeMask = (uint32_t)~0;
+  uint32_t reference = 0;
+};
+
+struct StencilState {
+  bool enable = false;
+  StencilFaceState front = {};
+  StencilFaceState back = {};
 };
 
 struct DepthState {
@@ -757,9 +764,6 @@ struct RenderPipelineDesc final {
   CullMode cullMode = lvk::CullMode_None;
   WindingMode frontFace = lvk::WindingMode_CCW;
   PolygonMode polygonMode = lvk::PolygonMode_Fill;
-
-  StencilState backFaceStencil = {};
-  StencilState frontFaceStencil = {};
 
   uint32_t samplesCount = 1u;
   uint32_t patchControlPoints = 0;
@@ -1098,6 +1102,7 @@ class ICommandBuffer {
 
   virtual void cmdBindRenderPipeline(lvk::RenderPipelineHandle handle) = 0;
   virtual void cmdBindDepthState(const DepthState& state) = 0;
+  virtual void cmdBindStencilState(const StencilState& state) = 0;
 
   virtual void cmdBindVertexBuffer(uint32_t index,
                                    BufferHandle buffer,
