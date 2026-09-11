@@ -466,6 +466,7 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdSetBlendColor(const float color[4]) override;
   void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp) override;
   void cmdSetDepthBiasEnable(bool enable) override;
+  void cmdSetPrimitiveRestartEnable(bool enable) override;
   void cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
                                  ShadingRateCombinerOp primitiveOp,
                                  ShadingRateCombinerOp attachmentOp) override;

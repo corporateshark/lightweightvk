@@ -2063,10 +2063,10 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .pVertexAttributeDescriptions = nullptr,
   })
 , inputAssembly_({
+      // primitive restart is dynamic state
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .flags = 0,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-      .primitiveRestartEnable = VK_FALSE,
   })
 , rasterizationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -2941,6 +2941,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
 
   vkCmdSetDepthCompareOp(wrapper_->cmdBuf_, VK_COMPARE_OP_ALWAYS);
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, VK_FALSE);
+  vkCmdSetPrimitiveRestartEnable(wrapper_->cmdBuf_, VK_FALSE);
 
   if (ctx_->has_KHR_fragment_shading_rate_) {
     // the dynamic state is enabled on every pipeline, so it must be set before any draw; 1x1 is the full rate and is always supported
@@ -3430,6 +3431,10 @@ void lvk::CommandBuffer::cmdSetDepthBias(float constantFactor, float slopeFactor
 
 void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
+}
+
+void lvk::CommandBuffer::cmdSetPrimitiveRestartEnable(bool enable) {
+  vkCmdSetPrimitiveRestartEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
 }
 
 void lvk::CommandBuffer::cmdSetFragmentShadingRate(const Dimensions& fragmentSize,
@@ -5814,6 +5819,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_OP)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
+      .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE)
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
