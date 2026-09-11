@@ -5831,7 +5831,7 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE, supportsDepthBounds())
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
-      .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE)
+      .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE, meshModule == nullptr) // forbidden on mesh pipelines (no input assembly)
       // from VK_KHR_fragment_shading_rate
       .dynamicState(VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR, has_KHR_fragment_shading_rate_)
       .createFlags(VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, passState.hasAttachmentFSR)
