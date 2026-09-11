@@ -327,7 +327,6 @@ class VulkanPipelineBuilder final {
   VkPipelineInputAssemblyStateCreateInfo inputAssembly_;
   VkPipelineRasterizationStateCreateInfo rasterizationState_;
   VkPipelineMultisampleStateCreateInfo multisampleState_;
-  VkPipelineDepthStencilStateCreateInfo depthStencilState_;
   VkPipelineTessellationStateCreateInfo tessellationState_;
 
   uint32_t viewMask_ = 0;

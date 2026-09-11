@@ -2069,6 +2069,7 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
   })
 , rasterizationState_({
+      // depth bias and its enable are dynamic state
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .flags = 0,
       .depthClampEnable = VK_FALSE,
@@ -2076,10 +2077,6 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .polygonMode = VK_POLYGON_MODE_FILL,
       .cullMode = VK_CULL_MODE_NONE,
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-      .depthBiasEnable = VK_FALSE,
-      .depthBiasConstantFactor = 0.0f,
-      .depthBiasClamp = 0.0f,
-      .depthBiasSlopeFactor = 0.0f,
       .lineWidth = 1.0f,
   })
 , multisampleState_({
@@ -2090,38 +2087,6 @@ lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
       .pSampleMask = nullptr,
       .alphaToCoverageEnable = VK_FALSE,
       .alphaToOneEnable = VK_FALSE,
-  })
-, depthStencilState_({
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-      .pNext = nullptr,
-      .flags = 0,
-      .depthTestEnable = VK_FALSE,
-      .depthWriteEnable = VK_FALSE,
-      .depthCompareOp = VK_COMPARE_OP_LESS,
-      .depthBoundsTestEnable = VK_FALSE,
-      .stencilTestEnable = VK_FALSE,
-      .front =
-          {
-              .failOp = VK_STENCIL_OP_KEEP,
-              .passOp = VK_STENCIL_OP_KEEP,
-              .depthFailOp = VK_STENCIL_OP_KEEP,
-              .compareOp = VK_COMPARE_OP_NEVER,
-              .compareMask = 0,
-              .writeMask = 0,
-              .reference = 0,
-          },
-      .back =
-          {
-              .failOp = VK_STENCIL_OP_KEEP,
-              .passOp = VK_STENCIL_OP_KEEP,
-              .depthFailOp = VK_STENCIL_OP_KEEP,
-              .compareOp = VK_COMPARE_OP_NEVER,
-              .compareMask = 0,
-              .writeMask = 0,
-              .reference = 0,
-          },
-      .minDepthBounds = 0.0f,
-      .maxDepthBounds = 1.0f,
   })
 , tessellationState_({
       .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
@@ -2251,6 +2216,11 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
       .attachmentCount = numColorAttachments_,
       .pAttachments = colorBlendAttachmentStates_,
   };
+  // all fields are dynamic state; the pointer itself is still required
+  // (only allows NULL with VK_EXT_extended_dynamic_state3)
+  const VkPipelineDepthStencilStateCreateInfo depthStencilState = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+  };
   const VkPipelineRenderingCreateInfo renderingInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
       .pNext = nullptr,
@@ -2273,7 +2243,7 @@ VkResult lvk::VulkanPipelineBuilder::build(VkDevice device,
       .pViewportState = &viewportState,
       .pRasterizationState = &rasterizationState_,
       .pMultisampleState = &multisampleState_,
-      .pDepthStencilState = &depthStencilState_,
+      .pDepthStencilState = &depthStencilState,
       .pColorBlendState = &colorBlendState,
       .pDynamicState = &dynamicState,
       .layout = pipelineLayout,
@@ -5821,14 +5791,14 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_REFERENCE)
-      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS, supportsDepthBounds())
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_OP)
-      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE, supportsDepthBounds())
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE)
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE, meshModule == nullptr) // forbidden on mesh pipelines (no input assembly)
