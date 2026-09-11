@@ -2935,6 +2935,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
   cmdBindViewport(viewport);
   cmdBindScissorRect(scissor);
   cmdBindDepthState({});
+  cmdSetDepthBounds(0.0f, 1.0f);
   cmdBindStencilState({});
 
   ctx_->checkAndUpdateDescriptorSets();
@@ -3050,6 +3051,11 @@ void lvk::CommandBuffer::cmdBindDepthState(const DepthState& desc) {
   const VkCompareOp op = compareOpToVkCompareOp(desc.compareOp);
   vkCmdSetDepthWriteEnable(wrapper_->cmdBuf_, desc.isDepthWriteEnabled ? VK_TRUE : VK_FALSE);
   vkCmdSetDepthTestEnable(wrapper_->cmdBuf_, (op != VK_COMPARE_OP_ALWAYS || desc.isDepthWriteEnabled) ? VK_TRUE : VK_FALSE);
+  vkCmdSetDepthBoundsTestEnable(wrapper_->cmdBuf_, desc.isDepthBoundsTestEnabled ? VK_TRUE : VK_FALSE);
+
+  if (desc.isDepthBoundsTestEnabled) {
+    LVK_ASSERT_MSG(ctx_->supportsDepthBounds(), "The depth bounds test requires the `depthBounds` feature (see supportsDepthBounds())");
+  }
 
 #if defined(ANDROID)
   // This is a workaround for the issue.
@@ -3431,6 +3437,10 @@ void lvk::CommandBuffer::cmdSetDepthBias(float constantFactor, float slopeFactor
 
 void lvk::CommandBuffer::cmdSetDepthBiasEnable(bool enable) {
   vkCmdSetDepthBiasEnable(wrapper_->cmdBuf_, enable ? VK_TRUE : VK_FALSE);
+}
+
+void lvk::CommandBuffer::cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) {
+  vkCmdSetDepthBounds(wrapper_->cmdBuf_, minDepthBounds, maxDepthBounds);
 }
 
 void lvk::CommandBuffer::cmdSetPrimitiveRestartEnable(bool enable) {
@@ -5811,12 +5821,14 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_WRITE_MASK)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_REFERENCE)
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS, supportsDepthBounds())
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_STENCIL_OP)
+      .dynamicState(VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE, supportsDepthBounds())
       // from Vulkan 1.3 or VK_EXT_extended_dynamic_state2
       .dynamicState(VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE)
       .dynamicState(VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE)

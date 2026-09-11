@@ -439,6 +439,7 @@ struct StencilState {
 struct DepthState {
   CompareOp compareOp = CompareOp_AlwaysPass;
   bool isDepthWriteEnabled = false;
+  bool isDepthBoundsTestEnabled = false; // requires `IContext::supportsDepthBounds()`; set the range with `cmdSetDepthBounds()`
 };
 
 enum PolygonMode : uint8_t {
@@ -1160,6 +1161,7 @@ class ICommandBuffer {
   // the argument order is correct, so the `clamp` parameter can have a default value
   virtual void cmdSetDepthBias(float constantFactor, float slopeFactor, float clamp = 0.0f) = 0;
   virtual void cmdSetDepthBiasEnable(bool enable) = 0;
+  virtual void cmdSetDepthBounds(float minDepthBounds, float maxDepthBounds) = 0;
   // requires `LineStrip` or `TriangleStrip`; the restart index is the max value representable by the bound `IndexFormat`
   virtual void cmdSetPrimitiveRestartEnable(bool enable) = 0;
   virtual void cmdSetFragmentShadingRate(const Dimensions& fragmentSize, // 2D, e.g. 1x1 (full rate) or 2x2
