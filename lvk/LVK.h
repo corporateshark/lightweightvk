@@ -1285,6 +1285,7 @@ class IContext {
 
   virtual bool isExtensionEnabled(const char* ext) const = 0;
   virtual bool supportsAsyncCompute() const = 0;
+  virtual bool supportsDepthBounds() const = 0;
 
 #pragma region Performance queries
   virtual double getTimestampPeriodToMs() const = 0;

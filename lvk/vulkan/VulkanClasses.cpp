@@ -7862,6 +7862,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .depthClamp = VK_TRUE,
       .depthBiasClamp = VK_TRUE,
       .fillModeNonSolid = vkFeatures10_.features.fillModeNonSolid, // enable if supported
+      .depthBounds = vkFeatures10_.features.depthBounds, // enable if supported
       .largePoints = VK_TRUE,
       .samplerAnisotropy = VK_TRUE,
       .textureCompressionETC2 = vkFeatures10_.features.textureCompressionETC2, // enable if supported

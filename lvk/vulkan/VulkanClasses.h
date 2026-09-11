@@ -668,6 +668,9 @@ class VulkanContext final : public IContext {
   bool supportsAsyncCompute() const override {
     return immediateCompute_ != nullptr;
   }
+  bool supportsDepthBounds() const override {
+    return vkFeatures10_.features.depthBounds == VK_TRUE;
+  }
 
   double getTimestampPeriodToMs() const override;
   bool getQueryPoolResults(QueryPoolHandle pool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* outData, size_t stride)
