@@ -6490,8 +6490,17 @@ void lvk::VulkanContext::destroy(lvk::QueryPoolHandle handle) {
 void lvk::VulkanContext::destroy(lvk::AccelStructHandle handle) {
   AccelerationStructure* accelStruct = accelStructuresPool_.get(handle);
 
+  if (!accelStruct->vkHandle) {
+    // a null `vkHandle` means the acceleration structure has already been destroyed
+    return;
+  }
+
   SCOPE_EXIT {
-    accelStructuresPool_.destroy(handle);
+    // a repeated destroy() is a no-op; this also releases the backing buffers
+    *accelStruct = AccelerationStructure{};
+    // return the slot to the free list only after the last submission using it has completed
+    // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
+    deferredTask(std::packaged_task<void()>([this, handle]() { accelStructuresPool_.destroy(handle); }));
   };
 
   deferredTask(std::packaged_task<void()>(
