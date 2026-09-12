@@ -9038,6 +9038,12 @@ lvk::SamplerHandle lvk::VulkanContext::createSampler(const VkSamplerCreateInfo& 
 
   VkSampler sampler = VK_NULL_HANDLE;
   VK_ASSERT(vkCreateSampler(vkDevice_, &cinfo, nullptr, &sampler));
+
+  if (!LVK_VERIFY(sampler)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkSampler");
+    return {};
+  }
+
   VK_ASSERT(lvk::setDebugObjectName(vkDevice_, VK_OBJECT_TYPE_SAMPLER, (uint64_t)sampler, debugName));
 
   SamplerHandle handle = samplersPool_.create(VkSampler(sampler));
