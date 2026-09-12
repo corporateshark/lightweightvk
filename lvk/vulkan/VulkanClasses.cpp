@@ -4488,6 +4488,8 @@ lvk::VulkanContext::~VulkanContext() {
     }
   }
 
+  waitDeferredTasks(); // frees pool slots, so it has to run before the leak checks and the pool teardown
+
   if (shaderModulesPool_.numObjects()) {
     LLOGW("Leaked %u shader modules\n", shaderModulesPool_.numObjects());
   }
@@ -4515,8 +4517,6 @@ lvk::VulkanContext::~VulkanContext() {
   renderPipelinesPool_.clear();
   shaderModulesPool_.clear();
   texturesPool_.clear();
-
-  waitDeferredTasks();
 
   immediateCompute_.reset(nullptr);
   immediate_.reset(nullptr);
