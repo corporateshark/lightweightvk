@@ -6352,8 +6352,15 @@ void lvk::VulkanContext::destroy(SamplerHandle handle) {
 
   VkSampler sampler = *samplersPool_.get(handle);
 
-  samplersPool_.destroy(handle);
+  if (!sampler) {
+    // a null sampler means it has already been destroyed
+    return;
+  }
 
+  *samplersPool_.get(handle) = VK_NULL_HANDLE; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy sampler
+
+  // return the slot to the free list only after the last submission using it has completed
+  deferredTask(std::packaged_task<void()>([this, handle]() { samplersPool_.destroy(handle); }));
   deferredTask(std::packaged_task<void()>([device = vkDevice_, sampler = sampler]() { vkDestroySampler(device, sampler, nullptr); }));
 }
 
@@ -6391,16 +6398,20 @@ void lvk::VulkanContext::destroy(BufferHandle handle) {
 void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_DESTROY);
 
-  SCOPE_EXIT {
-    texturesPool_.destroy(handle);
-    awaitingCreation_ = true; // make the validation layers happy
-  };
-
   lvk::VulkanImage* tex = texturesPool_.get(handle);
 
-  if (!tex) {
+  if (!tex || !tex->vkImage_) {
+    // a null `vkImage_` means the texture has already been destroyed
     return;
   }
+
+  SCOPE_EXIT {
+    *tex = VulkanImage{}; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy texture
+    awaitingCreation_ = true;
+    // return the slot to the free list only after the last submission using it has completed
+    // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
+    deferredTask(std::packaged_task<void()>([this, handle]() { texturesPool_.destroy(handle); }));
+  };
 
   deferredTask(std::packaged_task<void()>(
       [device = getVkDevice(), imageView = tex->imageView_]() { vkDestroyImageView(device, imageView, nullptr); }));
