@@ -5415,6 +5415,11 @@ lvk::AccelStructHandle lvk::VulkanContext::createBLAS(const AccelStructDesc& des
   };
   VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
 
+  if (!LVK_VERIFY(accelStruct.vkHandle)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
+    return {};
+  }
+
   lvk::Holder<lvk::BufferHandle> scratchBuffer = createBuffer(
       {
           .usage = lvk::BufferUsageBits_Storage,
@@ -5488,7 +5493,12 @@ lvk::AccelStructHandle lvk::VulkanContext::createTLAS(const AccelStructDesc& des
       .size = accelerationStructureBuildSizesInfo.accelerationStructureSize,
       .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
   };
-  vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle);
+  VK_ASSERT(vkCreateAccelerationStructureKHR(vkDevice_, &ciAccelerationStructure, nullptr, &accelStruct.vkHandle));
+
+  if (!LVK_VERIFY(accelStruct.vkHandle)) {
+    Result::setResult(outResult, Result::Code::RuntimeError, "Cannot create VkAccelerationStructureKHR");
+    return {};
+  }
 
   lvk::Holder<lvk::BufferHandle> scratchBuffer = createBuffer(
       {
