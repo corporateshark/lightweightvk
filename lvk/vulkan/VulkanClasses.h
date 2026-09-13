@@ -736,6 +736,10 @@ class VulkanContext final : public IContext {
   void* getVmaAllocator() const;
 
   void checkAndUpdateDescriptorSets();
+  // patch one slot of the descriptor set in use instead of rebuilding all of them;
+  // return `false` when the caller has to fall back to a full rebuild via `awaitingCreation_`
+  [[nodiscard]] bool writeTextureDescriptor(uint32_t index);
+  [[nodiscard]] bool writeSamplerDescriptor(uint32_t index);
   void bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const;
 
   [[nodiscard]] uint32_t getMaxStorageBufferRange() const override;
