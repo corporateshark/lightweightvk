@@ -742,6 +742,7 @@ class VulkanContext final : public IContext {
   // return `false` when the caller has to fall back to a full rebuild via `awaitingCreation_`
   [[nodiscard]] bool writeTextureDescriptor(uint32_t index);
   [[nodiscard]] bool writeSamplerDescriptor(uint32_t index);
+  [[nodiscard]] bool writeAccelStructDescriptor(uint32_t index);
   void bindDefaultDescriptorSets(VkCommandBuffer cmdBuf, VkPipelineBindPoint bindPoint, VkPipelineLayout layout) const;
 
   [[nodiscard]] uint32_t getMaxStorageBufferRange() const override;
@@ -789,6 +790,7 @@ class VulkanContext final : public IContext {
   void getBuildInfoTLAS(const AccelStructDesc& desc,
                         VkAccelerationStructureGeometryKHR& outGeometry,
                         VkAccelerationStructureBuildSizesInfoKHR& outSizesInfo) const;
+  void createDummyTLAS();
 
  private:
   friend class lvk::VulkanSwapchain;
@@ -916,6 +918,9 @@ class VulkanContext final : public IContext {
   std::vector<const char*> enabledDeviceExtensionNames_;
 
   TextureHandle dummyTexture_;
+  // BLAS and empty slots of `kBinding_AccelerationStructures` need a valid TLAS too
+  BufferHandle dummyTLASBuffer_;
+  VkAccelerationStructureKHR dummyTLAS_ = VK_NULL_HANDLE;
 
   ldr::Pool<lvk::ShaderModule, lvk::ShaderModuleState> shaderModulesPool_;
   ldr::Pool<lvk::RenderPipeline, lvk::RenderPipelineState> renderPipelinesPool_;
