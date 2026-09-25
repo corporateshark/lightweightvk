@@ -5958,7 +5958,6 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
   const lvk::ShaderModuleState* meshModule = shaderModulesPool_.get(desc.smMesh);
 
   LVK_ASSERT(vertModule || meshModule);
-  LVK_ASSERT(fragModule);
 
   if (tescModule || teseModule || desc.patchControlPoints) {
     LVK_ASSERT_MSG(tescModule && teseModule, "Both tessellation control and evaluation shaders should be provided");
@@ -6062,7 +6061,9 @@ VkPipeline lvk::VulkanContext::getVkPipeline(RenderPipelineHandle handle, Render
       .shaderStage(meshModule
                        ? lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_MESH_BIT_EXT, meshModule->ci, desc.entryPointMesh, &si)
                        : lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertModule->ci, desc.entryPointVert, &si))
-      .shaderStage(lvk::getPipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si))
+      .shaderStage(fragModule ? lvk::getPipelineShaderStageCreateInfo(
+                                    VK_SHADER_STAGE_FRAGMENT_BIT, fragModule->ci, desc.entryPointFrag, &si)
+                              : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
       .shaderStage(tescModule ? lvk::getPipelineShaderStageCreateInfo(
                                     VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescModule->ci, desc.entryPointTesc, &si)
                               : VkPipelineShaderStageCreateInfo{.module = VK_NULL_HANDLE})
@@ -6463,11 +6464,6 @@ lvk::Holder<lvk::RenderPipelineHandle> lvk::VulkanContext::createRenderPipeline(
       Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing vertex shader");
       return {};
     }
-  }
-
-  if (!LVK_VERIFY(desc.smFrag.valid())) {
-    Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Missing fragment shader");
-    return {};
   }
 
   RenderPipelineState rps = {.desc_ = desc};
