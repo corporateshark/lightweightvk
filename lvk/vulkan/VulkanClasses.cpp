@@ -1593,10 +1593,11 @@ lvk::TextureHandle lvk::VulkanSwapchain::getCurrentTexture() {
   LVK_PROFILER_FUNCTION();
 
   if (getNextImage_) {
+    // wait until the submission which last rendered into this image has completed
     const VkSemaphoreWaitInfo waitInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
         .semaphoreCount = 1,
-        .pSemaphores = &ctx_.timelineSemaphore_,
+        .pSemaphores = &ctx_.immediate_->getTimelineSemaphore(),
         .pValues = &timelineWaitValues_[currentImageIndex_],
     };
     VK_ASSERT(vkWaitSemaphores(device_, &waitInfo, UINT64_MAX));
@@ -1690,7 +1691,6 @@ lvk::Result lvk::VulkanSwapchain::present(VkSemaphore waitSemaphore) {
 
   // ready to call `acquireNextImage()` on the next `getCurrentVulkanTexture()`
   getNextImage_ = true;
-  currentFrameIndex_++;
 
   LVK_PROFILER_FRAME(nullptr);
 
@@ -1726,14 +1726,11 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
 
   for (uint32_t i = 0; i != kMaxCommandBuffers; i++) {
     CommandBufferWrapper& buf = buffers_[i];
-    char fenceName[256] = {0};
     char semaphoreName[256] = {0};
     if (debugName) {
-      (void)snprintf(fenceName, sizeof(fenceName) - 1, "Fence: %s (cmdbuf %u)", debugName, i);
       (void)snprintf(semaphoreName, sizeof(semaphoreName) - 1, "Semaphore: %s (cmdbuf %u)", debugName, i);
     }
     buf.semaphore_ = lvk::createSemaphore(device, semaphoreName);
-    buf.fence_ = lvk::createFence(device, fenceName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
     buffers_[i].handle_.bufferIndex_ = i;
     buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
@@ -1752,8 +1749,6 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
   waitAll();
 
   for (CommandBufferWrapper& buf : buffers_) {
-    // lifetimes of all VkFence objects are managed explicitly we do not use deferredTask() for them
-    vkDestroyFence(device_, buf.fence_, nullptr);
     vkDestroySemaphore(device_, buf.semaphore_, nullptr);
   }
 
@@ -1764,29 +1759,30 @@ lvk::VulkanImmediateCommands::~VulkanImmediateCommands() {
 void lvk::VulkanImmediateCommands::purge() {
   LVK_PROFILER_FUNCTION();
 
-  const uint32_t numBuffers = static_cast<uint32_t>(LVK_ARRAY_NUM_ELEMENTS(buffers_));
+  const uint64_t completedValue = getLastKnownCompletedValue();
 
-  for (uint32_t i = 0; i != numBuffers; i++) {
-    // always start checking with the oldest submitted buffer, then wrap around
-    CommandBufferWrapper& buf = buffers_[(i + lastSubmitHandle_.bufferIndex_ + 1) % numBuffers];
-
+  for (CommandBufferWrapper& buf : buffers_) {
     if (buf.cmdBuf_ == VK_NULL_HANDLE || buf.isEncoding_) {
       continue;
     }
 
-    const VkResult result = vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0);
-
-    if (result == VK_SUCCESS) {
-      VK_ASSERT(vkResetCommandBuffer(buf.cmdBuf_, VkCommandBufferResetFlags{0}));
-      VK_ASSERT(vkResetFences(device_, 1, &buf.fence_));
-      buf.cmdBuf_ = VK_NULL_HANDLE;
-      numAvailableCommandBuffers_++;
-    } else {
-      if (result != VK_TIMEOUT) {
-        VK_ASSERT(result);
-      }
+    if (buf.signaledTimelineValue_ > completedValue) {
+      continue; // still executing
     }
+
+    VK_ASSERT(vkResetCommandBuffer(buf.cmdBuf_, VkCommandBufferResetFlags{0}));
+    buf.cmdBuf_ = VK_NULL_HANDLE;
+    numAvailableCommandBuffers_++;
   }
+}
+
+uint64_t lvk::VulkanImmediateCommands::getLastKnownCompletedValue() const {
+  uint64_t value = 0;
+  VK_ASSERT(vkGetSemaphoreCounterValue(device_, submitTimelineSemaphore_, &value));
+  if (value > lastKnownCompletedValue_) {
+    lastKnownCompletedValue_ = value;
+  }
+  return lastKnownCompletedValue_;
 }
 
 const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCommands::acquire() {
@@ -1860,7 +1856,14 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
     return;
   }
 
-  VK_ASSERT(vkWaitForFences(device_, 1, &buffers_[handle.bufferIndex_].fence_, VK_TRUE, UINT64_MAX));
+  const uint64_t waitValue = buffers_[handle.bufferIndex_].signaledTimelineValue_;
+  const VkSemaphoreWaitInfo wi = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+      .semaphoreCount = 1,
+      .pSemaphores = &submitTimelineSemaphore_,
+      .pValues = &waitValue,
+  };
+  VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
 
   purge();
 }
@@ -1868,18 +1871,17 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
 void lvk::VulkanImmediateCommands::waitAll() {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_WAIT);
 
-  VkFence fences[kMaxCommandBuffers];
+  // the timeline is monotonic within a queue, so the newest submission's value covers every outstanding one
+  const uint64_t waitValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
 
-  uint32_t numFences = 0;
-
-  for (const CommandBufferWrapper& buf : buffers_) {
-    if (buf.cmdBuf_ != VK_NULL_HANDLE && !buf.isEncoding_) {
-      fences[numFences++] = buf.fence_;
-    }
-  }
-
-  if (numFences) {
-    VK_ASSERT(vkWaitForFences(device_, numFences, fences, VK_TRUE, UINT64_MAX));
+  if (waitValue) {
+    const VkSemaphoreWaitInfo wi = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+        .semaphoreCount = 1,
+        .pSemaphores = &submitTimelineSemaphore_,
+        .pValues = &waitValue,
+    };
+    VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
   }
 
   purge();
@@ -1895,13 +1897,17 @@ bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastC
 
   const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
 
-  if (buf.cmdBuf_ == VK_NULL_HANDLE) {
-    // already recycled and not yet reused
+  if (buf.handle_.submitId_ != handle.submitId_) {
+    // already recycled and reused by another command buffer
     return true;
   }
 
-  if (buf.handle_.submitId_ != handle.submitId_) {
-    // already recycled and reused by another command buffer
+  if (buf.isEncoding_) {
+    // the slot is being recorded: nothing has been submitted for it yet, so signaledTimelineValue_ still refers to its previous use
+    return false;
+  }
+
+  if (buf.signaledTimelineValue_ <= lastKnownCompletedValue_) {
     return true;
   }
 
@@ -1910,7 +1916,7 @@ bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastC
     return false;
   }
 
-  return vkWaitForFences(device_, 1, &buf.fence_, VK_TRUE, 0) == VK_SUCCESS;
+  return getLastKnownCompletedValue() >= buf.signaledTimelineValue_;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper) {
@@ -1945,10 +1951,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
                             .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT},
       {},
   };
-  uint32_t numSignalSemaphores = 2;
-  if (signalSemaphore_.semaphore) {
-    signalSemaphores[numSignalSemaphores++] = signalSemaphore_;
-  }
+  const uint32_t numSignalSemaphores = 2;
   wrapper.signaledTimelineValue_ = timelineValue;
 
   LVK_PROFILER_ZONE("vkQueueSubmit2()", LVK_PROFILER_COLOR_SUBMIT);
@@ -1968,7 +1971,7 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
       .signalSemaphoreInfoCount = numSignalSemaphores,
       .pSignalSemaphoreInfos = signalSemaphores,
   };
-  const VkResult result = vkQueueSubmit2(queue_, 1u, &si, wrapper.fence_);
+  const VkResult result = vkQueueSubmit2(queue_, 1u, &si, VK_NULL_HANDLE);
   if (has_EXT_device_fault_ && result == VK_ERROR_DEVICE_LOST) {
     VkDeviceFaultCountsEXT count = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT,
@@ -2044,7 +2047,6 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   lastSubmitHandle_ = wrapper.handle_;
   waitSemaphore_.semaphore = VK_NULL_HANDLE;
   waitTimeline_.semaphore = VK_NULL_HANDLE;
-  signalSemaphore_.semaphore = VK_NULL_HANDLE;
 
   // reset
   wrapper.isEncoding_ = false;
@@ -2071,13 +2073,6 @@ void lvk::VulkanImmediateCommands::waitTimelineSemaphore(VkSemaphore semaphore, 
   waitTimeline_.value = value;
 }
 
-void lvk::VulkanImmediateCommands::signalSemaphore(VkSemaphore semaphore, uint64_t signalValue) {
-  LVK_ASSERT(signalSemaphore_.semaphore == VK_NULL_HANDLE);
-
-  signalSemaphore_.semaphore = semaphore;
-  signalSemaphore_.value = signalValue;
-}
-
 VkSemaphore lvk::VulkanImmediateCommands::acquireLastSubmitSemaphore() {
   return std::exchange(lastSubmitSemaphore_.semaphore, VK_NULL_HANDLE);
 }
@@ -2087,13 +2082,6 @@ void lvk::VulkanImmediateCommands::setLastPresentSemaphore(VkSemaphore semaphore
   lastPresentFence_ = presentFence;
 }
 
-VkFence lvk::VulkanImmediateCommands::getVkFence(lvk::SubmitHandle handle) const {
-  if (handle.empty()) {
-    return VK_NULL_HANDLE;
-  }
-
-  return buffers_[handle.bufferIndex_].fence_;
-}
 
 uint64_t lvk::VulkanImmediateCommands::getTimelineValue(lvk::SubmitHandle handle) const {
   if (handle.empty()) {
@@ -4670,8 +4658,6 @@ lvk::VulkanContext::~VulkanContext() {
   stagingDevice_.reset(nullptr);
   swapchain_.reset(nullptr); // swapchain has to be destroyed prior to Surface
 
-  vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
-
   destroy(dummyTexture_);
 
   if (dummyTLAS_) {
@@ -4801,14 +4787,6 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
 
   const bool shouldPresent = hasSwapchain() && present;
 
-  if (shouldPresent) {
-    // if we a presenting a swapchain image, signal our timeline semaphore
-    const uint64_t signalValue = swapchain_->currentFrameIndex_ + swapchain_->getNumSwapchainImages();
-    // we wait for this value next time we want to acquire this swapchain image
-    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = signalValue;
-    immediate_->signalSemaphore(timelineSemaphore_, signalValue);
-  }
-
   // Submit on the command buffer's own queue (graphics or async-compute)
   LVK_ASSERT(vkCmdBuffer->immediate_);
   lvk::VulkanImmediateCommands& imm = *vkCmdBuffer->immediate_;
@@ -4855,6 +4833,9 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   vkCmdBuffer->lastSubmitHandle_ = imm.submit(*vkCmdBuffer->wrapper_);
 
   if (shouldPresent) {
+    LVK_ASSERT_MSG(&imm == immediate_.get(), "Only the graphics queue can present");
+    // we wait for this value next time we want to acquire this swapchain image
+    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = imm.getTimelineValue(vkCmdBuffer->lastSubmitHandle_);
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
   }
 
@@ -8784,7 +8765,6 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
     // so does a pending acquire semaphore: drop it, otherwise the next submit() would wait on a destroyed semaphore
     immediate_->waitSemaphore_.semaphore = VK_NULL_HANDLE;
     swapchain_ = nullptr;
-    vkDestroySemaphore(vkDevice_, timelineSemaphore_, nullptr);
   }
 
   if (!width || !height) {
@@ -8792,8 +8772,6 @@ lvk::Result lvk::VulkanContext::initSwapchain(uint32_t width, uint32_t height) {
   }
 
   swapchain_ = std::make_unique<lvk::VulkanSwapchain>(*this, width, height);
-
-  timelineSemaphore_ = lvk::createSemaphoreTimeline(vkDevice_, swapchain_->getNumSwapchainImages() - 1, "Semaphore: timelineSemaphore_");
 
   return swapchain_ ? Result() : Result(Result::Code::RuntimeError, "Failed to create swapchain");
 }
@@ -9256,7 +9234,8 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   if (const DescriptorSet& dset = DSets_[lastUpdatedDSet_]; dset.vkDSet) {
     // we can't reuse a dset that's either waiting to be submitted in a draw call
     // (which happens when textures are created mid-frame) or is still being processed
-    if (dset.handle_.empty() || !immediate_->isReady(dset.handle_)) {
+    // async-compute submits stamp dsets too, so the handle has to be checked against the queue which produced it
+    if (dset.handle_.empty() || !isReady(dset.handle_)) {
       // add a new empty dset to be populated right away
       lastUpdatedDSet_ = DSets_.size();
       DSets_.push_back({});
