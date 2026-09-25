@@ -207,7 +207,7 @@ class VulkanImmediateCommands final {
   void signalSemaphore(VkSemaphore semaphore, uint64_t signalValue);
   VkSemaphore acquireLastSubmitSemaphore();
   // timeline semaphore signaled by every submit() on this queue; lets another queue wait for a specific submission to complete
-  VkSemaphore getTimelineSemaphore() const {
+  const VkSemaphore& getTimelineSemaphore() const {
     return submitTimelineSemaphore_;
   }
   uint64_t getTimelineValue(SubmitHandle handle) const;
