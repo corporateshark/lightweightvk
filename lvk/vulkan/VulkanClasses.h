@@ -230,11 +230,11 @@ class VulkanImmediateCommands final {
   CommandBufferWrapper buffers_[kMaxCommandBuffers];
   SubmitHandle lastSubmitHandle_ = SubmitHandle();
   VkSemaphoreSubmitInfo lastSubmitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                                .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+                                                .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
   VkSemaphoreSubmitInfo waitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                          .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // extra "wait" semaphore
+                                          .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}; // extra "wait" semaphore
   VkSemaphoreSubmitInfo waitTimeline_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                                         .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT}; // timeline wait (cross-queue)
+                                         .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}; // timeline wait (cross-queue)
   VkSemaphore lastPresentSemaphore_ = VK_NULL_HANDLE; // present-wait semaphore of the last vkQueuePresentKHR()
   VkFence lastPresentFence_ = VK_NULL_HANDLE; // its present fence; acquire() waits it before reusing that slot
   VkSemaphore submitTimelineSemaphore_ = VK_NULL_HANDLE; // monotonic timeline signaled by every submit() (cross-queue waits)
