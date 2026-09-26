@@ -209,7 +209,7 @@ class VulkanImmediateCommands final {
   void setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence);
   SubmitHandle getLastSubmitHandle() const;
   SubmitHandle getNextSubmitHandle() const;
-  bool isReady(SubmitHandle handle, bool fastCheckNoVulkan = false) const;
+  bool isReady(SubmitHandle handle) const;
   // the highest timeline value the queue has finished executing
   uint64_t getLastKnownCompletedValue() const;
   void wait(SubmitHandle handle);
