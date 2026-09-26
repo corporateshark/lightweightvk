@@ -100,6 +100,10 @@ const char* codeSlang = R"(
 struct Material {
   float4 ambient;
   float4 diffuse;
+  uint texAmbient;
+  uint texDiffuse;
+  uint texAlpha;
+  uint padding;
 };
 
 struct PerFrame {
@@ -609,6 +613,10 @@ layout (location=3) in uint mtlIndex;
 struct Material {
    vec4 ambient;
    vec4 diffuse;
+   uint texAmbient;
+   uint texDiffuse;
+   uint texAlpha;
+   uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer PerFrame {
@@ -1115,16 +1123,6 @@ struct UniformsPerObject {
   mat4 normal;
 };
 
-// this goes into our GLSL shaders
-struct GPUMaterial {
-  vec4 ambient = vec4(0.0f);
-  vec4 diffuse = vec4(0.0f);
-};
-
-static_assert(sizeof(GPUMaterial) % 16 == 0);
-
-std::vector<GPUMaterial> materials_;
-
 bool initModel(VulkanApp& app) {
   const std::string cacheFileName = app.folderContentRoot_ + CACHE_FILE_NAME;
 
@@ -1135,8 +1133,8 @@ bool initModel(VulkanApp& app) {
     }
   }
 
-  for (const auto& mtl : cachedMaterials_) {
-    materials_.push_back(GPUMaterial{vec4(mtl.ambient, 1.0f), vec4(mtl.diffuse, 1.0f)});
+  for (const CachedMaterial& mtl : cachedMaterials_) {
+    materials_.push_back(GPUMaterial{.ambient = vec4(mtl.ambient, 1.0f), .diffuse = vec4(mtl.diffuse, 1.0f)});
   }
   res.sbMaterials_ = ctx_->createBuffer({
       .usage = lvk::BufferUsageBits_Storage,
