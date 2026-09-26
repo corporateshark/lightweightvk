@@ -191,9 +191,8 @@ class VulkanImmediateCommands final {
   struct CommandBufferWrapper {
     VkCommandBuffer cmdBuf_ = VK_NULL_HANDLE;
     VkCommandBuffer cmdBufAllocated_ = VK_NULL_HANDLE;
-    SubmitHandle handle_ = {};
     VkSemaphore semaphore_ = VK_NULL_HANDLE;
-    mutable uint64_t signaledTimelineValue_ = 0; // value signaled on submitTimelineSemaphore_ by this submission (cross-queue waits)
+    mutable uint64_t signaledTimelineValue_ = 0; // purge() recycles this slot once the timeline reaches this value
     mutable bool isEncoding_ = false;
   };
 
@@ -207,7 +206,6 @@ class VulkanImmediateCommands final {
   const VkSemaphore& getTimelineSemaphore() const {
     return submitTimelineSemaphore_;
   }
-  uint64_t getTimelineValue(SubmitHandle handle) const;
   void setLastPresentSemaphore(VkSemaphore semaphore, VkFence presentFence);
   SubmitHandle getLastSubmitHandle() const;
   SubmitHandle getNextSubmitHandle() const;
@@ -231,7 +229,6 @@ class VulkanImmediateCommands final {
   const char* debugName_ = "";
   CommandBufferWrapper buffers_[kMaxCommandBuffers];
   SubmitHandle lastSubmitHandle_ = SubmitHandle();
-  SubmitHandle nextSubmitHandle_ = SubmitHandle();
   VkSemaphoreSubmitInfo lastSubmitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                                 .stageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
   VkSemaphoreSubmitInfo waitSemaphore_ = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -244,7 +241,6 @@ class VulkanImmediateCommands final {
   // the timeline only ever grows, so a submission known to be complete never has to be queried again
   mutable uint64_t lastKnownCompletedValue_ = 0;
   uint32_t numAvailableCommandBuffers_ = kMaxCommandBuffers;
-  uint32_t submitCounter_ = 1;
 };
 
 // the properties of a "render pass" a VkPipeline is created for; the VkPipeline has to be recreated whenever they change

@@ -1732,8 +1732,6 @@ lvk::VulkanImmediateCommands::VulkanImmediateCommands(VkDevice device,
     }
     buf.semaphore_ = lvk::createSemaphore(device, semaphoreName);
     VK_ASSERT(vkAllocateCommandBuffers(device, &ai, &buf.cmdBufAllocated_));
-    buffers_[i].handle_.bufferIndex_ = i;
-    buffers_[i].handle_.queueFamilyIndex_ = queueFamilyIndex; // make every SubmitHandle self-describing
   }
 
   char timelineName[256] = {0};
@@ -1823,7 +1821,6 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
     lastPresentFence_ = VK_NULL_HANDLE;
   }
 
-  current->handle_.submitId_ = submitCounter_;
   numAvailableCommandBuffers_--;
 
   current->cmdBuf_ = current->cmdBufAllocated_;
@@ -1833,8 +1830,6 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
   VK_ASSERT(vkBeginCommandBuffer(current->cmdBuf_, &bi));
-
-  nextSubmitHandle_ = current->handle_;
 
   return *current;
 }
@@ -1851,12 +1846,12 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
     return;
   }
 
-  if (!LVK_VERIFY(!buffers_[handle.bufferIndex_].isEncoding_)) {
-    // we are waiting for a buffer which has not been submitted - this is probably a logic error somewhere in the calling code
+  if (handle.value_ > lastSubmitHandle_.value_) {
+    // getNextSubmitHandle() hands out a value before its submission exists; nothing can be executing yet, so there is nothing to wait for
     return;
   }
 
-  const uint64_t waitValue = buffers_[handle.bufferIndex_].signaledTimelineValue_;
+  const uint64_t waitValue = handle.value_;
   const VkSemaphoreWaitInfo wi = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
       .semaphoreCount = 1,
@@ -1872,7 +1867,7 @@ void lvk::VulkanImmediateCommands::waitAll() {
   LVK_PROFILER_FUNCTION_COLOR(LVK_PROFILER_COLOR_WAIT);
 
   // the timeline is monotonic within a queue, so the newest submission's value covers every outstanding one
-  const uint64_t waitValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
+  const uint64_t waitValue = lastSubmitHandle_.value_;
 
   if (waitValue) {
     const VkSemaphoreWaitInfo wi = {
@@ -1888,35 +1883,17 @@ void lvk::VulkanImmediateCommands::waitAll() {
 }
 
 bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastCheckNoVulkan) const {
-  LVK_ASSERT(handle.bufferIndex_ < kMaxCommandBuffers);
-
-  if (handle.empty()) {
-    // a null handle
-    return true;
-  }
-
-  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
-
-  if (buf.handle_.submitId_ != handle.submitId_) {
-    // already recycled and reused by another command buffer
-    return true;
-  }
-
-  if (buf.isEncoding_) {
-    // the slot is being recorded: nothing has been submitted for it yet, so signaledTimelineValue_ still refers to its previous use
-    return false;
-  }
-
-  if (buf.signaledTimelineValue_ <= lastKnownCompletedValue_) {
+  if (handle.value_ <= lastKnownCompletedValue_) {
+    // a null handle, or a submission we already know has completed
     return true;
   }
 
   if (fastCheckNoVulkan) {
-    // do not ask the Vulkan API about it, just let it retire naturally (when submitId for this bufferIndex gets incremented)
+    // do not ask the Vulkan API about it, just let it retire naturally (when the timeline is queried elsewhere)
     return false;
   }
 
-  return getLastKnownCompletedValue() >= buf.signaledTimelineValue_;
+  return getLastKnownCompletedValue() >= handle.value_;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrapper& wrapper) {
@@ -1936,11 +1913,9 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   if (waitTimeline_.semaphore) {
     waitSemaphores[numWaitSemaphores++] = waitTimeline_;
   }
-  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline + an optional extra signal.
-  // The next timeline value is one past the most recent submission's; the highest value always belongs to the last submit,
-  // so we read it back from that slot instead of caching a separate running counter.
-  const uint64_t prevTimelineValue = lastSubmitHandle_.empty() ? 0 : buffers_[lastSubmitHandle_.bufferIndex_].signaledTimelineValue_;
-  const uint64_t timelineValue = prevTimelineValue + 1;
+  // Signals: per-slot binary semaphore (intra-queue chain / present) + the monotonic cross-queue timeline.
+  // The next timeline value is one past the most recent submission's, which a SubmitHandle carries verbatim.
+  const uint64_t timelineValue = lastSubmitHandle_.value_ + 1;
   VkSemaphoreSubmitInfo signalSemaphores[] = {
       VkSemaphoreSubmitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                             .semaphore = wrapper.semaphore_,
@@ -2044,18 +2019,12 @@ lvk::SubmitHandle lvk::VulkanImmediateCommands::submit(const CommandBufferWrappe
   LVK_PROFILER_ZONE_END();
 
   lastSubmitSemaphore_.semaphore = wrapper.semaphore_;
-  lastSubmitHandle_ = wrapper.handle_;
+  lastSubmitHandle_ = {{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = timelineValue}}};
   waitSemaphore_.semaphore = VK_NULL_HANDLE;
   waitTimeline_.semaphore = VK_NULL_HANDLE;
 
   // reset
   wrapper.isEncoding_ = false;
-  submitCounter_++;
-
-  if (!submitCounter_) {
-    // skip the 0 value - when uint32_t wraps around (null SubmitHandle)
-    submitCounter_++;
-  }
 
   return lastSubmitHandle_;
 }
@@ -2083,22 +2052,12 @@ void lvk::VulkanImmediateCommands::setLastPresentSemaphore(VkSemaphore semaphore
 }
 
 
-uint64_t lvk::VulkanImmediateCommands::getTimelineValue(lvk::SubmitHandle handle) const {
-  if (handle.empty()) {
-    return 0;
-  }
-
-  const CommandBufferWrapper& buf = buffers_[handle.bufferIndex_];
-  // a stale handle (slot already recycled and reused) means the dependency completed long ago - nothing to wait for
-  return buf.handle_.submitId_ == handle.submitId_ ? buf.signaledTimelineValue_ : 0;
-}
-
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getLastSubmitHandle() const {
   return lastSubmitHandle_;
 }
 
 lvk::SubmitHandle lvk::VulkanImmediateCommands::getNextSubmitHandle() const {
-  return nextSubmitHandle_;
+  return {{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = lastSubmitHandle_.value_ + 1}}};
 }
 
 lvk::VulkanPipelineBuilder::VulkanPipelineBuilder()
@@ -2362,7 +2321,6 @@ void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
   // each queue only needs to wait on the *other* queue's timeline; same-queue ordering is the intra-queue chain's job
   const bool isCompute = immediate_ == ctx_->immediateCompute_.get();
   const ldr::Span<SubmitHandle> crossDeps = isCompute ? deps.waitGraphics : deps.waitCompute;
-  lvk::VulkanImmediateCommands& other = isCompute ? *ctx_->immediate_ : *ctx_->immediateCompute_;
   uint64_t& waitValue = isCompute ? crossQueueGraphicsWaitValue_ : crossQueueComputeWaitValue_;
 
   // each queue signals one monotonic timeline, so waiting on the highest required value covers every dependency at once
@@ -2370,7 +2328,7 @@ void lvk::CommandBuffer::addCrossQueueDependencies(const Dependencies& deps) {
     if (dep.empty()) {
       continue;
     }
-    waitValue = std::max<uint64_t>(waitValue, other.getTimelineValue(dep));
+    waitValue = std::max<uint64_t>(waitValue, dep.value_);
   }
 }
 
@@ -4820,8 +4778,7 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   if (&imm == immediateCompute_.get()) {
     // Compute waits on the graphics submit timeline for BOTH the write-after-read guard (don't overwrite images the graphics queue
     // may still be reading) and any explicit Dependencies::waitGraphics (read-after-write). A single wait on the highest value covers both.
-    const lvk::SubmitHandle lastGraphics = immediate_->getLastSubmitHandle();
-    const uint64_t waitValue = std::max<uint64_t>(immediate_->getTimelineValue(lastGraphics), vkCmdBuffer->crossQueueGraphicsWaitValue_);
+    const uint64_t waitValue = std::max<uint64_t>(immediate_->getLastSubmitHandle().value_, vkCmdBuffer->crossQueueGraphicsWaitValue_);
     if (waitValue) {
       immediateCompute_->waitTimelineSemaphore(immediate_->getTimelineSemaphore(), waitValue);
     }
@@ -4835,7 +4792,7 @@ lvk::SubmitHandle lvk::VulkanContext::submit(lvk::ICommandBuffer& commandBuffer,
   if (shouldPresent) {
     LVK_ASSERT_MSG(&imm == immediate_.get(), "Only the graphics queue can present");
     // we wait for this value next time we want to acquire this swapchain image
-    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = imm.getTimelineValue(vkCmdBuffer->lastSubmitHandle_);
+    swapchain_->timelineWaitValues_[swapchain_->currentImageIndex_] = vkCmdBuffer->lastSubmitHandle_.value_;
     swapchain_->present(immediate_->acquireLastSubmitSemaphore());
   }
 
