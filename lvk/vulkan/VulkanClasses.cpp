@@ -1785,6 +1785,11 @@ void lvk::VulkanImmediateCommands::purge() {
 }
 
 uint64_t lvk::VulkanImmediateCommands::getLastKnownCompletedValue() const {
+  if (lastKnownCompletedValue_ >= lastSubmitHandle_.value_) {
+    // every submission on this queue is known to have completed, and only submit() can raise the timeline any further
+    return lastKnownCompletedValue_;
+  }
+
   uint64_t value = 0;
   VK_ASSERT(vkGetSemaphoreCounterValue(device_, submitTimelineSemaphore_, &value));
   if (value > lastKnownCompletedValue_) {
@@ -1866,6 +1871,9 @@ void lvk::VulkanImmediateCommands::wait(const SubmitHandle handle) {
   };
   VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
 
+  LVK_ASSERT(waitValue >= lastKnownCompletedValue_); // isReady() above refreshed the cache and found it below handle.value_
+  lastKnownCompletedValue_ = waitValue;
+
   purge();
 }
 
@@ -1883,20 +1891,17 @@ void lvk::VulkanImmediateCommands::waitAll() {
         .pValues = &waitValue,
     };
     VK_ASSERT(vkWaitSemaphores(device_, &wi, UINT64_MAX));
+
+    lastKnownCompletedValue_ = waitValue; // the whole queue has drained
   }
 
   purge();
 }
 
-bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle, bool fastCheckNoVulkan) const {
+bool lvk::VulkanImmediateCommands::isReady(const SubmitHandle handle) const {
   if (handle.value_ <= lastKnownCompletedValue_) {
     // a null handle, or a submission we already know has completed
     return true;
-  }
-
-  if (fastCheckNoVulkan) {
-    // do not ask the Vulkan API about it, just let it retire naturally (when the timeline is queried elsewhere)
-    return false;
   }
 
   return getLastKnownCompletedValue() >= handle.value_;
@@ -9557,8 +9562,8 @@ void* lvk::VulkanContext::getVmaAllocator() const {
 void lvk::VulkanContext::processDeferredTasks() const {
   std::vector<DeferredTask>::iterator it = pimpl_->deferredTasks_.begin();
 
-  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_, true) &&
-         (!immediateCompute_ || immediateCompute_->isReady(it->handleCompute_, true))) {
+  while (it != pimpl_->deferredTasks_.end() && immediate_->isReady(it->handle_) &&
+         (!immediateCompute_ || immediateCompute_->isReady(it->handleCompute_))) {
     (it++)->task_();
   }
 
