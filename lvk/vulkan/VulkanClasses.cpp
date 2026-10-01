@@ -4626,6 +4626,9 @@ lvk::VulkanContext::~VulkanContext() {
   stagingDevice_.reset(nullptr);
   swapchain_.reset(nullptr); // swapchain has to be destroyed prior to Surface
 
+  // the dummies are destroyed right below: turn the descriptor writes in pending deferred tasks into no-ops
+  awaitingCreation_ = true;
+
   destroy(dummyTexture_);
 
   if (dummyTLAS_) {
@@ -6585,12 +6588,20 @@ void lvk::VulkanContext::destroy(lvk::TextureHandle handle) {
     return;
   }
 
+  // the YUV binding is only refreshed by a full rebuild of the descriptor set
+  const bool isYUV = lvk::getNumImagePlanes(tex->vkImageFormat_) > 1;
+
   SCOPE_EXIT {
-    *tex = VulkanImage{}; // a repeated destroy() is a no-op; the descriptor set falls back to the dummy texture
-    awaitingCreation_ = true;
-    // return the slot to the free list only after the last submission using it has completed
+    *tex = VulkanImage{}; // a repeated destroy() is a no-op
+    if (isYUV) {
+      awaitingCreation_ = true;
+    }
+    // once no in-flight submission can read the slot, point it at the dummy texture and return it to the free list
     // (a slot reused earlier could be patched into the descriptor set while an in-flight command buffer still reads it)
-    deferredTask(std::packaged_task<void()>([this, handle]() { texturesPool_.destroy(handle); }));
+    deferredTask(std::packaged_task<void()>([this, handle]() {
+      (void)writeTextureDescriptor(handle.index()); // false: a pending full rebuild covers the slot
+      texturesPool_.destroy(handle);
+    }));
   };
 
   deferredTask(std::packaged_task<void()>(
