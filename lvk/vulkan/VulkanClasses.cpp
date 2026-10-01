@@ -1805,10 +1805,12 @@ const lvk::VulkanImmediateCommands::CommandBufferWrapper& lvk::VulkanImmediateCo
     purge();
   }
 
-  while (!numAvailableCommandBuffers_) {
+  if (!numAvailableCommandBuffers_) {
     LLOGL("Waiting for command buffers...\n");
     LVK_PROFILER_ZONE("Waiting for command buffers...", LVK_PROFILER_COLOR_WAIT);
-    purge();
+    // submissions complete in order, so the oldest one in flight always signals the next timeline value; waiting for it frees a slot
+    wait({{{.queueFamilyIndex_ = queueFamilyIndex_, .value_ = lastKnownCompletedValue_ + 1}}});
+    purge(); // wait() returns without purging if that value has been reached in the meantime
     LVK_PROFILER_ZONE_END();
   }
 
