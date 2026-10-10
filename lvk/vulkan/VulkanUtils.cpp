@@ -1667,6 +1667,13 @@ VkPipelineLayout lvk::getVkPipelineLayout(const IContext* ctx, RayTracingPipelin
   return static_cast<const VulkanContext*>(ctx)->rayTracingPipelinesPool_.get(pipeline)->pipelineLayout_;
 }
 
+VkSemaphore lvk::getVkTimelineSemaphore(const IContext* ctx, SubmitHandle handle) {
+  if (!ctx || handle.empty())
+    return VK_NULL_HANDLE;
+
+  return static_cast<const VulkanContext*>(ctx)->getImmediateCommands(handle)->getTimelineSemaphore();
+}
+
 VkDeviceSize lvk::getBufferSize(const IContext* ctx, lvk::BufferHandle handle) {
   const lvk::VulkanBuffer* buffer = static_cast<const VulkanContext*>(ctx)->buffersPool_.get(handle);
   return buffer ? buffer->bufferSize_ : 0;
