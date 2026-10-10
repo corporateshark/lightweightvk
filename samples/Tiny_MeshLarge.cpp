@@ -44,6 +44,7 @@
 #include <lvk/HelpersImGui.h>
 #include <lvk/LVK.h>
 
+#include "Bistro.h"
 #include "VulkanApp.h"
 
 #include <ktx-software/lib/src/gl_format.h>
@@ -53,16 +54,10 @@
 
 #include "DEMO_002_Bistro.cpp" // temporary
 
-constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
 #if !defined(__APPLE__)
 constexpr int kNumSamplesMSAA = 8;
 #else
 constexpr int kNumSamplesMSAA = 4;
-#endif
-#if defined(__APPLE__) || defined(ANDROID)
-constexpr bool kEnableCompression = false;
-#else
-constexpr bool kEnableCompression = true;
 #endif
 #if defined(NDEBUG)
 constexpr bool kEnableValidationLayers = false;
@@ -461,7 +456,6 @@ lvk::Holder<lvk::BufferHandle> sbMaterials_; // storage buffer for materials
 lvk::Holder<lvk::BufferHandle> ubPerFrame_, ubPerFrameShadow_, ubPerObject_;
 lvk::Holder<lvk::SamplerHandle> sampler_;
 lvk::Holder<lvk::SamplerHandle> samplerShadow_;
-lvk::Holder<lvk::TextureHandle> textureDummyWhite_;
 lvk::Holder<lvk::TextureHandle> skyboxTextureReference_;
 lvk::Holder<lvk::TextureHandle> skyboxTextureIrradiance_;
 lvk::RenderPass renderPassOffscreen_;
@@ -476,34 +470,6 @@ bool showPerfStats_ = false;
 bool drawNormals_ = false;
 
 bool isShadowMapDirty_ = true;
-
-struct VertexData {
-  vec3 position;
-  uint32_t uv; // hvec2
-  uint16_t normal; // Octahedral 16-bit https://www.shadertoy.com/view/llfcRl
-  uint16_t mtlIndex;
-};
-
-static_assert(sizeof(VertexData) == 5 * sizeof(uint32_t));
-
-vec2 msign(vec2 v) {
-  return vec2(v.x >= 0.0 ? 1.0f : -1.0f, v.y >= 0.0 ? 1.0f : -1.0f);
-}
-
-// https://www.shadertoy.com/view/llfcRl
-uint16_t packSnorm2x8(vec2 v) {
-  glm::uvec2 d = glm::uvec2(round(127.5f + v * 127.5f));
-  return d.x | (d.y << 8u);
-}
-
-// https://www.shadertoy.com/view/llfcRl
-uint16_t packOctahedral16(vec3 n) {
-  n /= (abs(n.x) + abs(n.y) + abs(n.z));
-  return ::packSnorm2x8((n.z >= 0.0) ? vec2(n.x, n.y) : (vec2(1.0) - abs(vec2(n.y, n.x))) * msign(vec2(n)));
-}
-
-std::vector<VertexData> vertexData_;
-std::vector<uint32_t> indexData_;
 
 struct UniformsPerFrame {
   mat4 proj;
@@ -520,83 +486,7 @@ struct UniformsPerObject {
   mat4 model;
   mat4 normal;
 };
-#define MAX_MATERIAL_NAME 128
 
-struct CachedMaterial {
-  char name[MAX_MATERIAL_NAME] = {};
-  vec3 ambient = vec3(0.0f);
-  vec3 diffuse = vec3(0.0f);
-  char ambient_texname[MAX_MATERIAL_NAME] = {};
-  char diffuse_texname[MAX_MATERIAL_NAME] = {};
-  char alpha_texname[MAX_MATERIAL_NAME] = {};
-};
-
-// this goes into our GLSL shaders
-struct GPUMaterial {
-  vec4 ambient = vec4(0.0f);
-  vec4 diffuse = vec4(0.0f);
-  uint32_t texAmbient = 0;
-  uint32_t texDiffuse = 0;
-  uint32_t texAlpha = 0;
-  uint32_t padding[1];
-};
-
-static_assert(sizeof(GPUMaterial) % 16 == 0);
-
-std::vector<CachedMaterial> cachedMaterials_;
-std::vector<GPUMaterial> materials_;
-
-struct MaterialTextures {
-  lvk::TextureHandle ambient;
-  lvk::TextureHandle diffuse;
-  lvk::TextureHandle alpha;
-};
-
-std::vector<MaterialTextures> textures_; // same indexing as in materials_
-
-struct LoadedImage {
-  uint32_t w = 0;
-  uint32_t h = 0;
-  uint32_t channels = 0;
-  uint8_t* pixels = nullptr;
-  std::string debugName;
-  std::string compressedFileName;
-};
-
-struct LoadedMaterial {
-  size_t idx = 0;
-  LoadedImage ambient;
-  LoadedImage diffuse;
-  LoadedImage alpha;
-};
-
-// file name -> LoadedImage
-std::mutex imagesCacheMutex_;
-std::unordered_map<std::string, LoadedImage> imagesCache_; // accessible only from the loader pool (multiple threads)
-std::unordered_map<std::string, lvk::Holder<lvk::TextureHandle>> texturesCache_; // accessible the main thread
-std::vector<LoadedMaterial> loadedMaterials_;
-std::mutex loadedMaterialsMutex_;
-std::atomic<bool> loaderShouldExit_ = false;
-std::atomic<uint32_t> remainingMaterialsToLoad_ = 0;
-std::unique_ptr<tf::Executor> loaderPool_ = std::make_unique<tf::Executor>(std::max(2u, std::thread::hardware_concurrency() / 2));
-
-static std::string convertFileName(std::string fileName) {
-  // generate compressed filename
-  const std::string compressedPathPrefix = folderContentRoot;
-
-  if (fileName.find(compressedPathPrefix) == 0) {
-    // remove leading path
-    fileName = fileName.substr(compressedPathPrefix.length());
-  }
-
-  std::replace(fileName.begin(), fileName.end(), ':', '_');
-  std::replace(fileName.begin(), fileName.end(), '.', '_');
-  std::replace(fileName.begin(), fileName.end(), '/', '_');
-  std::replace(fileName.begin(), fileName.end(), '\\', '_');
-
-  // return absolute compressed filename
-  return compressedPathPrefix + fileName + ".ktx";
-}
 bool initModel();
 void loadSkyboxTexture();
 void loadMaterials();
@@ -605,21 +495,6 @@ void createShadowMap();
 void createOffscreenFramebuffer();
 
 bool init() {
-  {
-    const uint32_t pixel = 0xFFFFFFFF;
-    textureDummyWhite_ = ctx_->createTexture(
-        {
-            .type = lvk::TextureType_2D,
-            .format = lvk::Format_R_UN8,
-            .dimensions = {1, 1},
-            .usage = lvk::TextureUsageBits_Sampled,
-            .components = {lvk::Swizzle_1, lvk::Swizzle_1, lvk::Swizzle_1, lvk::Swizzle_1},
-            .data = &pixel,
-            .debugName = "dummy 1x1 (white)",
-        },
-        nullptr);
-  }
-
   ubPerFrame_ = ctx_->createBuffer({
       .usage = lvk::BufferUsageBits_Uniform,
       .storage = lvk::StorageType_HostVisible,
@@ -689,6 +564,7 @@ bool init() {
     return false;
   }
 
+  // `loadMaterialTextures()` flips stb_image vertically, so the skybox has to be loaded first
   loadSkyboxTexture();
   loadMaterials();
 
@@ -696,6 +572,10 @@ bool init() {
 }
 
 void destroy() {
+  printf("Waiting for the loader thread to exit...\n");
+
+  cancelLoadingMaterialTextures();
+
   vb0_ = nullptr;
   ib0_ = nullptr;
   sbMaterials_ = nullptr;
@@ -720,11 +600,8 @@ void destroy() {
   renderPipelineState_Skybox_ = nullptr;
   renderPipelineState_Fullscreen_ = nullptr;
   computePipelineState_Grayscale_ = nullptr;
-  textureDummyWhite_ = nullptr;
   skyboxTextureReference_ = nullptr;
   skyboxTextureIrradiance_ = nullptr;
-  textures_.clear();
-  texturesCache_.clear();
   sampler_ = nullptr;
   samplerShadow_ = nullptr;
   ctx_->destroy(fbMain_);
@@ -735,185 +612,17 @@ void destroy() {
   queryPoolTimestamps_ = nullptr;
   ctx_ = nullptr;
   app_ = nullptr;
-
-  printf("Waiting for the loader thread to exit...\n");
-
-  loaderPool_ = nullptr;
-}
-
-std::string normalizeTextureName(const char* n) {
-  if (!n)
-    return std::string();
-  LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
-  std::string name(n);
-#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
-  std::replace(name.begin(), name.end(), '\\', '/');
-#endif
-  return name;
-}
-
-bool loadAndCache(const char* cacheFileName) {
-  LVK_PROFILER_FUNCTION();
-
-  // load 3D model and cache it
-  LLOGL("Loading `exterior.obj`... It can take a while in debug builds...\n");
-
-  fastObjMesh* mesh = fast_obj_read((folderContentRoot + "src/bistro/Exterior/exterior.obj").c_str());
-  SCOPE_EXIT {
-    if (mesh)
-      fast_obj_destroy(mesh);
-  };
-
-  if (!LVK_VERIFY(mesh)) {
-    LVK_ASSERT_MSG(false, "Did you read the tutorial at the top of this file?");
-    return false;
-  }
-
-  uint32_t vertexCount = 0;
-
-  for (uint32_t i = 0; i < mesh->face_count; ++i)
-    vertexCount += mesh->face_vertices[i];
-
-  vertexData_.reserve(vertexCount);
-
-  uint32_t vertexIndex = 0;
-
-  for (uint32_t face = 0; face < mesh->face_count; face++) {
-    for (uint32_t v = 0; v < mesh->face_vertices[face]; v++) {
-      LVK_ASSERT(v < 3);
-      const fastObjIndex gi = mesh->indices[vertexIndex++];
-
-      const float* p = &mesh->positions[gi.p * 3];
-      const float* n = &mesh->normals[gi.n * 3];
-      const float* t = &mesh->texcoords[gi.t * 2];
-
-      vertexData_.push_back({
-          .position = vec3(p[0], p[1], p[2]),
-          .uv = glm::packHalf2x16(vec2(t[0], t[1])),
-          .normal = packOctahedral16(vec3(n[0], n[1], n[2])),
-          .mtlIndex = (uint16_t)mesh->face_materials[face],
-      });
-    }
-  }
-
-  // repack the mesh as described in https://github.com/zeux/meshoptimizer
-  {
-    // 1. Generate an index buffer
-    const size_t indexCount = vertexData_.size();
-    std::vector<uint32_t> remap(indexCount);
-    const size_t remappedVertexCount =
-        meshopt_generateVertexRemap(remap.data(), nullptr, indexCount, vertexData_.data(), indexCount, sizeof(VertexData));
-    // 2. Remap vertices
-    std::vector<VertexData> remappedVertices;
-    indexData_.resize(indexCount);
-    remappedVertices.resize(remappedVertexCount);
-    meshopt_remapIndexBuffer(indexData_.data(), nullptr, indexCount, &remap[0]);
-    meshopt_remapVertexBuffer(remappedVertices.data(), vertexData_.data(), indexCount, sizeof(VertexData), remap.data());
-    vertexData_ = remappedVertices;
-    // 3. Optimize for the GPU vertex cache reuse and overdraw
-    meshopt_optimizeVertexCache(indexData_.data(), indexData_.data(), indexCount, remappedVertexCount);
-    meshopt_optimizeOverdraw(
-        indexData_.data(), indexData_.data(), indexCount, &vertexData_[0].position.x, remappedVertexCount, sizeof(VertexData), 1.05f);
-    meshopt_optimizeVertexFetch(
-        vertexData_.data(), indexData_.data(), indexCount, vertexData_.data(), remappedVertexCount, sizeof(VertexData));
-  }
-
-  // loop over materials
-  for (uint32_t mtlIdx = 0; mtlIdx != mesh->material_count; mtlIdx++) {
-    const fastObjMaterial& m = mesh->materials[mtlIdx];
-    CachedMaterial mtl;
-    mtl.ambient = vec3(m.Ka[0], m.Ka[1], m.Ka[2]);
-    mtl.diffuse = vec3(m.Kd[0], m.Kd[1], m.Kd[2]);
-    LVK_ASSERT(strlen(m.name) < MAX_MATERIAL_NAME);
-    strcat(mtl.name, m.name);
-    strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
-    strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
-    strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
-    cachedMaterials_.push_back(mtl);
-  }
-
-  LLOGL("Caching mesh...\n");
-
-  FILE* cacheFile = fopen(cacheFileName, "wb");
-  if (!cacheFile) {
-    return false;
-  }
-  const uint32_t numMaterials = (uint32_t)cachedMaterials_.size();
-  const uint32_t numVertices = (uint32_t)vertexData_.size();
-  const uint32_t numIndices = (uint32_t)indexData_.size();
-  fwrite(&kMeshCacheVersion, sizeof(kMeshCacheVersion), 1, cacheFile);
-  fwrite(&numMaterials, sizeof(numMaterials), 1, cacheFile);
-  fwrite(&numVertices, sizeof(numVertices), 1, cacheFile);
-  fwrite(&numIndices, sizeof(numIndices), 1, cacheFile);
-  fwrite(cachedMaterials_.data(), sizeof(CachedMaterial), numMaterials, cacheFile);
-  fwrite(vertexData_.data(), sizeof(VertexData), numVertices, cacheFile);
-  fwrite(indexData_.data(), sizeof(uint32_t), numIndices, cacheFile);
-  return fclose(cacheFile) == 0;
-}
-
-bool loadFromCache(const char* cacheFileName) {
-  const std::vector<uint8_t> cache = app_->loadFile(cacheFileName);
-  const uint8_t* cursor = cache.data();
-  const uint8_t* end = cursor + cache.size();
-
-#define CHECK_READ(dst, numBytes)            \
-  if ((size_t)(end - cursor) < (numBytes)) { \
-    return false;                            \
-  }                                          \
-  memcpy(dst, cursor, numBytes);             \
-  cursor += (numBytes)
-
-  uint32_t versionProbe = 0;
-  CHECK_READ(&versionProbe, sizeof(versionProbe));
-  if (versionProbe != kMeshCacheVersion) {
-    LLOGL("Cache file has wrong version id\n");
-    return false;
-  }
-  uint32_t numMaterials = 0;
-  uint32_t numVertices = 0;
-  uint32_t numIndices = 0;
-  CHECK_READ(&numMaterials, sizeof(numMaterials));
-  CHECK_READ(&numVertices, sizeof(numVertices));
-  CHECK_READ(&numIndices, sizeof(numIndices));
-  cachedMaterials_.resize(numMaterials);
-  vertexData_.resize(numVertices);
-  indexData_.resize(numIndices);
-  CHECK_READ(cachedMaterials_.data(), sizeof(CachedMaterial) * numMaterials);
-  CHECK_READ(vertexData_.data(), sizeof(VertexData) * numVertices);
-  CHECK_READ(indexData_.data(), sizeof(uint32_t) * numIndices);
-#undef CHECK_READ
-  // normalize path separators so a `cache.data` generated on Windows works on Android
-#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
-  for (CachedMaterial& mtl : cachedMaterials_) {
-    std::replace(std::begin(mtl.ambient_texname), std::end(mtl.ambient_texname), '\\', '/');
-    std::replace(std::begin(mtl.diffuse_texname), std::end(mtl.diffuse_texname), '\\', '/');
-    std::replace(std::begin(mtl.alpha_texname), std::end(mtl.alpha_texname), '\\', '/');
-  }
-#endif
-  return true;
 }
 
 bool initModel() {
   const std::string cacheFileName = folderContentRoot + "cache.data";
 
-  if (!loadFromCache(cacheFileName.c_str())) {
-    if (!LVK_VERIFY(loadAndCache(cacheFileName.c_str()))) {
+  if (!loadFromCache(*app_, cacheFileName.c_str())) {
+    if (!LVK_VERIFY(loadAndCache(*app_, cacheFileName.c_str(), "src/bistro/Exterior/exterior.obj"))) {
       LVK_ASSERT_MSG(false, "Cannot load 3D model");
       return false;
     }
   }
-
-  for (const auto& mtl : cachedMaterials_) {
-    materials_.push_back(
-        GPUMaterial{vec4(mtl.ambient, 1.0f), vec4(mtl.diffuse, 1.0f), textureDummyWhite_.index(), textureDummyWhite_.index()});
-  }
-
-  sbMaterials_ = ctx_->createBuffer({.usage = lvk::BufferUsageBits_Storage,
-                                     .storage = lvk::StorageType_Device,
-                                     .size = sizeof(GPUMaterial) * materials_.size(),
-                                     .data = materials_.data(),
-                                     .debugName = "Buffer: materials"},
-                                    nullptr);
 
   vb0_ = ctx_->createBuffer({.usage = lvk::BufferUsageBits_Vertex,
                              .storage = lvk::StorageType_Device,
@@ -928,6 +637,17 @@ bool initModel() {
                              .debugName = "Buffer: index"},
                             nullptr);
   return true;
+}
+
+void loadMaterials() {
+  loadMaterialTextures(*app_, "src/bistro/Exterior/");
+
+  sbMaterials_ = ctx_->createBuffer({.usage = lvk::BufferUsageBits_Storage,
+                                     .storage = lvk::StorageType_Device,
+                                     .size = sizeof(GPUMaterial) * materials_.size(),
+                                     .data = materials_.data(),
+                                     .debugName = "Buffer: materials"},
+                                    nullptr);
 }
 
 void createPipelines() {
@@ -1128,7 +848,6 @@ void createOffscreenFramebuffer() {
 
 void showTimeGPU();
 double getCurrentTimestamp();
-void processLoadedMaterials(lvk::ICommandBuffer& buffer);
 
 void render(lvk::TextureHandle colorTexture) {
   LVK_PROFILER_FUNCTION();
@@ -1150,13 +869,13 @@ void render(lvk::TextureHandle colorTexture) {
     ImGui::Text("P - show perf stats");
     ImGui::End();
 
-    if (!textures_[1].diffuse.empty()) {
+    if (const uint32_t texDiffuse = materials_[1].texDiffuse; texDiffuse && texDiffuse != textureDummyWhite_.index()) {
       ImGui::Begin("Texture Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
-      ImGui::Image(textures_[1].diffuse.index(), ImVec2(256, 256));
+      ImGui::Image(texDiffuse, ImVec2(256, 256));
       ImGui::End();
     }
 
-    if (uint32_t num = remainingMaterialsToLoad_.load(std::memory_order_acquire)) {
+    if (const uint32_t num = numRemainingMaterialTextures()) {
       ImGui::SetNextWindowPos(ImVec2(0, 0));
       ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNavInputs);
       ImGui::ProgressBar(1.0f - float(num) / cachedMaterials_.size(), ImVec2(ImGui::GetIO().DisplaySize.x, 32));
@@ -1221,7 +940,7 @@ void render(lvk::TextureHandle colorTexture) {
 
   lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
 
-  processLoadedMaterials(buffer);
+  processLoadedMaterialTextures(buffer, sbMaterials_);
 
   buffer.cmdUpdateBuffer(ubPerFrame_, 0, sizeof(perFrame_), &perFrame_);
   buffer.cmdUpdateBuffer(ubPerObject_, 0, sizeof(perObject), &perObject);
@@ -1379,195 +1098,6 @@ void render(lvk::TextureHandle colorTexture) {
   }
 }
 
-void generateCompressedTexture(LoadedImage img) {
-  LVK_PROFILER_FUNCTION();
-
-  if (loaderShouldExit_.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  printf("...compressing texture to %s\n", img.compressedFileName.c_str());
-
-  const uint32_t mipmapLevelCount = lvk::calcNumMipLevels(img.w, img.h);
-
-  // create a KTX2 texture for RGBA data
-  ktxTextureCreateInfo createInfoKTX2 = {
-      .glInternalformat = GL_RGBA8,
-      .vkFormat = VK_FORMAT_R8G8B8A8_UNORM,
-      .baseWidth = img.w,
-      .baseHeight = img.h,
-      .baseDepth = 1u,
-      .numDimensions = 2u,
-      .numLevels = mipmapLevelCount,
-      .numLayers = 1u,
-      .numFaces = 1u,
-      .generateMipmaps = KTX_FALSE,
-  };
-  ktxTexture2* textureKTX2 = nullptr;
-  (void)LVK_VERIFY(ktxTexture2_Create(&createInfoKTX2, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &textureKTX2) == KTX_SUCCESS);
-
-  SCOPE_EXIT {
-    ktxTexture_Destroy(ktxTexture(textureKTX2));
-  };
-
-  uint32_t w = img.w;
-  uint32_t h = img.h;
-
-  // generate custom mip-pyramid
-  for (uint32_t i = 0; i != mipmapLevelCount; ++i) {
-    size_t offset = 0;
-    ktxTexture_GetImageOffset(ktxTexture(textureKTX2), i, 0, 0, &offset);
-
-    stbir_resize_uint8_linear((const unsigned char*)img.pixels,
-                              (int)img.w,
-                              (int)img.h,
-                              0,
-                              ktxTexture_GetData(ktxTexture(textureKTX2)) + offset,
-                              w,
-                              h,
-                              0,
-                              STBIR_RGBA);
-
-    h = h > 1 ? h >> 1 : 1;
-    w = w > 1 ? w >> 1 : 1;
-  }
-
-  if (loaderShouldExit_.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  // compress to Basis and transcode to BC7
-  ktxBasisParams params = {
-      .structSize = sizeof(params),
-      .threadCount = 8,
-      .compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL,
-      .qualityLevel = 255,
-  };
-  (void)LVK_VERIFY(ktxTexture2_CompressBasisEx(textureKTX2, &params) == KTX_SUCCESS);
-  (void)LVK_VERIFY(ktxTexture2_TranscodeBasis(textureKTX2, KTX_TTF_BC7_RGBA, 0) == KTX_SUCCESS);
-
-  // convert to KTX1
-  ktxTextureCreateInfo createInfoKTX1 = {
-      .glInternalformat = GL_COMPRESSED_RGBA_BPTC_UNORM,
-      .vkFormat = VK_FORMAT_BC7_UNORM_BLOCK,
-      .baseWidth = img.w,
-      .baseHeight = img.h,
-      .baseDepth = 1u,
-      .numDimensions = 2u,
-      .numLevels = mipmapLevelCount,
-      .numLayers = 1u,
-      .numFaces = 1u,
-      .generateMipmaps = KTX_FALSE,
-  };
-  ktxTexture1* textureKTX1 = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_Create(&createInfoKTX1, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &textureKTX1) == KTX_SUCCESS);
-
-  for (uint32_t i = 0; i != mipmapLevelCount; ++i) {
-    size_t offset1 = 0;
-    (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(textureKTX1), i, 0, 0, &offset1) == KTX_SUCCESS);
-    size_t offset2 = 0;
-    (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(textureKTX2), i, 0, 0, &offset2) == KTX_SUCCESS);
-    memcpy(ktxTexture_GetData(ktxTexture(textureKTX1)) + offset1,
-           ktxTexture_GetData(ktxTexture(textureKTX2)) + offset2,
-           ktxTexture_GetImageSize(ktxTexture(textureKTX1), i));
-  }
-
-  ktxTexture_WriteToNamedFile(ktxTexture(textureKTX1), img.compressedFileName.c_str());
-}
-
-LoadedImage loadImage(const char* fileName, int channels) {
-  LVK_PROFILER_FUNCTION();
-
-  if (!fileName || !*fileName) {
-    return LoadedImage();
-  }
-
-  char debugStr[512] = {0};
-
-  snprintf(debugStr, sizeof(debugStr) - 1, "%s (%i)", fileName, channels);
-
-  const std::string debugName(debugStr);
-
-  {
-    std::lock_guard lock(imagesCacheMutex_);
-
-    const auto it = imagesCache_.find(debugName);
-
-    if (it != imagesCache_.end()) {
-      LVK_ASSERT(channels == it->second.channels);
-      return it->second;
-    }
-  }
-
-  int w, h;
-  const std::vector<uint8_t> file = app_->loadFile(fileName);
-  uint8_t* pixels = stbi_load_from_memory(file.data(), (int)file.size(), &w, &h, nullptr, channels);
-
-  const LoadedImage img = {
-      .w = (uint32_t)w,
-      .h = (uint32_t)h,
-      .channels = (uint32_t)channels,
-      .pixels = pixels,
-      .debugName = debugName,
-      .compressedFileName = convertFileName(fileName),
-  };
-
-  if (img.pixels && kEnableCompression && (channels != 1) && !std::filesystem::exists(img.compressedFileName.c_str())) {
-    generateCompressedTexture(img);
-  }
-
-  std::lock_guard lock(imagesCacheMutex_);
-
-  imagesCache_[fileName] = img;
-
-  return img;
-}
-
-void loadMaterial(size_t i) {
-  LVK_PROFILER_FUNCTION();
-
-  static const std::string pathPrefix = folderContentRoot + "src/bistro/Exterior/";
-
-  SCOPE_EXIT {
-    remainingMaterialsToLoad_.fetch_sub(1u, std::memory_order_release);
-  };
-
-#define LOAD_TEX(result, tex, channels)                                                                                                   \
-  const LoadedImage result =                                                                                                              \
-      std::string(cachedMaterials_[i].tex).empty() ? LoadedImage() : loadImage((pathPrefix + cachedMaterials_[i].tex).c_str(), channels); \
-  if (loaderShouldExit_.load(std::memory_order_acquire)) {                                                                                \
-    return;                                                                                                                               \
-  }
-
-  LOAD_TEX(ambient, ambient_texname, 4);
-  LOAD_TEX(diffuse, diffuse_texname, 4);
-  LOAD_TEX(alpha, alpha_texname, 1);
-
-#undef LOAD_TEX
-
-  const LoadedMaterial mtl{i, ambient, diffuse, alpha};
-
-  if (!mtl.ambient.pixels && !mtl.diffuse.pixels) {
-    // skip missing textures
-    materials_[i].texDiffuse = 0;
-  } else {
-    std::lock_guard guard(loadedMaterialsMutex_);
-    loadedMaterials_.push_back(mtl);
-    remainingMaterialsToLoad_.fetch_add(1u, std::memory_order_release);
-  }
-}
-
-void loadMaterials() {
-  stbi_set_flip_vertically_on_load(1);
-
-  remainingMaterialsToLoad_ = (uint32_t)cachedMaterials_.size();
-
-  textures_.resize(cachedMaterials_.size());
-  for (size_t i = 0; i != cachedMaterials_.size(); i++) {
-    loaderPool_->silent_async([i]() { loadMaterial(i); });
-  }
-}
-
 lvk::Format ktx2iglTextureFormat(ktx_uint32_t format) {
   switch (format) {
   case GL_RGBA32F:
@@ -1607,8 +1137,8 @@ void loadCubemapTexture(const std::vector<uint8_t>& dataKTX, const std::string& 
         .numMipLevels = lvk::calcNumMipLevels(width, height),
         .data = texture->pData,
         // if compression is enabled, upload all mip-levels
-        .dataNumMipLevels = kEnableCompression ? lvk::calcNumMipLevels(width, height) : 1u,
-        .generateMipmaps = !kEnableCompression,
+        .dataNumMipLevels = kEnableTextureCompression ? lvk::calcNumMipLevels(width, height) : 1u,
+        .generateMipmaps = !kEnableTextureCompression,
         .debugName = debugName.c_str(),
     });
   }
@@ -1767,112 +1297,6 @@ void loadSkyboxTexture() {
   loadCubemapTexture(dataIrrKTX, fileNameIrrKTX, skyboxTextureIrradiance_);
 }
 
-lvk::Format formatFromChannels(uint32_t channels) {
-  if (channels == 1) {
-    return lvk::Format_R_UN8;
-  }
-
-  if (channels == 4) {
-    return kEnableCompression ? lvk::Format_BC7_RGBA : lvk::Format_RGBA_UN8;
-  }
-
-  return lvk::Format_Invalid;
-}
-
-lvk::TextureHandle createTexture(const LoadedImage& img) {
-  if (!img.pixels) {
-    return {};
-  }
-
-  const auto it = texturesCache_.find(img.debugName);
-
-  if (it != texturesCache_.end()) {
-    return it->second;
-  }
-
-  const bool hasCompressedTexture = kEnableCompression && img.channels == 4 && std::filesystem::exists(img.compressedFileName.c_str());
-
-  const void* initialData = img.pixels;
-  uint32_t initialDataNumMipLevels = 1u;
-
-  ktxTexture* texture = nullptr;
-
-  if (hasCompressedTexture) {
-    // uploading the texture
-    if (!LVK_VERIFY(ktxTexture_CreateFromNamedFile(img.compressedFileName.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) ==
-                    KTX_SUCCESS)) {
-      printf("Failed to load %s\n", img.compressedFileName.c_str());
-      assert(0);
-    }
-    initialData = texture->pData;
-    initialDataNumMipLevels = lvk::calcNumMipLevels(img.w, img.h);
-  }
-  SCOPE_EXIT {
-    if (texture)
-      ktxTexture_Destroy(ktxTexture(texture));
-  };
-
-  // No mip-maps come from files on Apple and Android platforms, we need to generate them.
-#if defined(__APPLE__) || defined(ANDROID)
-  const bool generateMipmaps = true;
-#else
-  const bool generateMipmaps = !hasCompressedTexture;
-#endif
-
-  lvk::Holder<lvk::TextureHandle> tex = ctx_->createTexture({
-      .type = lvk::TextureType_2D,
-      .format = formatFromChannels(img.channels),
-      .dimensions = {img.w, img.h},
-      .usage = lvk::TextureUsageBits_Sampled,
-      .numMipLevels = lvk::calcNumMipLevels(img.w, img.h),
-      .components = (img.channels == 1) ? lvk::ComponentMapping{lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R, lvk::Swizzle_R}
-                                        : lvk::ComponentMapping{},
-      .data = initialData,
-      .dataNumMipLevels = initialDataNumMipLevels,
-      .generateMipmaps = generateMipmaps,
-      .debugName = img.debugName.c_str(),
-  });
-
-  lvk::TextureHandle handle = tex;
-
-  texturesCache_[img.debugName] = std::move(tex);
-
-  return handle;
-}
-
-void processLoadedMaterials(lvk::ICommandBuffer& buffer) {
-  LoadedMaterial mtl;
-
-  {
-    std::lock_guard guard(loadedMaterialsMutex_);
-    if (loadedMaterials_.empty()) {
-      return;
-    } else {
-      mtl = loadedMaterials_.back();
-      loadedMaterials_.pop_back();
-      remainingMaterialsToLoad_.fetch_sub(1u, std::memory_order_release);
-    }
-  }
-
-  {
-    MaterialTextures tex;
-
-    tex.ambient = createTexture(mtl.ambient);
-    tex.diffuse = createTexture(mtl.diffuse);
-    tex.alpha = createTexture(mtl.alpha);
-
-    // update GPU materials
-    materials_[mtl.idx].texAmbient = tex.ambient.index();
-    materials_[mtl.idx].texDiffuse = tex.diffuse.index();
-    materials_[mtl.idx].texAlpha = tex.alpha.index();
-    textures_[mtl.idx] = tex;
-  }
-  LVK_ASSERT(materials_[mtl.idx].texAmbient >= 0);
-  LVK_ASSERT(materials_[mtl.idx].texDiffuse >= 0);
-  LVK_ASSERT(materials_[mtl.idx].texAlpha >= 0);
-  buffer.cmdUpdateBuffer(sbMaterials_, 0, sizeof(GPUMaterial) * materials_.size(), materials_.data());
-}
-
 inline ImVec4 toVec4(const vec4& c) {
   return ImVec4(c.x, c.y, c.z, c.w);
 }
@@ -2017,7 +1441,7 @@ VULKAN_APP_MAIN {
   folderThirdParty = app.folderThirdParty_;
   folderContentRoot = app.folderContentRoot_;
 
-  if (kEnableCompression) {
+  if (kEnableTextureCompression) {
     LLOGL("Compressing textures... It can take a while in debug builds...(needs to be done once)\n");
   }
 
@@ -2078,8 +1502,6 @@ VULKAN_APP_MAIN {
     }
     render(views[0].colorTexture);
   });
-
-  loaderShouldExit_.store(true, std::memory_order_release);
 
   destroy();
 

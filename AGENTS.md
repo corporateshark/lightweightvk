@@ -173,7 +173,7 @@ When modifying shared Android behavior (permissions, fullscreen logic, themes), 
 
 ### Common Development Patterns
 - All samples use `VulkanApp` base class (`samples/VulkanApp.h`)
-- Samples that render Bistro/Sponza share `samples/Bistro.h`: the mesh cache (`loadAndCache()`, `loadFromCache()`, `vertexData_`, `indexData_`, `cachedMaterials_`) and the asynchronous BC7 material texture loader (`loadMaterialTextures()`, `processLoadedMaterialTextures()`, `cancelLoadingMaterialTextures()`, `materials_`). `Tiny_MeshLarge` still carries its own copy
+- Samples that render Bistro/Sponza share `samples/Bistro.h`: the mesh cache (`loadAndCache()`, `loadFromCache()`, `vertexData_`, `indexData_`, `cachedMaterials_`) and the asynchronous BC7 material texture loader (`loadMaterialTextures()`, `processLoadedMaterialTextures()`, `cancelLoadingMaterialTextures()`, `materials_`)
 - Platform abstraction through preprocessor macros
 - Resource management via LVK handles and holders
 - Tracy profiler integration when enabled
