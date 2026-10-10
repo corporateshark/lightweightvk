@@ -715,6 +715,9 @@ class VulkanContext final : public IContext {
   VkPipeline getVkPipeline(RenderPipelineHandle handle, RenderPassState passState);
   VkPipeline getVkPipeline(RayTracingPipelineHandle handle);
 
+  // the queue a SubmitHandle was produced on (a SubmitHandle is self-describing via its queue family index)
+  lvk::VulkanImmediateCommands* getImmediateCommands(SubmitHandle handle) const;
+
   uint32_t queryDevices(HWDeviceDesc* outDevices, uint32_t maxOutDevices = 1);
   lvk::Result initContext(const HWDeviceDesc& desc);
   lvk::Result initSwapchain(uint32_t width, uint32_t height) override;
