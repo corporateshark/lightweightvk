@@ -944,13 +944,7 @@ VULKAN_APP_MAIN {
           ImGui::Checkbox("Ray cones (texture LOD)", &enableRayCones_);
           ImGui::End();
 #endif // !defined(ANDROID)
-          if (const uint32_t num = numRemainingMaterialTextures()) {
-            ImGui::SetNextWindowPos(ImVec2(0, 0));
-            ImGui::Begin(
-                "Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNavInputs);
-            ImGui::ProgressBar(1.0f - float(num) / cachedMaterials_.size(), ImVec2(ImGui::GetIO().DisplaySize.x, 32));
-            ImGui::End();
-          }
+          drawMaterialTexturesLoadingProgress();
           app.drawFPS();
           app.imgui_->endFrame(buffer);
         }

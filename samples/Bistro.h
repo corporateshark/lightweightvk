@@ -25,6 +25,7 @@
    void loadMaterialTextures(VulkanApp& app, const char* pathPrefix)
    bool processLoadedMaterialTextures(lvk::ICommandBuffer& buffer, lvk::BufferHandle materialsBuffer)
    uint32_t numRemainingMaterialTextures()
+   void drawMaterialTexturesLoadingProgress()
    void cancelLoadingMaterialTextures()
 
  `loadMaterialTextures()` returns immediately; call `processLoadedMaterialTextures()` once per frame to upload whatever
@@ -694,6 +695,23 @@ bool processLoadedMaterialTextures(lvk::ICommandBuffer& buffer, lvk::BufferHandl
 
 uint32_t numRemainingMaterialTextures() {
   return remainingMaterialsToLoad_.load(std::memory_order_acquire);
+}
+
+// a progress bar at the top of the screen; it goes into the background draw list so it stays beneath all ImGui windows
+void drawMaterialTexturesLoadingProgress() {
+  const uint32_t num = numRemainingMaterialTextures();
+  if (!num || cachedMaterials_.empty()) {
+    return;
+  }
+  const float progress = std::clamp(1.0f - float(num) / float(cachedMaterials_.size()), 0.0f, 1.0f);
+  const ImVec2 size(ImGui::GetIO().DisplaySize.x, 32.0f);
+  ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+  drawList->AddRectFilled(ImVec2(0, 0), size, ImGui::GetColorU32(ImGuiCol_FrameBg));
+  drawList->AddRectFilled(ImVec2(0, 0), ImVec2(size.x * progress, size.y), ImGui::GetColorU32(ImGuiCol_PlotHistogram));
+  char text[64] = {};
+  snprintf(text, sizeof(text), "Loading textures... %.0f%%", progress * 100.0f);
+  const ImVec2 textSize = ImGui::CalcTextSize(text);
+  drawList->AddText(ImVec2(0.5f * (size.x - textSize.x), 0.5f * (size.y - textSize.y)), ImGui::GetColorU32(ImGuiCol_Text), text);
 }
 
 void cancelLoadingMaterialTextures() {

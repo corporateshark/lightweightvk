@@ -875,12 +875,7 @@ void render(lvk::TextureHandle colorTexture) {
       ImGui::End();
     }
 
-    if (const uint32_t num = numRemainingMaterialTextures()) {
-      ImGui::SetNextWindowPos(ImVec2(0, 0));
-      ImGui::Begin("Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNavInputs);
-      ImGui::ProgressBar(1.0f - float(num) / cachedMaterials_.size(), ImVec2(ImGui::GetIO().DisplaySize.x, 32));
-      ImGui::End();
-    }
+    drawMaterialTexturesLoadingProgress();
     // a nice FPS counter
     {
       const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
