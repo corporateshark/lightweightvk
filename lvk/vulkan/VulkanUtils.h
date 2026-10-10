@@ -98,7 +98,8 @@ Result compileShaderGlslang(lvk::ShaderStage stage,
                             const char* code,
                             std::vector<uint8_t>* outSPIRV,
                             bool generateDebugInfo,
-                            const glslang_resource_t* glslLangResource = nullptr);
+                            const glslang_resource_t* glslLangResource = nullptr,
+                            bool optimize = true);
 Result compileShaderSlang(slang::IGlobalSession*& slangGlobalSession,
                           lvk::ShaderStage stage,
                           const char* code,

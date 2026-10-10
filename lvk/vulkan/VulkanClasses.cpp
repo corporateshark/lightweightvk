@@ -7172,7 +7172,8 @@ lvk::ShaderModuleState lvk::VulkanContext::createShaderModuleFromGLSL(ShaderStag
       lvk::getGlslangResource(getVkPhysicalDeviceProperties().limits, has_EXT_mesh_shader_ ? &vkMeshShaderProperties_ : nullptr);
 
   std::vector<uint8_t> spirv;
-  lvk::Result::setResult(outResult, lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource));
+  lvk::Result::setResult(outResult,
+                         lvk::compileShaderGlslang(stage, source, &spirv, config_.generateSPIRVDebugInfo, &glslangResource, optimizeSPIRV));
   if (optimizeSPIRV) {
     lvk::optimizeSPIRV(spirv);
   }
