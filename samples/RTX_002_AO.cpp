@@ -15,10 +15,12 @@
 
 #if USE_SPONZA
 #define MODEL_PATH "src/Sponza/sponza.obj"
+#define TEXTURES_PATH "src/Sponza/"
 #define CACHE_FILE_NAME "cache3.data"
 vec3 lightDir_ = normalize(vec3(-0.5f, 0.85f, -0.05f));
 #else
 #define MODEL_PATH "src/bistro/Exterior/exterior.obj"
+#define TEXTURES_PATH "src/bistro/Exterior/"
 #define CACHE_FILE_NAME "cache2.data"
 vec3 lightDir_ = normalize(vec3(0.032f, 0.835f, 0.549f));
 #endif
@@ -64,6 +66,15 @@ float4 fragmentMain(VSOutput input) : SV_Target {
 )";
 
 const char* codeZPrepassSlang = R"(
+struct Material {
+  float4 ambient;
+  float4 diffuse;
+  uint texAmbient;
+  uint texDiffuse;
+  uint texAlpha;
+  uint padding;
+};
+
 struct PerFrame {
   float4x4 proj;
   float4x4 view;
@@ -74,25 +85,48 @@ struct PerObject {
   float4x4 normal;
 };
 
+struct Materials {
+  Material mtl[];
+};
+
 struct PushConstants {
   PerFrame* perFrame;
   PerObject* perObject;
+  Materials* materials;
+  bool enableTextures;
 };
 
 [[vk::push_constant]] PushConstants pc;
 
+struct VSOutput {
+  float2 uv : TEXCOORD0;
+  nointerpolation uint texDiffuse : TEXCOORD1;
+  nointerpolation uint texAlpha : TEXCOORD2;
+  float4 position : SV_Position;
+};
+
 [shader("vertex")]
-float4 vertexMain(float3 pos : POSITION) : SV_Position {
+VSOutput vertexMain(float3 pos : POSITION, float2 uv : TEXCOORD0, uint mtlIndex : TEXCOORD1) {
   float4x4 proj = pc.perFrame->proj;
   float4x4 view = pc.perFrame->view;
   float4x4 model = pc.perObject->model;
 
-  return proj * view * model * float4(pos, 1.0);
+  VSOutput out;
+  out.position = proj * view * model * float4(pos, 1.0);
+  out.uv = uv;
+  // texture index 0 disables alpha testing
+  out.texDiffuse = pc.enableTextures ? pc.materials->mtl[mtlIndex].texDiffuse : 0;
+  out.texAlpha = pc.enableTextures ? pc.materials->mtl[mtlIndex].texAlpha : 0;
+  return out;
 }
 
+// alpha testing: the main pass uses CompareOp_Equal, so it never shades the texels discarded here
 [shader("fragment")]
-void fragmentMain() {
-  // empty fragment shader for Z-prepass
+void fragmentMain(VSOutput input) {
+  if (input.texAlpha > 0 && textureBindless2D(input.texAlpha, 0, input.uv).r < 0.5)
+    discard;
+  if (input.texDiffuse > 0 && textureBindless2D(input.texDiffuse, 0, input.uv).a < 0.5)
+    discard;
 }
 )";
 
@@ -121,6 +155,21 @@ struct Materials {
   Material mtl[];
 };
 
+struct Vertex {
+  float x, y, z;
+  uint uv;
+  uint16_t normal;
+  uint16_t mtlIndex;
+};
+
+struct Vertices {
+  Vertex vtx[];
+};
+
+struct Indices {
+  uint idx[];
+};
+
 // 64-bit slot: [63:56] frameLow | [55:32] checksum (0 = empty) | [31:16] hits | [15:0] samples
 struct AOHashSlot { uint64_t v[]; };
 
@@ -138,6 +187,7 @@ struct PushConstants {
   float aoRadius;
   float aoPower;
   uint frameId;
+  bool enableTextures; // fits into the padding before the 8-byte aligned `hashSlot`
   AOHashSlot* hashSlot;
   float sp;
   float smin;
@@ -145,6 +195,8 @@ struct PushConstants {
   uint hashMapSize;
   float resolutionY;
   bool enableFiltering;
+  Vertices* vertices;
+  Indices* indices;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -159,6 +211,7 @@ struct PerVertex {
 
 struct VSOutput {
   PerVertex vtx : TEXCOORD0;
+  nointerpolation uint texDiffuse : TEXCOORD5;
   float4 position : SV_Position;
 };
 
@@ -199,6 +252,7 @@ VSOutput vertexMain(
   out.vtx.uv = uv;
   out.vtx.Ka = pc.materials->mtl[mtlIndex].ambient;
   out.vtx.Kd = pc.materials->mtl[mtlIndex].diffuse;
+  out.texDiffuse = pc.materials->mtl[mtlIndex].texDiffuse;
 
   return out;
 }
@@ -210,6 +264,42 @@ void computeTBN(in float3 n, out float3 x, out float3 y) {
   x = cross(y, n);
 }
 
+float2 unpackHalf2(uint d) {
+  return float2(f16tof32(d), f16tof32(d >> 16));
+}
+
+// alpha testing of a candidate ray query hit (the BLAS is not opaque); textures are sampled at LOD 0
+bool isCandidateOpaque(inout RayQuery<RAY_FLAG_NONE> rq) {
+  if (!pc.enableTextures)
+    return true;
+  uint index = 3 * rq.CandidatePrimitiveIndex();
+  uint i0 = pc.indices->idx[index + 0];
+  uint i1 = pc.indices->idx[index + 1];
+  uint i2 = pc.indices->idx[index + 2];
+  float2 bc = rq.CandidateTriangleBarycentrics();
+  float2 uv = unpackHalf2(pc.vertices->vtx[i0].uv) * (1.0 - bc.x - bc.y) +
+              unpackHalf2(pc.vertices->vtx[i1].uv) * bc.x +
+              unpackHalf2(pc.vertices->vtx[i2].uv) * bc.y;
+  Material mtl = pc.materials->mtl[uint(pc.vertices->vtx[i0].mtlIndex)];
+  if (mtl.texAlpha > 0 && textureBindless2DLod(mtl.texAlpha, 0, uv, 0).r < 0.5)
+    return false;
+  if (mtl.texDiffuse > 0 && textureBindless2DLod(mtl.texDiffuse, 0, uv, 0).a < 0.5)
+    return false;
+  return true;
+}
+
+// returns true if anything opaque was hit
+bool traceRayQuery(inout RayQuery<RAY_FLAG_NONE> rq, RayDesc ray) {
+  rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, ray);
+
+  while (rq.Proceed()) {
+    if (rq.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE && isCandidateOpaque(rq))
+      rq.CommitNonOpaqueTriangleHit();
+  }
+
+  return rq.CommittedStatus() != COMMITTED_NOTHING;
+}
+
 float traceAO(inout RayQuery<RAY_FLAG_NONE> rq, float3 origin, float3 dir) {
   RayDesc ray;
   ray.Origin = origin;
@@ -217,11 +307,7 @@ float traceAO(inout RayQuery<RAY_FLAG_NONE> rq, float3 origin, float3 dir) {
   ray.TMin = 0.0f;
   ray.TMax = pc.aoRadius;
 
-  rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, ray);
-
-  while (rq.Proceed()) {}
-
-  return (rq.CommittedStatus() != COMMITTED_NOTHING) ? 1.0 : 0.0;
+  return traceRayQuery(rq, ray) ? 1.0 : 0.0;
 }
 
 // generate a random unsigned int in [0, 2^24) given the previous RNG state using the Numerical Recipes LCG
@@ -533,18 +619,17 @@ float4 fragmentMain(VSOutput input, float4 fragCoord : SV_Position) : SV_Target 
     ray.TMax = 1000.0;
 
     RayQuery<RAY_FLAG_NONE> rq;
-    rq.TraceRayInline(kTLAS[NonUniformResourceIndex(pc.tlas)], RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xff, ray);
-
-    while (rq.Proceed()) {}
-
-    if (rq.CommittedStatus() != COMMITTED_NOTHING) occlusion *= 0.5;
+    if (traceRayQuery(rq, ray)) occlusion *= 0.5;
   }
 
   float NdotL1 = clamp(dot(n, normalize(float3(+1, 1, +1))), 0.0, 1.0);
   float NdotL2 = clamp(dot(n, normalize(float3(-1, 1, -1))), 0.0, 1.0);
   float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
 
-  return vtx.Ka + vtx.Kd * NdotL * occlusion;
+  // texture index 0 is the black dummy texture: treat it as "no texture"
+  float4 albedo = pc.enableTextures && input.texDiffuse > 0 ? textureBindless2D(input.texDiffuse, 0, vtx.uv) : float4(1.0);
+
+  return albedo * (vtx.Ka + vtx.Kd * NdotL * occlusion);
 }
 )";
 
@@ -572,6 +657,17 @@ void main() {
 
 const char* kCodeZPrepassVS = R"(
 layout (location=0) in vec3 pos;
+layout (location=1) in vec2 uv;
+layout (location=2) in uint mtlIndex;
+
+struct Material {
+   vec4 ambient;
+   vec4 diffuse;
+   uint texAmbient;
+   uint texDiffuse;
+   uint texAlpha;
+   uint padding;
+};
 
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 proj;
@@ -583,24 +679,44 @@ layout(std430, buffer_reference) readonly buffer PerObject {
   mat4 normal;
 };
 
+layout(std430, buffer_reference) readonly buffer Materials {
+  Material mtl[];
+};
+
 layout(push_constant) uniform constants {
   PerFrame perFrame;
   PerObject perObject;
+  Materials materials;
+  bool enableTextures;
 } pc;
+
+layout (location=0) out vec2 v_uv;
+layout (location=1) flat out uint v_texDiffuse;
+layout (location=2) flat out uint v_texAlpha;
 
 void main() {
   mat4 proj = pc.perFrame.proj;
   mat4 view = pc.perFrame.view;
   mat4 model = pc.perObject.model;
   gl_Position = proj * view * model * vec4(pos, 1.0);
+  v_uv = uv;
+  // texture index 0 disables alpha testing
+  v_texDiffuse = pc.enableTextures ? pc.materials.mtl[mtlIndex].texDiffuse : 0;
+  v_texAlpha = pc.enableTextures ? pc.materials.mtl[mtlIndex].texAlpha : 0;
 }
 )";
 
+// alpha testing: the main pass uses CompareOp_Equal, so it never shades the texels discarded here
 const char* kCodeZPrepassFS = R"(
-#version 460
+layout (location=0) in vec2 v_uv;
+layout (location=1) flat in uint v_texDiffuse;
+layout (location=2) flat in uint v_texAlpha;
 
 void main() {
-  // empty fragment shader for Z-prepass
+  if (v_texAlpha > 0 && textureBindless2D(v_texAlpha, 0, v_uv).r < 0.5)
+    discard;
+  if (v_texDiffuse > 0 && textureBindless2D(v_texDiffuse, 0, v_uv).a < 0.5)
+    discard;
 };
 )";
 
@@ -650,6 +766,7 @@ struct PerVertex {
   vec4 Kd;
 };
 layout (location=0) out PerVertex vtx;
+layout (location=5) flat out uint texDiffuse;
 //
 
 // https://www.shadertoy.com/view/llfcRl
@@ -678,6 +795,7 @@ void main() {
   vtx.uv = uv;
   vtx.Ka = pc.materials.mtl[mtlIndex].ambient;
   vtx.Kd = pc.materials.mtl[mtlIndex].diffuse;
+  texDiffuse = pc.materials.mtl[mtlIndex].texDiffuse;
 }
 )";
 
@@ -690,16 +808,54 @@ const char* kCodeFS = R"(
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_ray_query : require
 #extension GL_EXT_shader_atomic_int64 : require
+#extension GL_EXT_shader_16bit_storage : require
 
 layout(constant_id = 0) const bool kEnableSpatialHash = true;
 
 layout(set = 0, binding = 0) uniform texture2D kTextures2D[];
+layout(set = 0, binding = 1) uniform sampler kSamplers[];
 layout(set = 0, binding = 4) uniform accelerationStructureEXT kTLAS[];
+
+vec4 textureBindless2D(uint textureid, uint samplerid, vec2 uv) {
+  return texture(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv);
+}
+
+vec4 textureBindless2DLod(uint textureid, uint samplerid, vec2 uv, float lod) {
+  return textureLod(nonuniformEXT(sampler2D(kTextures2D[textureid], kSamplers[samplerid])), uv, lod);
+}
+
+struct Material {
+   vec4 ambient;
+   vec4 diffuse;
+   uint texAmbient;
+   uint texDiffuse;
+   uint texAlpha;
+   uint padding;
+};
+
+struct Vertex {
+  float x, y, z;
+  uint uv;
+  uint16_t normal;
+  uint16_t mtlIndex;
+};
 
 layout(std430, buffer_reference) readonly buffer PerFrame {
   mat4 proj;
   mat4 view;
   mat4 light;
+};
+
+layout(std430, buffer_reference) readonly buffer Materials {
+  Material mtl[];
+};
+
+layout(std430, buffer_reference) readonly buffer Vertices {
+  Vertex vtx[];
+};
+
+layout(std430, buffer_reference) readonly buffer Indices {
+  uint idx[];
 };
 
 // 64-bit slot: [63:56] frameLow | [55:32] checksum (0 = empty) | [31:16] hits | [15:0] samples
@@ -717,7 +873,7 @@ layout(push_constant) uniform constants {
   vec4 lightDir;
   PerFrame perFrame;
   uvec2 dummy0;
-  uvec2 dummy1;
+  Materials materials;
   uint tlas;
   bool enableShadows;
   bool enableAO;
@@ -725,6 +881,7 @@ layout(push_constant) uniform constants {
   float aoRadius;
   float aoPower;
   uint frameId;
+  bool enableTextures; // fits into the padding before the 8-byte aligned `hashSlot`
   HashSlot hashSlot;
   float sp;
   float smin;
@@ -732,9 +889,12 @@ layout(push_constant) uniform constants {
   uint hashMapSize;
   float resolutionY;
   bool enableFiltering;
+  Vertices vertices;
+  Indices indices;
 } pc;
 
 layout (location=0) in PerVertex vtx;
+layout (location=5) flat in uint texDiffuse;
 
 layout (location=0) out vec4 out_FragColor;
 
@@ -744,12 +904,40 @@ void computeTBN(in vec3 n, out vec3 x, out vec3 y) {
   x = cross(y, n);
 }
 
+// alpha testing of a candidate ray query hit (the BLAS is not opaque); textures are sampled at LOD 0
+bool isCandidateOpaque(rayQueryEXT rq) {
+  if (!pc.enableTextures)
+    return true;
+  uint index = 3 * rayQueryGetIntersectionPrimitiveIndexEXT(rq, false);
+  uint i0 = pc.indices.idx[index + 0];
+  uint i1 = pc.indices.idx[index + 1];
+  uint i2 = pc.indices.idx[index + 2];
+  vec2 bc = rayQueryGetIntersectionBarycentricsEXT(rq, false);
+  vec2 uv = unpackHalf2x16(pc.vertices.vtx[i0].uv) * (1.0 - bc.x - bc.y) +
+            unpackHalf2x16(pc.vertices.vtx[i1].uv) * bc.x +
+            unpackHalf2x16(pc.vertices.vtx[i2].uv) * bc.y;
+  Material mtl = pc.materials.mtl[uint(pc.vertices.vtx[i0].mtlIndex)];
+  if (mtl.texAlpha > 0 && textureBindless2DLod(mtl.texAlpha, 0, uv, 0).r < 0.5)
+    return false;
+  if (mtl.texDiffuse > 0 && textureBindless2DLod(mtl.texDiffuse, 0, uv, 0).a < 0.5)
+    return false;
+  return true;
+}
+
+// returns true if anything opaque was hit
+bool traceRayQuery(rayQueryEXT rq, vec3 origin, float tmin, vec3 dir, float tmax) {
+  rayQueryInitializeEXT(rq, kTLAS[pc.tlas], gl_RayFlagsTerminateOnFirstHitEXT, 0xFF, origin, tmin, dir, tmax);
+
+  while (rayQueryProceedEXT(rq)) {
+    if (rayQueryGetIntersectionTypeEXT(rq, false) == gl_RayQueryCandidateIntersectionTriangleEXT && isCandidateOpaque(rq))
+      rayQueryConfirmIntersectionEXT(rq);
+  }
+
+  return rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT;
+}
+
 float traceAO(rayQueryEXT rq, vec3 origin, vec3 dir) {
-  rayQueryInitializeEXT(rq, kTLAS[pc.tlas], gl_RayFlagsTerminateOnFirstHitEXT, 0xFF, origin, 0.0f, dir, pc.aoRadius);
-
-  while (rayQueryProceedEXT(rq)) {}
-
-  return (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) ? 1.0 : 0.0;
+  return traceRayQuery(rq, origin, 0.0f, dir, pc.aoRadius) ? 1.0 : 0.0;
 }
 
 // generate a random unsigned int in [0, 2^24) given the previous RNG state using the Numerical Recipes LCG
@@ -1054,16 +1242,17 @@ void main() {
     occlusion *= 0.5;
   } else if (pc.enableShadows) {
     rayQueryEXT rq;
-    rayQueryInitializeEXT(rq, kTLAS[pc.tlas], gl_RayFlagsTerminateOnFirstHitEXT, 0xff, vtx.worldPos, 0.01, pc.lightDir.xyz, +1000.0);
-    while (rayQueryProceedEXT(rq)) {}
-    if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) occlusion *= 0.5;
+    if (traceRayQuery(rq, vtx.worldPos, 0.01, pc.lightDir.xyz, +1000.0)) occlusion *= 0.5;
   }
 
   float NdotL1 = clamp(dot(n, normalize(vec3(+1, 1, +1))),  0.0, 1.0);
   float NdotL2 = clamp(dot(n, normalize(vec3(-1, 1, -1))), 0.0, 1.0);
   float NdotL = 1.0 * (NdotL1 + NdotL2); // just make a bit brighter
 
-  out_FragColor = vtx.Ka + vtx.Kd * NdotL * occlusion;
+  // texture index 0 is the black dummy texture: treat it as "no texture"
+  vec4 albedo = pc.enableTextures && texDiffuse > 0 ? textureBindless2D(texDiffuse, 0, vtx.uv) : vec4(1.0);
+
+  out_FragColor = albedo * (vtx.Ka + vtx.Kd * NdotL * occlusion);
 };
 )";
 
@@ -1094,6 +1283,8 @@ struct {
 
 bool enableShadows_ = true;
 bool enableAO_ = true;
+bool enableTextures_ = false;
+bool texturesRequested_ = false; // textures are loaded the first time `enableTextures_` is set
 
 int aoSamples_ = 2;
 float aoRadius_ = 8.0f;
@@ -1133,6 +1324,7 @@ bool initModel(VulkanApp& app) {
     }
   }
 
+  // texture index 0 means "no texture"; loadMaterialTextures() fills them in later, see the render loop
   for (const CachedMaterial& mtl : cachedMaterials_) {
     materials_.push_back(GPUMaterial{.ambient = vec4(mtl.ambient, 1.0f), .diffuse = vec4(mtl.diffuse, 1.0f)});
   }
@@ -1144,15 +1336,16 @@ bool initModel(VulkanApp& app) {
       .debugName = "Buffer: materials",
   });
 
+  // vertices and indices are also read by the ray query alpha test via buffer device addresses
   res.vb0_ = ctx_->createBuffer({
-      .usage = lvk::BufferUsageBits_Vertex | lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
+      .usage = lvk::BufferUsageBits_Vertex | lvk::BufferUsageBits_Storage | lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
       .storage = lvk::StorageType_Device,
       .size = sizeof(VertexData) * vertexData_.size(),
       .data = vertexData_.data(),
       .debugName = "Buffer: vertex",
   });
   res.ib0_ = ctx_->createBuffer({
-      .usage = lvk::BufferUsageBits_Index | lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
+      .usage = lvk::BufferUsageBits_Index | lvk::BufferUsageBits_Storage | lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
       .storage = lvk::StorageType_Device,
       .size = sizeof(uint32_t) * indexData_.size(),
       .data = indexData_.data(),
@@ -1172,6 +1365,7 @@ bool initModel(VulkanApp& app) {
   lvk::AccelStructDesc blasDesc{
       .type = lvk::AccelStructType_BLAS,
       .geometryType = lvk::AccelStructGeomType_Triangles,
+      .geometryFlags = 0, // not opaque: ray queries do alpha testing
       .vertexFormat = lvk::VertexFormat_Float3,
       .vertexBuffer = res.vb0_,
       .vertexStride = sizeof(VertexData),
@@ -1391,6 +1585,8 @@ VULKAN_APP_MAIN {
               .attributes =
                   {
                       {.location = 0, .format = lvk::VertexFormat_Float3, .offset = offsetof(VertexData, position)},
+                      {.location = 1, .format = lvk::VertexFormat_HalfFloat2, .offset = offsetof(VertexData, uv)},
+                      {.location = 2, .format = lvk::VertexFormat_UShort1, .offset = offsetof(VertexData, mtlIndex)},
                   },
               .inputBindings = {{.stride = sizeof(VertexData)}},
           },
@@ -1442,7 +1638,15 @@ VULKAN_APP_MAIN {
 
     bool resetHashMap = false;
 
+    // start streaming textures in asynchronously the first time they are enabled
+    if (enableTextures_ && !texturesRequested_) {
+      texturesRequested_ = true;
+      loadMaterialTextures(app, TEXTURES_PATH);
+    }
+
     lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
+
+    processLoadedMaterialTextures(buffer, res.sbMaterials_);
 
     buffer.cmdUpdateBuffer(res.ubPerFrame_,
                            UniformsPerFrame{
@@ -1461,9 +1665,13 @@ VULKAN_APP_MAIN {
       const struct {
         uint64_t perFrame;
         uint64_t perObject;
+        uint64_t materials;
+        uint32_t enableTextures;
       } pc = {
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
           .perObject = ctx_->gpuAddress(res.ubPerObject_),
+          .materials = ctx_->gpuAddress(res.sbMaterials_),
+          .enableTextures = enableTextures_ ? 1u : 0u,
       };
       buffer.cmdPushConstants(pc);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
@@ -1488,6 +1696,7 @@ VULKAN_APP_MAIN {
         float aoRadius;
         float aoPower;
         uint32_t frameId;
+        int enableTextures;
         uint64_t hashSlot;
         float sp;
         float smin;
@@ -1495,6 +1704,8 @@ VULKAN_APP_MAIN {
         uint32_t hashMapSize;
         float resolutionY;
         int enableFiltering;
+        uint64_t vertices;
+        uint64_t indices;
       } pc = {
           .lightDir = vec4(lightDir_, 1.0),
           .perFrame = ctx_->gpuAddress(res.ubPerFrame_),
@@ -1507,6 +1718,7 @@ VULKAN_APP_MAIN {
           .aoRadius = aoRadius_,
           .aoPower = aoPower_,
           .frameId = timeVaryingNoise ? frameId++ : 0,
+          .enableTextures = enableTextures_ ? 1 : 0,
           .hashSlot = ctx_->gpuAddress(res.sbHashSlot_),
           .sp = spatialHashPixelSize_,
           .smin = spatialHashMinCellSize_,
@@ -1514,6 +1726,8 @@ VULKAN_APP_MAIN {
           .hashMapSize = kHashMapSize,
           .resolutionY = views[0].viewport.height,
           .enableFiltering = enableFiltering_ ? 1 : 0,
+          .vertices = ctx_->gpuAddress(res.vb0_),
+          .indices = ctx_->gpuAddress(res.ib0_),
       };
       buffer.cmdPushConstants(pc);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Equal, .isDepthWriteEnabled = false});
@@ -1567,6 +1781,7 @@ VULKAN_APP_MAIN {
           ImGui::Text("1/2 - camera up/down");
           ImGui::Text("Shift - fast movement");
           ImGui::Separator();
+          ImGui::Checkbox("Textures (and alpha testing)", &enableTextures_);
           ImGui::Checkbox("Ray traced shadows", &enableShadows_);
           ImGui::Indent(indentSize);
           imGuiPushFlagsAndStyles(enableShadows_);
@@ -1613,6 +1828,13 @@ VULKAN_APP_MAIN {
           app.positioner_.movement_.backward_ = ImGui::IsItemActive();
           ImGui::End();
 #endif // !defined(ANDROID)
+          if (const uint32_t num = numRemainingMaterialTextures()) {
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::Begin(
+                "Loading...", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNavInputs);
+            ImGui::ProgressBar(1.0f - float(num) / cachedMaterials_.size(), ImVec2(ImGui::GetIO().DisplaySize.x, 32));
+            ImGui::End();
+          }
         }
         app.drawFPS();
         app.imgui_->endFrame(buffer);
@@ -1628,6 +1850,7 @@ VULKAN_APP_MAIN {
   });
 
   // destroy all the Vulkan stuff before closing the window
+  cancelLoadingMaterialTextures();
   res = {};
 
   VULKAN_APP_EXIT();
