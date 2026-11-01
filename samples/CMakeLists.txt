@@ -144,6 +144,8 @@ macro(ADD_DEMO app) # optional args: `demo_has_slang` `demo_has_openxr`
       configure_file("${LVK_ROOT_DIR}/android/app/MainActivity.java.in"
                      "${CMAKE_BINARY_DIR}/android/${app}/app/src/main/java/org/lvk/samples/MainActivity.java")
 
+      set_property(GLOBAL APPEND PROPERTY LVK_ANDROID_PACKAGES "org.lvk.samples.lvk_${app}")
+
       if(LVK_WITH_ANDROID_VALIDATION)
         list(APPEND abdroid_abi arm64-v8a armeabi-v7a x86 x86_64)
         foreach(abi ${abdroid_abi})
@@ -210,3 +212,15 @@ endif()
 ADD_DEMO("DEMO_001_SolarSystem" LVK_WITH_SLANG)
 ADD_DEMO("Tiny_MeshLarge" LVK_WITH_SLANG)
 ADD_DEMO_SOURCES("Tiny_MeshLarge" "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")
+
+if(LVK_WITH_SAMPLES_ANDROID AND LVK_ANDROID_OBB_CONTENT AND NOT ANDROID)
+  get_property(LVK_ANDROID_PACKAGES GLOBAL PROPERTY LVK_ANDROID_PACKAGES)
+  if(LVK_ANDROID_PACKAGES)
+    add_custom_target(LVKAndroidContent
+                      COMMAND ${Python3_EXECUTABLE} "${LVK_ROOT_DIR}/deploy_content_android.py" --obb ${LVK_ANDROID_PACKAGES}
+                      WORKING_DIRECTORY "${LVK_ROOT_DIR}"
+                      COMMENT "Installing the sample content as an OBB for every Android demo"
+                      USES_TERMINAL)
+    lvk_set_folder(LVKAndroidContent ${PROJECT_NAME})
+  endif()
+endif()

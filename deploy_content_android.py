@@ -17,7 +17,7 @@ archive is the same for every sample, only its name differs when it is installed
     python deploy_content_android.py --pack-only         pack and stop, for a build that pushes later
 
 `--out` overrides where the archive is written. Packing is skipped when the archive is already there, so delete it to
-rebuild.
+rebuild. `-DLVK_ANDROID_OBB_CONTENT=ON` makes the build run this with `--obb` for every generated Android sample.
 """
 
 import argparse

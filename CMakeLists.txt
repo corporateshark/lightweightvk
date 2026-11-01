@@ -39,6 +39,7 @@ option(LVK_GLSLANG_EXTERNAL        "Use external glslang and SPIRV-Tools"    OFF
 option(LVK_SPIRV_REFLECT_EXTERNAL  "Use external SPIRV-Reflect library"      OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
 option(LVK_WITH_ML_EMULATION_LAYER "Build the Arm ML Emulation Layer (VK_ARM_tensors/VK_ARM_data_graph)" OFF)
+option(LVK_ANDROID_OBB_CONTENT     "Pack the sample content into an OBB for every generated Android demo" OFF)
 
 set(LVK_ANDROID_ABI "arm64-v8a" CACHE STRING "Enabled ABI on Android")
 # cmake-format: on
@@ -128,6 +129,7 @@ message(STATUS "LVK_WITH_ML_EMULATION_LAYER = ${LVK_WITH_ML_EMULATION_LAYER}")
 # cmake-format: off
 if(LVK_WITH_SAMPLES_ANDROID)
   message(STATUS "LVK_ANDROID_ABI             = ${LVK_ANDROID_ABI}")
+  message(STATUS "LVK_ANDROID_OBB_CONTENT     = ${LVK_ANDROID_OBB_CONTENT}")
   message(STATUS "LVK_WITH_ANDROID_VALIDATION = ${LVK_WITH_ANDROID_VALIDATION}")
 endif()
 # cmake-format: on
