@@ -6,41 +6,54 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""Packs the sample content into the archive the Android samples read, and puts it on the device.
+
+The samples do not extract the archive, they read it in place (`TarFileReader` in `samples/VulkanApp.cpp`), and they look for
+it in two places, in this order: the application's own OBB directory, then `$EXTERNAL_STORAGE/LVK/lvk_content.tar`. The
+archive is the same for every sample, only its name differs when it is installed as an OBB.
+
+    python deploy_content_android.py                     pack and push to $EXTERNAL_STORAGE/LVK/lvk_content.tar
+    python deploy_content_android.py --obb <package>...  pack and install as the OBB of each installed package
+    python deploy_content_android.py --pack-only         pack and stop, for a build that pushes later
+
+`--out` overrides where the archive is written. Packing is skipped when the archive is already there, so delete it to
+rebuild.
+"""
+
 import argparse
 import os
 import subprocess
+import sys
 import tarfile
 
-parser = argparse.ArgumentParser(description="Packs the sample content and pushes it to an Android device")
-parser.add_argument("--obb", nargs="+", metavar="PACKAGE",
-                    help="push as the OBB of these packages (e.g. org.lvk.samples.lvk_001_HelloTriangle) instead of $EXTERNAL_STORAGE/LVK")
-args = parser.parse_args()
+ROOT = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_ARCHIVE = os.path.join(ROOT, "third-party", "content", "archives", "lvk_content.tar")
 
-tar_path = os.path.join("third-party", "content", "archives", "lvk_content.tar")
-
-# source directories and their archive prefixes
 paths = [
-    ("third-party/content", "content"),
-    ("third-party/deps/src/3D-Graphics-Rendering-Cookbook/data", "deps/src/3D-Graphics-Rendering-Cookbook/data"),
-    ("third-party/deps/src/ktx-software/tests/srcimages/Iron_Bars", "deps/src/ktx-software/tests/srcimages/Iron_Bars"),
+    (os.path.join(ROOT, "third-party", "content"), "content"),
+    (os.path.join(ROOT, "third-party", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data"), "deps/src/3D-Graphics-Rendering-Cookbook/data"),
+    (os.path.join(ROOT, "third-party", "deps", "src", "ktx-software", "tests", "srcimages", "Iron_Bars"), "deps/src/ktx-software/tests/srcimages/Iron_Bars"),
 ]
 
-# directories excluded by absolute path
 exclude_abs = {
-    os.path.abspath("third-party/content/archives"),
-    os.path.abspath("third-party/content/patches"),
-    os.path.abspath("third-party/content/src/cloud"),
-    os.path.abspath("third-party/content/src/glTF-Sample-Models"),
-    os.path.abspath("third-party/content/src/CT_head"),
+    os.path.join(ROOT, "third-party", "content", "archives"),
+    os.path.join(ROOT, "third-party", "content", "patches"),
+    os.path.join(ROOT, "third-party", "content", "src", "cloud"),
+    os.path.join(ROOT, "third-party", "content", "src", "glTF-Sample-Models"),
+    os.path.join(ROOT, "third-party", "content", "src", "CT_head"),
 }
 
-# directory names excluded everywhere
 exclude_names = {".git"}
 
-if not os.path.isfile(tar_path):
-    print("Creating {} ...".format(tar_path))
+
+def pack(archive):
+    if os.path.isfile(archive):
+        print("{} already exists ({:.1f} MB), skipping creation".format(archive, os.path.getsize(archive) / (1024 * 1024)))
+        return
+    os.makedirs(os.path.dirname(archive), exist_ok=True)
+    print("Creating {} ...".format(archive))
     total_files = 0
-    with tarfile.open(tar_path, "w", format=tarfile.GNU_FORMAT) as tf:
+    with tarfile.open(archive, "w", format=tarfile.GNU_FORMAT) as tf:
         for desktop_path, archive_prefix in paths:
             if not os.path.isdir(desktop_path):
                 print("  Warning: {} does not exist, skipping".format(desktop_path))
@@ -56,29 +69,78 @@ if not os.path.isfile(tar_path):
                     count += 1
             total_files += count
             print("    {} files".format(count))
-    tar_size_mb = os.path.getsize(tar_path) / (1024 * 1024)
-    print("Created {} ({:.1f} MB, {} files)".format(tar_path, tar_size_mb, total_files))
-else:
-    tar_size_mb = os.path.getsize(tar_path) / (1024 * 1024)
-    print("{} already exists ({:.1f} MB), skipping creation".format(tar_path, tar_size_mb))
+    print("Created {} ({:.1f} MB, {} files)".format(archive, os.path.getsize(archive) / (1024 * 1024), total_files))
 
-# upload to the device
-try:
-    result = subprocess.run(["adb", "shell", "echo", "$EXTERNAL_STORAGE"], capture_output=True, text=True)
-    external_storage = result.stdout.strip()
-except Exception as e:
-    print("adb error:", e)
-    external_storage = None
 
-if external_storage:
-    # the samples look for `main.<versionCode>.<package>.obb`, and `versionCode` is 1 in `android/app/build.gradle.in`
-    if args.obb:
-        android_tar_paths = ["{}/Android/obb/{}/main.1.{}.obb".format(external_storage, p, p) for p in args.obb]
-    else:
-        android_tar_paths = [external_storage + "/LVK/lvk_content.tar"]
-    for android_tar_path in android_tar_paths:
-        print("Uploading to {} ...".format(android_tar_path))
-        subprocess.run(["adb", "push", tar_path, android_tar_path])
+def adb(*args, capture=False):
+    result = subprocess.run(["adb", *args], capture_output=capture, text=True)
+    if result.returncode != 0:
+        raise RuntimeError("adb {} failed with code {}".format(" ".join(args), result.returncode))
+    return result.stdout if capture else ""
+
+
+def installedPackages():
+    out = adb("shell", "pm", "list", "packages", capture=True)
+    return {line.strip()[len("package:"):] for line in out.splitlines() if line.startswith("package:")}
+
+
+def externalStorage():
+    return adb("shell", "echo", "$EXTERNAL_STORAGE", capture=True).strip() or None
+
+
+def pushLoose(archive, storage):
+    target = storage + "/LVK/lvk_content.tar"
+    print("Uploading to {} ...".format(target))
+    adb("push", archive, target)
+
+
+def pushObb(archive, storage, package):
+    target = "{}/Android/obb/{}/main.1.{}.obb".format(storage, package, package)
+    adb("shell", "mkdir", "-p", "{}/Android/obb/{}".format(storage, package))
+    print("Uploading to {} ...".format(target))
+    adb("push", archive, target)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--out", default=DEFAULT_ARCHIVE, help="where to write the archive")
+    parser.add_argument("--obb", nargs="+", metavar="PACKAGE", help="install as the OBB of these packages instead of pushing loose")
+    parser.add_argument("--pack-only", action="store_true", help="do not touch the device")
+    parser.add_argument("--all", action="store_true", help="with --obb, push to packages that are not installed too")
+    args = parser.parse_args()
+
+    pack(args.out)
+
+    if args.pack_only:
+        return 0
+
+    try:
+        storage = externalStorage()
+        if not storage:
+            print("External storage path is not found")
+            return 1
+        if not args.obb:
+            pushLoose(args.out, storage)
+            print("Completed")
+            return 0
+        wanted = args.obb
+        if not args.all:
+            installed = installedPackages()
+            skipped = [p for p in wanted if p not in installed]
+            wanted = [p for p in wanted if p in installed]
+            if skipped:
+                print("Not installed, skipping: {}".format(", ".join(skipped)))
+            if not wanted:
+                print("None of the packages are installed, nothing to do")
+                return 0
+        for package in wanted:
+            pushObb(args.out, storage, package)
+    except RuntimeError as e:
+        print(e)
+        return 1
     print("Completed")
-else:
-    print("External storage path is not found")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
