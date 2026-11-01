@@ -49,12 +49,12 @@ double glfwGetTime();
 
 // clang-format off
 #if defined(ANDROID)
-// Android has no command line: android_main() owns argv and passes it to the sample's main function
+// Android has no command line: android_main() reads argv from `args.txt` in the app's OBB directory (see runAndroidMain())
+void runAndroidMain(android_app* androidApp, void (*vulkanAppMain)(android_app* androidApp, int argc, char* argv[]));
 #  define VULKAN_APP_MAIN                                                    \
      void vulkanAppMain(android_app* androidApp, int argc, char* argv[]);    \
      void android_main(android_app* androidApp) {                            \
-       char* argv[] = {nullptr};                                             \
-       vulkanAppMain(androidApp, 0, argv);                                   \
+       runAndroidMain(androidApp, vulkanAppMain);                            \
      }                                                                       \
      void vulkanAppMain(android_app* androidApp, int argc, char* argv[])
 #  define VULKAN_APP_DECLARE(app, config) VulkanApp app(androidApp, argc, argv, config)

@@ -276,6 +276,26 @@ static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
 }
 
 } // extern "C"
+
+void runAndroidMain(android_app* androidApp, void (*vulkanAppMain)(android_app* androidApp, int argc, char* argv[])) {
+  // argv[0] is the package name (the OBB directory is `.../Android/obb/<package>`), the rest are the words of `args.txt`
+  const char* obbPath = androidApp->activity->obbPath;
+  std::vector<std::string> args = {obbPath ? std::filesystem::path(obbPath).filename().string() : std::string()};
+  if (FILE* f = obbPath ? fopen((std::string(obbPath) + "/args.txt").c_str(), "r") : nullptr) {
+    char arg[512];
+    while (fscanf(f, "%511s", arg) == 1) {
+      args.push_back(arg);
+    }
+    fclose(f);
+  }
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (std::string& arg : args) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+  vulkanAppMain(androidApp, (int)args.size(), argv.data());
+}
 #elif LVK_WITH_SDL3
 double glfwGetTime() {
   return (double)SDL_GetTicks() * 0.001;
