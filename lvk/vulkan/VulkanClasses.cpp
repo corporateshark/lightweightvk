@@ -2598,7 +2598,7 @@ void lvk::CommandBuffer::cmdDispatch(const Dimensions& groupCount, const Depende
   }
   tensorBarriers(deps.tensors,
                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
-                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM,
                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
 
   vkCmdDispatch(wrapper_->cmdBuf_, groupCount.width, groupCount.height, groupCount.depth);
@@ -2625,7 +2625,7 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
   }
   tensorBarriers(deps.tensors,
                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT |
-                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM,
                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
 
   const lvk::VulkanBuffer* indBuf = ctx_->buffersPool_.get(indirectBuffer);
@@ -2774,7 +2774,7 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     bufferBarrier(deps.buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
   }
   tensorBarriers(deps.tensors,
-                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM,
                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
   const uint32_t numFbColorAttachments = fb.getNumColorAttachments();
@@ -3528,7 +3528,7 @@ void lvk::CommandBuffer::cmdTraceRays(uint32_t width, uint32_t height, uint32_t 
                   VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
   }
   tensorBarriers(deps.tensors,
-                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM,
                  VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR);
 
   vkCmdTraceRaysKHR(
@@ -10327,7 +10327,10 @@ VkAccessFlags2 tensorAccessFlagsForStages(VkPipelineStageFlags2 stages) {
   if (stages & VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
     access |= VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT;
   }
-  if (stages & ~VK_PIPELINE_STAGE_2_TRANSFER_BIT) {
+  if (stages & VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM) {
+    access |= VK_ACCESS_2_DATA_GRAPH_READ_BIT_ARM | VK_ACCESS_2_DATA_GRAPH_WRITE_BIT_ARM;
+  }
+  if (stages & ~(VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM)) {
     access |= VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
   }
   return access;
@@ -10933,6 +10936,11 @@ void lvk::CommandBuffer::tensorBarriers(const ldr::Span<TensorHandle>& tensors,
   const bool computeOnlyQueue = isComputeOnlyQueue();
   srcStage = stripGraphicsStages(srcStage, computeOnlyQueue);
   dstStage = stripGraphicsStages(dstStage, computeOnlyQueue);
+
+  if (!ctx_->has_ARM_data_graph_ || computeOnlyQueue) {
+    srcStage &= ~VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM;
+    dstStage &= ~VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM;
+  }
 
   std::vector<VkTensorMemoryBarrierARM> barriers;
   barriers.reserve(tensors.size());
