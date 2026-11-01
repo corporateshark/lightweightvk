@@ -38,7 +38,7 @@ option(LVK_IMPLOT_EXTERNAL         "Use external ImPlot library"             OFF
 option(LVK_GLSLANG_EXTERNAL        "Use external glslang and SPIRV-Tools"    OFF)
 option(LVK_SPIRV_REFLECT_EXTERNAL  "Use external SPIRV-Reflect library"      OFF)
 option(LVK_ENABLE_LONG_PATHS_WIN32 "Enable long paths on Windows"            ON)
-option(LVK_WITH_ML_EMULATION_LAYER "Build the Arm ML Emulation Layer for Vulkan (VK_ARM_tensors/VK_ARM_data_graph)" OFF)
+option(LVK_WITH_ML_EMULATION_LAYER "Build the Arm ML Emulation Layer (VK_ARM_tensors/VK_ARM_data_graph)" OFF)
 
 set(LVK_ANDROID_ABI "arm64-v8a" CACHE STRING "Enabled ABI on Android")
 # cmake-format: on

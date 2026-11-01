@@ -321,6 +321,10 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       } else {
         LLOGW("Specify a value for `--height <pixels>`");
       }
+    } else if (!strcmp(argv[i], "--no-ml-emulation")) {
+      for (const char*& layer : cfg_.contextConfig.layers) {
+        layer = layer && !strncmp(layer, "VK_LAYER_ML_", 12) ? nullptr : layer;
+      }
     }
   }
 #if defined(LVK_WITH_MINILOG)
