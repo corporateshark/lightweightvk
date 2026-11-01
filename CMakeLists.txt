@@ -5,6 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+# LVKLibrary and LVKVulkan depend on each other, so CMake repeats them on link lines. Let CMake 3.29+ de-duplicate libraries
+# for linkers that rescan archives (Apple ld warns "ignoring duplicate libraries"). Set as defaults before any
+# cmake_minimum_required() so that every subdirectory picks them up.
+set(CMAKE_POLICY_DEFAULT_CMP0156 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0179 NEW)
+
 cmake_minimum_required(VERSION 3.22)
 
 include(CMakeDependentOption)
