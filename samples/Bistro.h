@@ -22,7 +22,7 @@
  and their material textures, loaded asynchronously and transcoded to BC7 on the first run (the transcoded ones are
  cached next to the content root):
 
-   void loadMaterialTextures(VulkanApp& app, const char* pathPrefix)
+   void loadMaterialTextures(VulkanApp& app, const char* pathPrefix, bool loadMaterialMaps = false)
    bool processLoadedMaterialTextures(lvk::ICommandBuffer& buffer, lvk::BufferHandle materialsBuffer)
    uint32_t numRemainingMaterialTextures()
    void drawMaterialTexturesLoadingProgress()
@@ -32,6 +32,9 @@
  is ready. The result is stored in the global variable:
 
    std::vector<GPUMaterial> materials_;
+
+ With `loadMaterialMaps`, the `map_Ks` (specular) and `map_bump` (normal) textures are loaded too, into `texSpecular` and
+ `texNormal` (otherwise they stay 0, meaning "no texture").
 */
 
 #pragma once
@@ -76,7 +79,7 @@ using glm::vec2;
 using glm::vec3;
 using glm::vec4;
 
-constexpr uint32_t kMeshCacheVersion = 0xC0DE000A;
+constexpr uint32_t kMeshCacheVersion = 0xC0DE000B;
 
 #define MAX_MATERIAL_NAME 128
 
@@ -99,6 +102,8 @@ struct CachedMaterial {
   char ambient_texname[MAX_MATERIAL_NAME] = {};
   char diffuse_texname[MAX_MATERIAL_NAME] = {};
   char alpha_texname[MAX_MATERIAL_NAME] = {};
+  char specular_texname[MAX_MATERIAL_NAME] = {};
+  char normal_texname[MAX_MATERIAL_NAME] = {};
 };
 
 std::vector<CachedMaterial> cachedMaterials_;
@@ -249,6 +254,8 @@ bool loadAndCache(VulkanApp& app, const char* cacheFileName, const char* modelFi
     strcat(mtl.ambient_texname, normalizeTextureName(mesh->textures[m.map_Ka].name).c_str());
     strcat(mtl.diffuse_texname, normalizeTextureName(mesh->textures[m.map_Kd].name).c_str());
     strcat(mtl.alpha_texname, normalizeTextureName(mesh->textures[m.map_d].name).c_str());
+    strcat(mtl.specular_texname, normalizeTextureName(mesh->textures[m.map_Ks].name).c_str());
+    strcat(mtl.normal_texname, normalizeTextureName(mesh->textures[m.map_bump].name).c_str());
     cachedMaterials_.push_back(mtl);
   }
 
@@ -317,6 +324,8 @@ bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
     std::replace(std::begin(mtl.ambient_texname), std::end(mtl.ambient_texname), '\\', '/');
     std::replace(std::begin(mtl.diffuse_texname), std::end(mtl.diffuse_texname), '\\', '/');
     std::replace(std::begin(mtl.alpha_texname), std::end(mtl.alpha_texname), '\\', '/');
+    std::replace(std::begin(mtl.specular_texname), std::end(mtl.specular_texname), '\\', '/');
+    std::replace(std::begin(mtl.normal_texname), std::end(mtl.normal_texname), '\\', '/');
   }
 #endif // __linux__ || __APPLE__ || ANDROID
   return true;
@@ -334,7 +343,9 @@ struct GPUMaterial {
   uint32_t texAmbient = 0;
   uint32_t texDiffuse = 0;
   uint32_t texAlpha = 0;
-  uint32_t padding = 0;
+  uint32_t texSpecular = 0;
+  uint32_t texNormal = 0;
+  uint32_t padding[3] = {};
 };
 
 static_assert(sizeof(GPUMaterial) % 16 == 0);
@@ -355,10 +366,13 @@ struct LoadedMaterial {
   LoadedImage ambient;
   LoadedImage diffuse;
   LoadedImage alpha;
+  LoadedImage specular;
+  LoadedImage normal;
 };
 
 VulkanApp* texturesApp_ = nullptr;
 std::string texturesPathPrefix_;
+bool loadMaterialMaps_ = false;
 lvk::Holder<lvk::TextureHandle> textureDummyWhite_;
 
 std::mutex imagesCacheMutex_;
@@ -539,23 +553,25 @@ void loadMaterial(size_t i) {
     remainingMaterialsToLoad_.fetch_sub(1u, std::memory_order_release);
   };
 
-#define LOAD_TEX(result, tex, channels)                                                                          \
-  const LoadedImage result = std::string(cachedMaterials_[i].tex).empty()                                        \
+#define LOAD_TEX(result, tex, channels, enabled)                                                                 \
+  const LoadedImage result = !(enabled) || std::string(cachedMaterials_[i].tex).empty()                          \
                                  ? LoadedImage()                                                                 \
                                  : loadImage((texturesPathPrefix_ + cachedMaterials_[i].tex).c_str(), channels); \
   if (loaderShouldExit_.load(std::memory_order_acquire)) {                                                       \
     return;                                                                                                      \
   }
 
-  LOAD_TEX(ambient, ambient_texname, 4);
-  LOAD_TEX(diffuse, diffuse_texname, 4);
-  LOAD_TEX(alpha, alpha_texname, 1);
+  LOAD_TEX(ambient, ambient_texname, 4, true);
+  LOAD_TEX(diffuse, diffuse_texname, 4, true);
+  LOAD_TEX(alpha, alpha_texname, 1, true);
+  LOAD_TEX(specular, specular_texname, 4, loadMaterialMaps_);
+  LOAD_TEX(normal, normal_texname, 4, loadMaterialMaps_);
 
 #undef LOAD_TEX
 
-  const LoadedMaterial mtl{i, ambient, diffuse, alpha};
+  const LoadedMaterial mtl{i, ambient, diffuse, alpha, specular, normal};
 
-  if (!mtl.ambient.pixels && !mtl.diffuse.pixels) {
+  if (!mtl.ambient.pixels && !mtl.diffuse.pixels && !mtl.specular.pixels && !mtl.normal.pixels) {
     materials_[i].texDiffuse = 0;
   } else {
     std::lock_guard guard(loadedMaterialsMutex_);
@@ -636,9 +652,10 @@ lvk::TextureHandle createTextureFromLoadedImage(const LoadedImage& img) {
   return handle;
 }
 
-void loadMaterialTextures(VulkanApp& app, const char* pathPrefix) {
+void loadMaterialTextures(VulkanApp& app, const char* pathPrefix, bool loadMaterialMaps = false) {
   texturesApp_ = &app;
   texturesPathPrefix_ = app.folderContentRoot_ + pathPrefix;
+  loadMaterialMaps_ = loadMaterialMaps;
 
   const uint32_t pixel = 0xFFFFFFFF;
   textureDummyWhite_ = app.ctx_->createTexture({
@@ -689,10 +706,14 @@ bool processLoadedMaterialTextures(lvk::ICommandBuffer& buffer, lvk::BufferHandl
   const lvk::TextureHandle ambient = createTextureFromLoadedImage(mtl.ambient);
   const lvk::TextureHandle diffuse = createTextureFromLoadedImage(mtl.diffuse);
   const lvk::TextureHandle alpha = createTextureFromLoadedImage(mtl.alpha);
+  const lvk::TextureHandle specular = createTextureFromLoadedImage(mtl.specular);
+  const lvk::TextureHandle normal = createTextureFromLoadedImage(mtl.normal);
 
   materials_[mtl.idx].texAmbient = ambient.index();
   materials_[mtl.idx].texDiffuse = diffuse.index();
   materials_[mtl.idx].texAlpha = alpha.index();
+  materials_[mtl.idx].texSpecular = specular.index();
+  materials_[mtl.idx].texNormal = normal.index();
 
   buffer.cmdUpdateBuffer(materialsBuffer, 0, sizeof(GPUMaterial) * materials_.size(), materials_.data());
 

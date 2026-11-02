@@ -34,7 +34,9 @@ struct Material {
   uint texAmbient;
   uint texDiffuse;
   uint texAlpha;
-  uint padding;
+  uint texSpecular;
+  uint texNormal;
+  uint padding[3];
 };
 
 struct Vertex {
@@ -339,7 +341,9 @@ struct Material {
   uint texAmbient;
   uint texDiffuse;
   uint texAlpha;
-  uint padding;
+  uint texSpecular;
+  uint texNormal;
+  uint padding[3];
 };
 
 layout(std430, buffer_reference) readonly buffer Materials {

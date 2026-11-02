@@ -66,7 +66,9 @@ struct Material {
   int texAmbient;
   int texDiffuse;
   int texAlpha;
-  int padding;
+  int texSpecular;
+  int texNormal;
+  int padding[3];
 };
 
 struct PerFrame {
