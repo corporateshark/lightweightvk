@@ -10563,11 +10563,38 @@ lvk::Holder<lvk::TensorHandle> lvk::VulkanContext::createTensorBufferAliasing(Bu
     Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Invalid buffer to alias the tensor");
     return {};
   }
+  const bool needsOptimalTensor = (desc.usage & TensorUsageBits_DataGraph) &&
+                                  !(getTensorFormatSupport(desc.format, TensorTiling_Linear) & TensorUsageBits_DataGraph);
   // buffer memory has no tiling, and it is host-visible whenever the buffer is
   TensorDesc aliasDesc = desc;
   aliasDesc.tiling = TensorTiling_Linear;
   aliasDesc.storage = (buf->vkMemFlags_ & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ? StorageType_HostVisible : StorageType_Device;
-  return createTensorImpl(aliasDesc, buffer, bufferOffset, {}, debugName, outResult);
+  if (needsOptimalTensor) {
+    aliasDesc.usage =
+        (TensorUsageFlags)((desc.usage & ~TensorUsageBits_DataGraph) | TensorUsageBits_TransferSrc | TensorUsageBits_TransferDst);
+  }
+  Holder<TensorHandle> tensor = createTensorImpl(aliasDesc, buffer, bufferOffset, {}, debugName, outResult);
+  if (!tensor.valid() || !needsOptimalTensor) {
+    return tensor;
+  }
+  TensorDesc optimalDesc = {
+      .format = desc.format,
+      .rank = desc.rank,
+      .tiling = TensorTiling_Optimal,
+      .usage = TensorUsageBits_DataGraph | TensorUsageBits_TransferSrc | TensorUsageBits_TransferDst,
+  };
+  for (uint32_t i = 0; i != desc.rank; i++) {
+    optimalDesc.dimensions[i] = desc.dimensions[i];
+  }
+  Result result;
+  Holder<TensorHandle> optimalTensor = createTensorImpl(optimalDesc, {}, 0, {}, debugName, &result);
+  if (!result.isOk()) {
+    Result::setResult(outResult, result);
+    return {};
+  }
+  LLOGL("Tensor `%s`: linear tensors cannot be used by data graphs, the graphs use an optimally tiled copy\n", debugName ? debugName : "");
+  tensorsPool_.get(tensor)->optimalTensor_ = optimalTensor.release();
+  return tensor;
 }
 
 lvk::Holder<lvk::TensorHandle> lvk::VulkanContext::createTensorTextureAliasing(TextureHandle texture,
@@ -10715,6 +10742,10 @@ void lvk::VulkanContext::destroy(lvk::TensorHandle handle) {
 
   if (!tensor || !tensor->vkTensor_) {
     return;
+  }
+
+  if (tensor->optimalTensor_.valid()) {
+    destroy(tensor->optimalTensor_);
   }
 
   SCOPE_EXIT {
@@ -10914,7 +10945,8 @@ lvk::TensorDesc lvk::VulkanContext::getTensorDesc(lvk::TensorHandle handle) cons
       .format = lvk::vkFormatToFormat(tensor->vkFormat_),
       .rank = tensor->rank_,
       .tiling = tensor->isLinear() ? TensorTiling_Linear : TensorTiling_Optimal,
-      .usage = vkTensorUsageToTensorUsage(tensor->vkUsageFlags_),
+      .usage = (TensorUsageFlags)(vkTensorUsageToTensorUsage(tensor->vkUsageFlags_) |
+                                  (tensor->optimalTensor_.valid() ? TensorUsageBits_DataGraph : 0)),
       .storage = (tensor->vkMemFlags_ & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) ? StorageType_HostVisible : StorageType_Device,
   };
   for (uint32_t i = 0; i != tensor->rank_; i++) {

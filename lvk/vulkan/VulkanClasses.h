@@ -432,6 +432,8 @@ struct VulkanTensor final {
   TextureHandle aliasTexture_;
   BufferHandle aliasBuffer_;
   uint64_t aliasBufferOffset_ = 0;
+  // owned optimally tiled copy for data graphs when this linear tensor cannot be used by them (see createTensorBufferAliasing())
+  TensorHandle optimalTensor_;
 };
 
 class CommandBuffer final : public ICommandBuffer {
