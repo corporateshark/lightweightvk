@@ -11,7 +11,7 @@
 set(CMAKE_POLICY_DEFAULT_CMP0156 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0179 NEW)
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.27)
 
 include(CMakeDependentOption)
 
