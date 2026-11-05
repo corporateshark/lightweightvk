@@ -422,8 +422,8 @@ struct VulkanTensor final {
   VkTensorUsageFlagsARM vkUsageFlags_ = 0;
   VkMemoryPropertyFlags vkMemFlags_ = 0;
   uint32_t rank_ = 0;
-  int64_t dimensions_[LVK_TENSOR_MAX_RANK] = {};
-  int64_t strides_[LVK_TENSOR_MAX_RANK] = {};
+  int64_t dimensions_[LVK_MAX_TENSOR_RANK] = {};
+  int64_t strides_[LVK_MAX_TENSOR_RANK] = {};
   uint64_t dataSize_ = 0;
   uint32_t elementSize_ = 0;
   void* mappedPtr_ = nullptr;

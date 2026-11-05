@@ -299,7 +299,7 @@ void lvk::destroy(lvk::IContext* ctx, lvk::TensorHandle handle) {
 }
 
 uint64_t lvk::getTensorNumElements(const TensorDesc& desc) {
-  LVK_ASSERT(desc.rank > 0 && desc.rank <= LVK_TENSOR_MAX_RANK);
+  LVK_ASSERT(desc.rank > 0 && desc.rank <= LVK_MAX_TENSOR_RANK);
 
   uint64_t numElements = 1;
   for (uint32_t i = 0; i != desc.rank; i++) {

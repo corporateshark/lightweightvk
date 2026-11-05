@@ -1180,7 +1180,7 @@ struct AccelStructDesc {
   const char* debugName = "";
 };
 
-enum { LVK_TENSOR_MAX_RANK = 6 };
+enum { LVK_MAX_TENSOR_RANK = 6 };
 
 enum TensorUsageBits : uint8_t {
   TensorUsageBits_TransferSrc = 1 << 0,
@@ -1199,8 +1199,8 @@ enum TensorTiling : uint8_t {
 struct TensorDesc {
   Format format = Format_Invalid;
   uint32_t rank = 0;
-  int64_t dimensions[LVK_TENSOR_MAX_RANK] = {};
-  int64_t strides[LVK_TENSOR_MAX_RANK] = {};
+  int64_t dimensions[LVK_MAX_TENSOR_RANK] = {};
+  int64_t strides[LVK_MAX_TENSOR_RANK] = {};
   TensorTiling tiling = TensorTiling_Optimal;
   TensorUsageFlags usage = TensorUsageBits_DataGraph;
   StorageType storage = StorageType_Device;

@@ -10639,7 +10639,7 @@ lvk::Holder<lvk::TensorHandle> lvk::VulkanContext::createTensorImpl(const Tensor
     Result::setResult(outResult, Result::Code::RuntimeError, "VK_ARM_tensors is not supported (see supportsTensorsARM())");
     return {};
   }
-  if (!LVK_VERIFY(desc.rank > 0 && desc.rank <= LVK_TENSOR_MAX_RANK && desc.rank <= vkTensorProperties_.maxTensorDimensionCount)) {
+  if (!LVK_VERIFY(desc.rank > 0 && desc.rank <= LVK_MAX_TENSOR_RANK && desc.rank <= vkTensorProperties_.maxTensorDimensionCount)) {
     Result::setResult(outResult, Result::Code::ArgumentOutOfRange, "Unsupported tensor rank");
     return {};
   }
@@ -11052,8 +11052,8 @@ void lvk::CommandBuffer::cmdCopyTensor(TensorHandle src, TensorHandle dst) {
   if (!LVK_VERIFY(srcTensor->rank_ == dstTensor->rank_ && srcTensor->vkFormat_ == dstTensor->vkFormat_)) {
     return;
   }
-  uint64_t offsets[LVK_TENSOR_MAX_RANK] = {};
-  uint64_t extent[LVK_TENSOR_MAX_RANK] = {};
+  uint64_t offsets[LVK_MAX_TENSOR_RANK] = {};
+  uint64_t extent[LVK_MAX_TENSOR_RANK] = {};
   for (uint32_t i = 0; i != srcTensor->rank_; i++) {
     if (!LVK_VERIFY(srcTensor->dimensions_[i] == dstTensor->dimensions_[i])) {
       return;
