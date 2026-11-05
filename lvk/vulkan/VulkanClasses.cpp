@@ -8591,6 +8591,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .drawIndirectCount = vkFeatures12_.drawIndirectCount, // enable if supported
       .storageBuffer8BitAccess = VK_TRUE,
       .uniformAndStorageBuffer8BitAccess = vkFeatures12_.uniformAndStorageBuffer8BitAccess, // enable if supported
+      .storagePushConstant8 = vkFeatures12_.storagePushConstant8, // enable if supported
       .shaderBufferInt64Atomics = vkFeatures12_.shaderBufferInt64Atomics, // enable if supported
       .shaderSharedInt64Atomics = vkFeatures12_.shaderSharedInt64Atomics, // enable if supported
       .shaderFloat16 = VK_TRUE,
