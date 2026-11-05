@@ -436,6 +436,26 @@ struct VulkanTensor final {
   TensorHandle optimalTensor_;
 };
 
+struct DataGraphPipelineState final {
+  ShaderModuleHandle smGraph_;
+  std::vector<TensorDesc> tensorDescs_; // inputs, then outputs
+  std::vector<uint32_t> bindings_;
+  // descriptor sets for every distinct combination of tensors the pipeline was dispatched with
+  struct TensorSet final {
+    TensorHandle tensors[LVK_MAX_DATA_GRAPH_TENSORS] = {};
+    VkDescriptorSet dset = VK_NULL_HANDLE;
+  };
+  std::vector<TensorSet> tensorSets_;
+  VkDescriptorSetLayout dsl_ = VK_NULL_HANDLE;
+  VkDescriptorPool dpool_ = VK_NULL_HANDLE;
+  VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+  VkPipeline pipeline_ = VK_NULL_HANDLE;
+  VkDataGraphPipelineSessionARM session_ = VK_NULL_HANDLE;
+  std::vector<VkDeviceMemory> sessionMemory_;
+  std::vector<VmaAllocation> sessionAllocations_;
+  const char* debugName_ = "";
+};
+
 class CommandBuffer final : public ICommandBuffer {
  public:
   CommandBuffer() = default;
@@ -526,6 +546,10 @@ class CommandBuffer final : public ICommandBuffer {
   void cmdUpdateTLAS(AccelStructHandle handle, BufferHandle instancesBuffer) override;
   void cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handles) override;
   void cmdCopyTensor(TensorHandle src, TensorHandle dst) override;
+  void cmdDispatchDataGraph(DataGraphPipelineHandle handle,
+                            const ldr::Span<const TensorHandle>& inputs,
+                            const ldr::Span<const TensorHandle>& outputs,
+                            const Dependencies& deps) override;
 
   operator VkCommandBuffer() const
 #if defined(LVK_WITH_RAW_VULKAN)
@@ -676,6 +700,7 @@ class VulkanContext final : public IContext {
                                                    const TensorDesc& desc,
                                                    const char* debugName,
                                                    Result* outResult) override;
+  Holder<DataGraphPipelineHandle> createDataGraphPipeline(const DataGraphPipelineDesc& desc, Result* outResult) override;
 
   void destroy(ComputePipelineHandle handle) override;
   void destroy(RenderPipelineHandle handle) override;
@@ -687,6 +712,7 @@ class VulkanContext final : public IContext {
   void destroy(QueryPoolHandle handle) override;
   void destroy(AccelStructHandle handle) override;
   void destroy(TensorHandle handle) override;
+  void destroy(DataGraphPipelineHandle handle) override;
   void destroy(Framebuffer& fb) override;
 
   uint64_t gpuAddress(AccelStructHandle handle) const override;
@@ -868,6 +894,8 @@ class VulkanContext final : public IContext {
                                         TextureHandle aliasTexture,
                                         const char* debugName,
                                         Result* outResult);
+  VkDescriptorSet getTensorDescriptorSet(DataGraphPipelineState& state, const ldr::Span<const TensorHandle>& tensors);
+  void destroyDataGraphPipelineState(DataGraphPipelineState& state);
   ShaderModuleState createShaderModuleFromSPIRV(const void* spirv, size_t numBytes, const char* debugName, Result* outResult) const;
   ShaderModuleState createShaderModuleFromGLSL(ShaderStage stage,
                                                const char* source,
@@ -910,6 +938,7 @@ class VulkanContext final : public IContext {
  private:
   friend class lvk::VulkanSwapchain;
   friend class lvk::VulkanStagingDevice;
+  friend class lvk::CommandBuffer;
 
   VkInstance vkInstance_ = VK_NULL_HANDLE;
   VkDebugUtilsMessengerEXT vkDebugUtilsMessenger_ = VK_NULL_HANDLE;
@@ -1067,6 +1096,7 @@ class VulkanContext final : public IContext {
   ldr::Pool<lvk::QueryPool, VkQueryPool> queriesPool_;
   ldr::Pool<lvk::AccelerationStructure, lvk::AccelerationStructure> accelStructuresPool_;
   ldr::Pool<lvk::Tensor, lvk::VulkanTensor> tensorsPool_;
+  ldr::Pool<lvk::DataGraphPipeline, lvk::DataGraphPipelineState> dataGraphPipelinesPool_;
 };
 
 } // namespace lvk

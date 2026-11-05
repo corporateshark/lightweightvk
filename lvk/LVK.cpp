@@ -298,6 +298,12 @@ void lvk::destroy(lvk::IContext* ctx, lvk::TensorHandle handle) {
   }
 }
 
+void lvk::destroy(lvk::IContext* ctx, lvk::DataGraphPipelineHandle handle) {
+  if (ctx) {
+    ctx->destroy(handle);
+  }
+}
+
 uint64_t lvk::getTensorNumElements(const TensorDesc& desc) {
   LVK_ASSERT(desc.rank > 0 && desc.rank <= LVK_MAX_TENSOR_RANK);
 

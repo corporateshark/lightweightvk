@@ -122,6 +122,7 @@ using TextureHandle = ldr::Handle<struct Texture>;
 using QueryPoolHandle = ldr::Handle<struct QueryPool>;
 using AccelStructHandle = ldr::Handle<struct AccelerationStructure>;
 using TensorHandle = ldr::Handle<struct Tensor>;
+using DataGraphPipelineHandle = ldr::Handle<struct DataGraphPipeline>;
 
 // forward declarations to access incomplete type IContext
 void destroy(lvk::IContext* ctx, lvk::ComputePipelineHandle handle);
@@ -134,6 +135,7 @@ void destroy(lvk::IContext* ctx, lvk::TextureHandle handle);
 void destroy(lvk::IContext* ctx, lvk::QueryPoolHandle handle);
 void destroy(lvk::IContext* ctx, lvk::AccelStructHandle handle);
 void destroy(lvk::IContext* ctx, lvk::TensorHandle handle);
+void destroy(lvk::IContext* ctx, lvk::DataGraphPipelineHandle handle);
 
 template<typename HandleType>
 class Holder final {
@@ -1181,6 +1183,8 @@ struct AccelStructDesc {
 };
 
 enum { LVK_MAX_TENSOR_RANK = 6 };
+enum { LVK_MAX_DATA_GRAPH_TENSORS = 16 };
+enum { LVK_MAX_DATA_GRAPH_TENSOR_SETS = 8 };
 
 enum TensorUsageBits : uint8_t {
   TensorUsageBits_TransferSrc = 1 << 0,
@@ -1219,6 +1223,23 @@ struct TensorProperties {
 
 [[nodiscard]] uint64_t getTensorNumElements(const TensorDesc& desc);
 [[nodiscard]] uint64_t getTensorDataSize(const TensorDesc& desc);
+
+struct DataGraphConstant final {
+  uint32_t id = 0;
+  Format format = Format_Invalid;
+  uint32_t rank = 0;
+  int64_t dimensions[LVK_MAX_TENSOR_RANK] = {};
+  const void* data = nullptr;
+};
+
+struct DataGraphPipelineDesc final {
+  ShaderModuleHandle smGraph;
+  const char* entryPoint = "main";
+  ldr::Span<const TensorDesc> inputs = {};
+  ldr::Span<const TensorDesc> outputs = {};
+  ldr::Span<const DataGraphConstant> constants = {};
+  const char* debugName = "";
+};
 
 struct SubmitHandle {
   union {
@@ -1369,6 +1390,10 @@ class ICommandBuffer {
   virtual void cmdUpdateBLAS(const ldr::Span<AccelStructHandle>& handles) = 0;
 
   virtual void cmdCopyTensor(TensorHandle src, TensorHandle dst) = 0;
+  virtual void cmdDispatchDataGraph(DataGraphPipelineHandle handle,
+                                    const ldr::Span<const TensorHandle>& inputs,
+                                    const ldr::Span<const TensorHandle>& outputs,
+                                    const Dependencies& deps = {}) = 0;
 
 #if defined(LVK_WITH_RAW_VULKAN)
   virtual operator VkCommandBuffer() const = 0;
@@ -1427,6 +1452,8 @@ class IContext {
                                                                          const TensorDesc& desc,
                                                                          const char* debugName = nullptr,
                                                                          Result* outResult = nullptr) = 0;
+  [[nodiscard]] virtual Holder<DataGraphPipelineHandle> createDataGraphPipeline(const DataGraphPipelineDesc& desc,
+                                                                                Result* outResult = nullptr) = 0;
 
   virtual void destroy(ComputePipelineHandle handle) = 0;
   virtual void destroy(RenderPipelineHandle handle) = 0;
@@ -1438,6 +1465,7 @@ class IContext {
   virtual void destroy(QueryPoolHandle handle) = 0;
   virtual void destroy(AccelStructHandle handle) = 0;
   virtual void destroy(TensorHandle handle) = 0;
+  virtual void destroy(DataGraphPipelineHandle handle) = 0;
   virtual void destroy(Framebuffer& fb) = 0;
 
   [[nodiscard]] virtual uint64_t gpuAddress(AccelStructHandle handle) const = 0;
