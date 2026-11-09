@@ -108,6 +108,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
 - `LVK_ENABLE_LONG_PATHS_WIN32`: Enable long paths on Windows (default: ON)
 - `LVK_ANDROID_ABI`: Enabled ABI on Android (cache string, default: `arm64-v8a`)
 - `LVK_ANDROID_OBB_CONTENT`: Pack the sample content into an OBB for every generated Android demo, through the `LVKAndroidContent` target (default: OFF). The archive is the same for all of them, only the OBB name differs. Left off, the samples expect `python deploy_content_android.py` to have pushed it to `$EXTERNAL_STORAGE/LVK` by hand
+- `LVK_WITH_TENSORS`: Build the Arm VGF library and `lvk/HelpersVgf.h` (`lvk::VgfModel`, loads `.vgf` models into data graph pipelines) into `LVKLibrary` (default: ON)
 - `LVK_WITH_ML_EMULATION_LAYER`: Download and build the Arm ML Emulation Layer for Vulkan (`VK_LAYER_ML_Graph_Emulation`, `VK_LAYER_ML_Tensor_Emulation`) as an ExternalProject to emulate `VK_ARM_tensors`/`VK_ARM_data_graph` on GPUs without native support (default: OFF). It shares glslang, SPIRV-Headers, SPIRV-Tools and Vulkan-Headers with LVK; the layer manifests are installed into `build/ml-emulation-layer/bin` (Windows) or `build/ml-emulation-layer/share/vulkan/explicit_layer.d`. With `LVK_WITH_SAMPLES_ANDROID` the layer is also cross-built for every `LVK_ANDROID_ABI` (needs `ninja` and the NDK's `llvm-strip`) into `build/ml-emulation-layer-android/jniLibs`, which the generated projects list in `jniLibs.srcDirs`. Samples request the layers via `ContextConfig::layers`; they are always used, even on GPUs supporting `VK_ARM_tensors` natively; `VulkanApp` adds the built layer to `VK_ADD_LAYER_PATH`, and `VulkanContext` skips requested layers that are not installed; `--no-ml-emulation` drops them
 
 ## Coding Style
@@ -158,6 +159,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
   - `LVK.h/cpp`: Core API definitions and implementations
   - `vulkan/`: Vulkan-specific backend implementation
   - `HelpersImGui.h/cpp`: ImGui integration helpers
+  - `HelpersVgf.h/cpp`: `lvk::VgfModel` (built with `LVK_WITH_TENSORS`) parses VGF models from memory, e.g. `VulkanApp::loadFile()`, and creates their `VK_ARM_data_graph` pipelines
 
 ### Key Design Principles
 1. **Bindless-only**: Utilizes Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address

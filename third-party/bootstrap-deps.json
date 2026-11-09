@@ -285,6 +285,26 @@
     }
 },
 {
+    "name": "ml-sdk/vgf-library",
+    "predicate": "os.environ.get('LVK_WITH_TENSORS') != 'OFF'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/arm/ai-ml-sdk-vgf-library.git",
+        "revision": "v0.10.0",
+        "recursive": false
+    }
+},
+{
+    "name": "ml-sdk/flatbuffers",
+    "predicate": "os.environ.get('LVK_WITH_TENSORS') != 'OFF'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/google/flatbuffers.git",
+        "revision": "v25.2.10",
+        "recursive": false
+    }
+},
+{
     "name": "ml-sdk/emulation-layer",
     "predicate": "os.environ.get('LVK_WITH_ML_EMULATION_LAYER') == 'ON'",
     "source": {
