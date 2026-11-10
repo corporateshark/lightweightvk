@@ -3088,7 +3088,7 @@ void lvk::CommandBuffer::cmdBindViewport(const Viewport& viewport) {
   // https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
   const VkViewport vp = {
       .x = viewport.x, // float x;
-      .y = viewport.height - viewport.y, // float y;
+      .y = viewport.y + viewport.height, // float y; the bottom edge of the rect, correct for any viewport.y
       .width = viewport.width, // float width;
       .height = -viewport.height, // float height;
       .minDepth = viewport.minDepth, // float minDepth;
