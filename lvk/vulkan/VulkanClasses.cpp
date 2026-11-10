@@ -2781,7 +2781,9 @@ void lvk::CommandBuffer::cmdBeginRendering(const lvk::RenderPass& renderPass, co
     if (buf->vkUsageFlags_ & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) {
       dstStageFlags |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
     }
-    bufferBarrier(deps.buffers[i], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, dstStageFlags);
+    const VkPipelineStageFlags2 srcStageFlags = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                                                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    bufferBarrier(deps.buffers[i], srcStageFlags, dstStageFlags);
   }
   tensorBarriers(deps.tensors,
                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM,
