@@ -2637,7 +2637,17 @@ void lvk::CommandBuffer::cmdDispatchIndirect(BufferHandle indirectBuffer, size_t
   bufferBarrier(
       indirectBuffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
 
-  vkCmdDispatchIndirect(wrapper_->cmdBuf_, indBuf->vkBuffer_, indirectBufferOffset);
+  if (ctx_->has_KHR_device_address_commands_) {
+    LVK_ASSERT(indBuf->vkDeviceAddress_);
+    const VkDispatchIndirect2InfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_DISPATCH_INDIRECT_2_INFO_KHR,
+        .addressRange = {.address = indBuf->vkDeviceAddress_ + indirectBufferOffset, .size = sizeof(VkDispatchIndirectCommand)},
+        .addressFlags = indBuf->getVkAddressCommandFlags(),
+    };
+    vkCmdDispatchIndirect2KHR(wrapper_->cmdBuf_, &info);
+  } else {
+    vkCmdDispatchIndirect(wrapper_->cmdBuf_, indBuf->vkBuffer_, indirectBufferOffset);
+  }
 }
 
 void lvk::CommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t colorRGBA) const {
@@ -3408,8 +3418,22 @@ void lvk::CommandBuffer::cmdDrawIndirect(BufferHandle indirectBuffer, size_t ind
 
   LVK_ASSERT(bufIndirect);
 
-  vkCmdDrawIndirect(
-      wrapper_->cmdBuf_, bufIndirect->vkBuffer_, indirectBufferOffset, drawCount, stride ? stride : sizeof(VkDrawIndirectCommand));
+  stride = stride ? stride : sizeof(VkDrawIndirectCommand);
+
+  if (ctx_->has_KHR_device_address_commands_) {
+    LVK_ASSERT(bufIndirect->vkDeviceAddress_);
+    const VkDrawIndirect2InfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_DRAW_INDIRECT_2_INFO_KHR,
+        .addressRange = {.address = bufIndirect->vkDeviceAddress_ + indirectBufferOffset,
+                         .size = bufIndirect->bufferSize_ - indirectBufferOffset,
+                         .stride = stride},
+        .addressFlags = bufIndirect->getVkAddressCommandFlags(),
+        .drawCount = drawCount,
+    };
+    vkCmdDrawIndirect2KHR(wrapper_->cmdBuf_, &info);
+  } else {
+    vkCmdDrawIndirect(wrapper_->cmdBuf_, bufIndirect->vkBuffer_, indirectBufferOffset, drawCount, stride);
+  }
 }
 
 void lvk::CommandBuffer::cmdDrawIndexedIndirect(BufferHandle indirectBuffer,
@@ -3423,8 +3447,22 @@ void lvk::CommandBuffer::cmdDrawIndexedIndirect(BufferHandle indirectBuffer,
 
   LVK_ASSERT(bufIndirect);
 
-  vkCmdDrawIndexedIndirect(
-      wrapper_->cmdBuf_, bufIndirect->vkBuffer_, indirectBufferOffset, drawCount, stride ? stride : sizeof(VkDrawIndexedIndirectCommand));
+  stride = stride ? stride : sizeof(VkDrawIndexedIndirectCommand);
+
+  if (ctx_->has_KHR_device_address_commands_) {
+    LVK_ASSERT(bufIndirect->vkDeviceAddress_);
+    const VkDrawIndirect2InfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_DRAW_INDIRECT_2_INFO_KHR,
+        .addressRange = {.address = bufIndirect->vkDeviceAddress_ + indirectBufferOffset,
+                         .size = bufIndirect->bufferSize_ - indirectBufferOffset,
+                         .stride = stride},
+        .addressFlags = bufIndirect->getVkAddressCommandFlags(),
+        .drawCount = drawCount,
+    };
+    vkCmdDrawIndexedIndirect2KHR(wrapper_->cmdBuf_, &info);
+  } else {
+    vkCmdDrawIndexedIndirect(wrapper_->cmdBuf_, bufIndirect->vkBuffer_, indirectBufferOffset, drawCount, stride);
+  }
 }
 
 void lvk::CommandBuffer::cmdDrawIndexedIndirectCount(BufferHandle indirectBuffer,
@@ -3442,13 +3480,31 @@ void lvk::CommandBuffer::cmdDrawIndexedIndirectCount(BufferHandle indirectBuffer
   LVK_ASSERT(bufIndirect);
   LVK_ASSERT(bufCount);
 
-  vkCmdDrawIndexedIndirectCount(wrapper_->cmdBuf_,
-                                bufIndirect->vkBuffer_,
-                                indirectBufferOffset,
-                                bufCount->vkBuffer_,
-                                countBufferOffset,
-                                maxDrawCount,
-                                stride ? stride : sizeof(VkDrawIndexedIndirectCommand));
+  stride = stride ? stride : sizeof(VkDrawIndexedIndirectCommand);
+
+  if (ctx_->has_KHR_device_address_commands_) {
+    LVK_ASSERT(bufIndirect->vkDeviceAddress_);
+    LVK_ASSERT(bufCount->vkDeviceAddress_);
+    const VkDrawIndirectCount2InfoKHR info = {
+        .sType = VK_STRUCTURE_TYPE_DRAW_INDIRECT_COUNT_2_INFO_KHR,
+        .addressRange = {.address = bufIndirect->vkDeviceAddress_ + indirectBufferOffset,
+                         .size = bufIndirect->bufferSize_ - indirectBufferOffset,
+                         .stride = stride},
+        .addressFlags = bufIndirect->getVkAddressCommandFlags(),
+        .countAddressRange = {.address = bufCount->vkDeviceAddress_ + countBufferOffset, .size = sizeof(uint32_t)},
+        .countAddressFlags = bufCount->getVkAddressCommandFlags(),
+        .maxDrawCount = maxDrawCount,
+    };
+    vkCmdDrawIndexedIndirectCount2KHR(wrapper_->cmdBuf_, &info);
+  } else {
+    vkCmdDrawIndexedIndirectCount(wrapper_->cmdBuf_,
+                                  bufIndirect->vkBuffer_,
+                                  indirectBufferOffset,
+                                  bufCount->vkBuffer_,
+                                  countBufferOffset,
+                                  maxDrawCount,
+                                  stride);
+  }
 }
 
 void lvk::CommandBuffer::cmdDrawMeshTasks(const Dimensions& threadgroupCount) {
