@@ -1263,6 +1263,8 @@ struct Dependencies {
   ldr::Span<TextureHandle> sampledImages = {};
   ldr::Span<TextureHandle> storageImages = {};
   ldr::Span<BufferHandle> buffers = {};
+  // stages that wrote `buffers` before this command; add more if `buffers` were written by other stages
+  PipelineStageFlags buffersSrcStages = PipelineStageBits_Compute | PipelineStageBits_Transfer;
   ldr::Span<TextureHandle> inputAttachments = {};
   ldr::Span<TensorHandle> tensors = {};
   // Cross-queue waits only: dependencies on work submitted to the *other* queue. Same-queue ordering is already
