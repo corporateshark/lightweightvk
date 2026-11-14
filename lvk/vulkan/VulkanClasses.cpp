@@ -8737,6 +8737,10 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
       .computeDerivativeGroupQuads = vkComputeShaderDerivativesFeatures_.computeDerivativeGroupQuads,
       .computeDerivativeGroupLinear = vkComputeShaderDerivativesFeatures_.computeDerivativeGroupLinear,
   };
+  VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperativeMatrixFeatures = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR,
+      .cooperativeMatrix = VK_TRUE,
+  };
   VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT rayTracingInvocationReorderFeatures = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT,
       .rayTracingInvocationReorder = VK_TRUE,
@@ -8886,6 +8890,7 @@ lvk::Result lvk::VulkanContext::initContext(const HWDeviceDesc& desc) {
     addOptionalExtension(
         VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME, has_KHR_compute_shader_derivatives_, &computeShaderDerivativesFeatures);
   }
+  addOptionalExtension(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME, has_KHR_cooperative_matrix_, &cooperativeMatrixFeatures);
   addOptionalExtension(VK_KHR_DEVICE_ADDRESS_COMMANDS_EXTENSION_NAME, has_KHR_device_address_commands_, &deviceAddressCommandsFeatures);
   if (has_KHR_acceleration_structure_ && has_KHR_device_address_commands_) {
     // opacity micromaps only be created with vkCreateAccelerationStructure2KHR()

@@ -1534,6 +1534,7 @@ class IContext {
   virtual bool supportsRayTracingPipeline() const = 0;
   virtual bool supportsOpacityMicromap() const = 0; // VK_KHR_opacity_micromap
   virtual bool supportsShaderInterlock() const = 0;
+  virtual bool supportsCooperativeMatrix() const = 0; // VK_KHR_cooperative_matrix
   virtual bool supportsTextureFormat(Format format, TextureUsageFlags usageFlags = TextureUsageBits_Sampled) const = 0;
   virtual bool supportsTensorsARM() const = 0;
   virtual bool supportsDataGraphARM() const = 0;

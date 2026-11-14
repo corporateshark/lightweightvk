@@ -765,6 +765,9 @@ class VulkanContext final : public IContext {
   bool supportsShaderInterlock() const override {
     return has_EXT_fragment_shader_interlock_;
   }
+  bool supportsCooperativeMatrix() const override {
+    return has_KHR_cooperative_matrix_;
+  }
   bool supportsRayQuery() const override {
     return has_KHR_acceleration_structure_ && has_KHR_ray_query_;
   }
@@ -1061,6 +1064,7 @@ class VulkanContext final : public IContext {
   bool has_EXT_fragment_shader_interlock_ = false;
   bool has_MVK_macos_surface_ = false;
   bool has_KHR_compute_shader_derivatives_ = false;
+  bool has_KHR_cooperative_matrix_ = false;
   bool has_KHR_shared_presentable_image_ = false;
   bool has_KHR_present_mode_fifo_latest_ready_ = false;
   bool has_KHR_maintenance6_ = false; // promoted to Vulkan 1.4

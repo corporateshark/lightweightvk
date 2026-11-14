@@ -29,6 +29,7 @@ Discord: https://discord.com/invite/bEyHyKCrvq
    * optional **VK_KHR_ray_query**
    * optional **VK_KHR_opacity_micromap** (requires **VK_KHR_device_address_commands**)
    * optional **VK_KHR_fragment_shading_rate**
+   * optional **VK_KHR_cooperative_matrix**
    * optional **VK_EXT_fragment_density_map**
    * optional **VK_EXT_fragment_density_map2**
    * optional **VK_EXT_dynamic_rendering_unused_attachments**
