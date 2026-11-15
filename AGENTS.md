@@ -160,6 +160,7 @@ To check CI status: `gh run list` or `gh run view <run-id>`.
   - `vulkan/`: Vulkan-specific backend implementation
   - `HelpersImGui.h/cpp`: ImGui integration helpers
   - `HelpersVgf.h/cpp`: `lvk::VgfModel` (built with `LVK_WITH_TENSORS`) parses VGF models from memory, e.g. `VulkanApp::loadFile()`, and creates their `VK_ARM_data_graph` pipelines
+- **Tools** (`tools/`): `make_nss_model.py` shape-specializes the shape-agnostic Arm NSS model for another render resolution (e.g. `--render 1920x1080`), rewriting its SPIR-V graph module and then the VGF around it with `vgf_respecialize` (built with `LVK_WITH_TENSORS` on desktop, excluded from `ALL`; the script builds it, standalone if there is no LVK build)
 
 ### Key Design Principles
 1. **Bindless-only**: Utilizes Vulkan 1.3+ dynamic rendering, descriptor indexing, and buffer device address
