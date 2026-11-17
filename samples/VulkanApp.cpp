@@ -462,7 +462,14 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
       width_ = 800;
       height_ = 600;
     }
+#if LVK_DEMO_WITH_WEBGPU
+    // without a window (--headless), the WebGPU backend renders into an offscreen swapchain texture
+    ctx_ = lvk::createWebGPUContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
+    // WebGPU destroys the swapchain texture on present: keep a copy of the presented frames to take the screenshot
+    lvk::setPresentedFramesRetainedWebGPU(ctx_.get(), cfg_.screenshotFrameNumber != 0);
+#else
     ctx_ = lvk::createVulkanContextWithSwapchain(window_, width_, height_, cfg_.contextConfig);
+#endif // LVK_DEMO_WITH_WEBGPU
   }
 #endif // ANDROID
 

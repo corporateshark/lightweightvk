@@ -30,17 +30,29 @@ if(ANDROID)
   endif()
 endif()
 
-add_library(LVKVulkanApp
-  VulkanApp.cpp
-  VulkanApp.h
-  "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp"
-)
-lvk_set_cxxstd(LVKVulkanApp 20)
-lvk_set_folder(LVKVulkanApp "LVK")
-target_link_libraries(LVKVulkanApp PUBLIC LVKLibrary)
-target_link_libraries(LVKVulkanApp PUBLIC LVKstb)
-target_link_libraries(LVKVulkanApp PUBLIC LUtils)
-target_link_libraries(LVKVulkanApp PUBLIC ktx)
+macro(ADD_VULKAN_APP_LIBRARY name)
+  add_library(${name}
+    VulkanApp.cpp
+    VulkanApp.h
+    "${LVK_ROOT_DIR}/third-party/deps/src/3D-Graphics-Rendering-Cookbook/shared/UtilsCubemap.cpp"
+  )
+  lvk_set_cxxstd(${name} 20)
+  lvk_set_folder(${name} "LVK")
+  target_link_libraries(${name} PUBLIC LVKLibrary)
+  target_link_libraries(${name} PUBLIC LVKstb)
+  target_link_libraries(${name} PUBLIC LUtils)
+  target_link_libraries(${name} PUBLIC ktx)
+endmacro()
+
+ADD_VULKAN_APP_LIBRARY(LVKVulkanApp)
+
+# the same VulkanApp running on the WebGPU backend (lvk/webgpu)
+if(LVK_WITH_WEBGPU)
+  ADD_VULKAN_APP_LIBRARY(LVKVulkanAppWebGPU)
+  target_link_libraries(LVKVulkanAppWebGPU PUBLIC LVKWebGPU)
+  target_compile_definitions(LVKVulkanAppWebGPU PUBLIC "LVK_DEMO_WITH_WEBGPU=1")
+endif()
+
 if(ANDROID)
   target_sources(LVKVulkanApp PRIVATE "${NDK_PATH}/sources/android/native_app_glue/android_native_app_glue.c")
   target_include_directories(LVKVulkanApp PUBLIC "${NDK_PATH}/sources/android/native_app_glue")
@@ -59,9 +71,24 @@ macro(ADD_DEMO_TARGET app target_name defs)
   target_link_libraries(${target_name} PRIVATE LVKLibrary)
   target_link_libraries(${target_name} PRIVATE meshoptimizer)
   target_link_libraries(${target_name} PRIVATE fast_obj_lib)
-  target_link_libraries(${target_name} PRIVATE LVKVulkanApp)
+  if("${defs}" MATCHES "LVK_DEMO_WITH_WEBGPU")
+    target_link_libraries(${target_name} PRIVATE LVKVulkanAppWebGPU)
+    lvk_copy_webgpu_runtime_dlls(${target_name})
+  else()
+    target_link_libraries(${target_name} PRIVATE LVKVulkanApp)
+  endif()
   if(NOT "${defs}" STREQUAL "")
     target_compile_definitions(${target_name} PRIVATE ${defs})
+  endif()
+endmacro()
+
+# `${app}_WebGPU` (and `${app}_WebGPU_Slang`) on the WebGPU backend, after ADD_DEMO()
+macro(ADD_WEBGPU_DEMO app)
+  if(LVK_WITH_WEBGPU)
+    ADD_DEMO_TARGET(${app} ${app}_WebGPU "LVK_DEMO_WITH_WEBGPU=1")
+    if(LVK_WITH_SLANG)
+      ADD_DEMO_TARGET(${app} ${app}_WebGPU_Slang "LVK_DEMO_WITH_SLANG=1;LVK_DEMO_WITH_WEBGPU=1")
+    endif()
   endif()
 endmacro()
 
@@ -171,7 +198,7 @@ macro(ADD_DEMO_SOURCES app srcs)
   if(ANDROID)
     target_sources(lvk_android_native_${app} PRIVATE ${srcs})
   else()
-    foreach(suffix "" "_Slang" "_OpenXR" "_Slang_OpenXR")
+    foreach(suffix "" "_Slang" "_OpenXR" "_Slang_OpenXR" "_WebGPU" "_WebGPU_Slang")
       if(TARGET ${app}${suffix})
         target_sources(${app}${suffix} PRIVATE ${srcs})
       endif()
@@ -211,6 +238,13 @@ endif()
 
 ADD_DEMO("DEMO_001_SolarSystem" LVK_WITH_SLANG)
 ADD_DEMO("Tiny_MeshLarge" LVK_WITH_SLANG)
+
+# the samples which also run on the WebGPU backend
+ADD_WEBGPU_DEMO("001_HelloTriangle")
+ADD_WEBGPU_DEMO("002_RenderToCubeMap")
+ADD_WEBGPU_DEMO("DEMO_001_SolarSystem")
+ADD_WEBGPU_DEMO("Tiny_MeshLarge")
+
 ADD_DEMO_SOURCES("Tiny_MeshLarge" "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")
 
 if(LVK_WITH_SAMPLES_ANDROID AND LVK_ANDROID_OBB_CONTENT AND NOT ANDROID)
