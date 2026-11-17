@@ -35,6 +35,10 @@ lvk_set_folder(LVKLibrary "LVK")
 
 add_subdirectory(vulkan)
 
+if(LVK_WITH_WEBGPU)
+  add_subdirectory(webgpu)
+endif()
+
 target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
 if(LVK_IMGUI_EXTERNAL)
   target_compile_definitions(LVKLibrary PRIVATE LVK_IMGUI_EXTERNAL)

@@ -1651,6 +1651,23 @@ std::unique_ptr<lvk::IContext> createVulkanContextWithSwapchain(LVKwindow* windo
                                                                 int selectedDevice = -1);
 #endif // LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)
 
+#if LVK_WITH_WEBGPU
+#if LVK_WITH_GLFW || LVK_WITH_SDL3
+// `window` can be nullptr: a non-zero size then renders into an offscreen texture, a zero size creates no swapchain.
+// Only `presentModes`, `swapchainRequestedColorSpace` (sRGB) and `terminateOnValidationError` of `cfg` are used.
+std::unique_ptr<lvk::IContext> createWebGPUContextWithSwapchain(LVKwindow* window,
+                                                                uint32_t width,
+                                                                uint32_t height,
+                                                                const lvk::ContextConfig& cfg);
+#endif // LVK_WITH_GLFW || LVK_WITH_SDL3
+
+// keeps a copy of each presented frame in the swapchain texture until the next acquire, for download() (screenshots)
+void setPresentedFramesRetainedWebGPU(IContext* ctx, bool retain);
+
+// returns the number of present modes of the surface
+uint32_t getPresentModesWebGPU(const IContext* ctx, PresentMode* outModes, uint32_t maxModes);
+#endif // LVK_WITH_WEBGPU
+
 #if LVK_WITH_GLFW || LVK_WITH_SDL3
 /*
  * width/height  > 0: window size in pixels
