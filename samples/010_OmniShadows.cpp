@@ -34,6 +34,7 @@ struct PerLight {
   float shadowNear;
   float shadowFar;
   uint shadowMap;
+  uint shadowSampler;
 };
 
 struct VertexBuffer {
@@ -107,6 +108,7 @@ struct PerLight {
   float shadowNear;
   float shadowFar;
   uint shadowMap;
+  uint shadowSampler;
 };
 
 struct VertexBuffer {
@@ -155,6 +157,7 @@ float shadowFactorPCF(float3 fragToLight) {
   const float k = length(fragToLight) * 0.0015;
   const float shadowFar = pc.perLight->shadowFar;
   const uint shadowMap = pc.perLight->shadowMap;
+  const uint shadowSampler = pc.perLight->shadowSampler;
 
   // Y axis is inverted between the shadow pass and main pass coordinate systems
   const float3 base = float3(fragToLight.x, -fragToLight.y, fragToLight.z);
@@ -166,7 +169,7 @@ float shadowFactorPCF(float3 fragToLight) {
 
   float depths[9];
   [unroll] for (int i = 0; i < 9; i++) {
-    depths[i] = textureBindlessCube(shadowMap, 0, base + k * offsets[i]).r;
+    depths[i] = textureBindlessCube(shadowMap, shadowSampler, base + k * offsets[i]).r;
   }
 
   const float curD = length(fragToLight) - 0.1;
@@ -242,6 +245,7 @@ layout(std430, buffer_reference) readonly buffer PerLight {
   float shadowNear;
   float shadowFar;
   uint shadowMap;
+  uint shadowSampler;
 };
 
 layout(push_constant) uniform constants {
@@ -291,6 +295,7 @@ layout(std430, buffer_reference) readonly buffer PerLight {
   float shadowNear;
   float shadowFar;
   uint shadowMap;
+  uint shadowSampler;
 };
 
 layout(push_constant) uniform constants {
@@ -329,6 +334,7 @@ layout(std430, buffer_reference) readonly buffer PerLight {
   float shadowNear;
   float shadowFar;
   uint shadowMap;
+  uint shadowSampler;
 };
 
 layout(push_constant) uniform constants {
@@ -344,6 +350,7 @@ float shadowFactorPCF(vec3 fragToLight) {
   const float k = length(fragToLight) * 0.0015;
   const float shadowFar = pc.perLight.shadowFar;
   const uint shadowMap = pc.perLight.shadowMap;
+  const uint shadowSampler = pc.perLight.shadowSampler;
 
   // Y axis is inverted between the shadow pass and main pass coordinate systems
   const vec3 base = vec3(fragToLight.x, -fragToLight.y, fragToLight.z);
@@ -355,7 +362,7 @@ float shadowFactorPCF(vec3 fragToLight) {
 
   float depths[9];
   for (int i = 0; i < 9; i++) {
-    depths[i] = textureBindlessCube(shadowMap, 0, base + k * offsets[i]).r;
+    depths[i] = textureBindlessCube(shadowMap, shadowSampler, base + k * offsets[i]).r;
   }
 
   const float curD = length(fragToLight) - 0.1;
@@ -397,6 +404,7 @@ struct PerLight {
   float shadowNear;
   float shadowFar;
   uint32_t shadowMap;
+  uint32_t shadowSampler; // 0 is the default sampler
 };
 
 VULKAN_APP_MAIN {
@@ -505,6 +513,17 @@ VULKAN_APP_MAIN {
       .debugName = "Texture: shadow map",
   });
 
+  // empty: the default sampler (index 0)
+  lvk::Holder<lvk::SamplerHandle> shadowSampler;
+#if LVK_DEMO_WITH_WEBGPU
+  // WebGPU reads unfilterable textures, such as depth, as 0 through a filtering sampler like the default one
+  shadowSampler = ctx->createSampler({
+      .minFilter = lvk::SamplerFilter_Nearest,
+      .magFilter = lvk::SamplerFilter_Nearest,
+      .debugName = "Sampler: shadow map",
+  });
+#endif // LVK_DEMO_WITH_WEBGPU
+
   lvk::Holder<lvk::TextureHandle> layers[6];
 
   for (uint32_t l = 0; l != LVK_ARRAY_NUM_ELEMENTS(layers); l++) {
@@ -537,6 +556,7 @@ VULKAN_APP_MAIN {
         .shadowNear = 0.1f,
         .shadowFar = 100.0f,
         .shadowMap = shadowMap.index(),
+        .shadowSampler = shadowSampler.index(),
     };
     const PerFrame perFrame = {
         .proj = glm::perspective(fov, views[0].aspectRatio, 0.1f, 100.0f),
@@ -559,14 +579,14 @@ VULKAN_APP_MAIN {
 
     lvk::ICommandBuffer& buffer = ctx->acquireCommandBuffer();
 
-    auto drawMesh = [&](lvk::BufferHandle bufPerFrame) {
+    auto drawMesh = [&](lvk::BufferHandle bufPerFrame, size_t perFrameOffset) {
       const struct {
         uint64_t perFrame;
         uint64_t perObject;
         uint64_t vb;
         uint64_t perLight;
       } bindings = {
-          .perFrame = ctx->gpuAddress(bufPerFrame),
+          .perFrame = ctx->gpuAddress(bufPerFrame, perFrameOffset),
           .perObject = ctx->gpuAddress(bufPerObject),
           .vb = ctx->gpuAddress(vb0_),
           .perLight = ctx->gpuAddress(bufPerLight),
@@ -583,25 +603,32 @@ VULKAN_APP_MAIN {
     buffer.cmdUpdateBuffer(bufPerObject, 0, sizeof(mat4) * modelMatrices.size(), modelMatrices.data());
 
     // 1. Render shadow map
-    buffer.cmdBeginRendering(
-        lvk::RenderPass{
-            .depth = {.loadOp = lvk::LoadOp_Clear, .clearDepth = 1.0f},
-            .layerCount = 6,
-            .viewMask = 0b111111,
-        },
-        {
-            .depthStencil = {shadowMap},
-        });
-    {
+#if LVK_DEMO_WITH_WEBGPU
+    // WebGPU has no multiview: one pass per cube face, where gl_ViewIndex reads as 0. Offsetting the address of
+    // PerFrameShadow by `face` matrices makes proj[0] and view[0] the matrices of that face.
+    const bool isMultiview = false;
+#else
+    const bool isMultiview = true;
+#endif // LVK_DEMO_WITH_WEBGPU
+    for (uint32_t face = 0; face != (isMultiview ? 1u : 6u); face++) {
+      buffer.cmdBeginRendering(
+          lvk::RenderPass{
+              .depth = {.loadOp = lvk::LoadOp_Clear, .layer = uint8_t(face), .clearDepth = 1.0f},
+              .layerCount = isMultiview ? 6u : 1u,
+              .viewMask = isMultiview ? 0b111111u : 0u,
+          },
+          {
+              .depthStencil = {shadowMap},
+          });
       buffer.cmdBindRenderPipeline(renderPipelineState_Shadow_);
       buffer.cmdBindViewport({0.0f, 0.0f, (float)shadowMapSize, (float)shadowMapSize, 0.0f, +1.0f});
       buffer.cmdBindScissorRect({0, 0, shadowMapSize, shadowMapSize});
       buffer.cmdPushDebugGroupLabel("Render Shadow", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
-      drawMesh(bufPerFrameShadow);
+      drawMesh(bufPerFrameShadow, face * sizeof(mat4));
       buffer.cmdPopDebugGroupLabel();
+      buffer.cmdEndRendering();
     }
-    buffer.cmdEndRendering();
     // 2. Render scene
     const lvk::Framebuffer framebuffer = {
         .color = {{.texture = ctx->getCurrentSwapchainTexture()}},
@@ -622,7 +649,7 @@ VULKAN_APP_MAIN {
       buffer.cmdBindScissorRect(views[0].scissorRect);
       buffer.cmdPushDebugGroupLabel("Render Mesh", 0xff0000ff);
       buffer.cmdBindDepthState({.compareOp = lvk::CompareOp_Less, .isDepthWriteEnabled = true});
-      drawMesh(bufPerFrame);
+      drawMesh(bufPerFrame, 0);
       buffer.cmdPopDebugGroupLabel();
     }
     app.imgui_->beginFrame(framebuffer);
