@@ -9,7 +9,9 @@
 
 #include "VulkanApp.h"
 
+#if !LVK_DEMO_WITH_WEBGPU
 #include "lvk/vulkan/VulkanClasses.h"
+#endif // !LVK_DEMO_WITH_WEBGPU
 
 #include <filesystem>
 
@@ -357,10 +359,15 @@ VULKAN_APP_MAIN {
 
   // get available present modes
   std::vector<lvk::PresentMode> availableModes;
+#if LVK_DEMO_WITH_WEBGPU
+  lvk::PresentMode presentModes[8] = {};
+  availableModes.assign(presentModes, presentModes + lvk::getPresentModesWebGPU(ctx, presentModes, LVK_ARRAY_NUM_ELEMENTS(presentModes)));
+#else
   lvk::VulkanContext& vulkanContext = static_cast<lvk::VulkanContext&>(*ctx);
   for (uint32_t i = 0; i != vulkanContext.swapchain_->numRegisteredPresentModes_; i++) {
     availableModes.push_back(lvk::vkPresentModeToPresentMode(vulkanContext.swapchain_->registeredPresentModes_[i]));
   };
+#endif // LVK_DEMO_WITH_WEBGPU
   int currentPresentModeIdx = 0;
   if (!availableModes.empty()) {
     (void)ctx->setCurrentPresentMode(availableModes[0]);
