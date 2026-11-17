@@ -9,7 +9,9 @@
 
 #include "VulkanApp.h"
 
+#if !LVK_DEMO_WITH_WEBGPU
 #include <lvk/vulkan/VulkanClasses.h>
+#endif // !LVK_DEMO_WITH_WEBGPU
 
 // Bilingual: GLSL (default) and Slang. Define the macro LVK_DEMO_WITH_SLANG to switch to Slang.
 
@@ -172,12 +174,14 @@ VULKAN_APP_MAIN {
   lvk::IContext* ctx = app.ctx_.get();
 
   {
+#if !LVK_DEMO_WITH_WEBGPU // WebGPU guarantees 8 color attachments
     const VkPhysicalDeviceProperties& props = static_cast<lvk::VulkanContext*>(ctx)->getVkPhysicalDeviceProperties();
 
     if (props.limits.maxColorAttachments < 6) {
       LVK_ASSERT_MSG(false, "This demo needs at least 6 color attachments to be supported");
       std::terminate();
     }
+#endif // !LVK_DEMO_WITH_WEBGPU
 
     const uint16_t indexData[36] = {0, 1, 2, 2, 3, 0, 1, 5, 6, 6, 2, 1, 7, 6, 5, 5, 4, 7,
                                     4, 0, 3, 3, 7, 4, 4, 5, 1, 1, 0, 4, 3, 2, 6, 6, 7, 3};

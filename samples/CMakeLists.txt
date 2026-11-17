@@ -242,6 +242,7 @@ ADD_DEMO("Tiny_MeshLarge" LVK_WITH_SLANG)
 # the samples which also run on the WebGPU backend
 ADD_WEBGPU_DEMO("001_HelloTriangle")
 ADD_WEBGPU_DEMO("002_RenderToCubeMap")
+ADD_WEBGPU_DEMO("003_RenderToCubeMapSinglePass")
 ADD_WEBGPU_DEMO("DEMO_001_SolarSystem")
 ADD_WEBGPU_DEMO("Tiny_MeshLarge")
 
