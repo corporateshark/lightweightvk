@@ -275,6 +275,35 @@
     }
 },
 {
+    "name": "spirv-cross-wgsl",
+    "predicate": "os.environ.get('LVK_WITH_WEBGPU') == 'ON'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/corporateshark/spirv-cross-wgsl",
+        "revision": "a6dceed3280f978b6ddc29d5e490d29cc26e12c9",
+        "recursive": false
+    }
+},
+{
+    "name": "dawn",
+    "predicate": "os.environ.get('LVK_WITH_WEBGPU') == 'ON'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/google/dawn.git",
+        "revision": "v20261113.214538",
+        "submodules": [
+            "third_party/abseil-cpp",
+            "third_party/jinja2",
+            "third_party/markupsafe",
+            "third_party/spirv-headers/src",
+            "third_party/spirv-tools/src",
+            "third_party/vulkan-headers/src",
+            "third_party/vulkan-utility-libraries/src",
+            "third_party/webgpu-headers/src"
+        ]
+    }
+},
+{
     "name": "screenshot_tests",
     "predicate": "os.environ.get('LVK_DEPLOY_SCREENSHOT_TESTS') != 'OFF'",
     "source": {
