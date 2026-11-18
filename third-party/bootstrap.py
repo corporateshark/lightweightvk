@@ -149,10 +149,14 @@ def escapifyPath(path):
         return f'"{path}"'
     return path.replace("\\ ", " ")
 
-def cloneRepository(type, url, target_name, revision, try_only_local_operations = False, recursive = True):
+def cloneRepository(type, url, target_name, revision, try_only_local_operations = False, recursive = True, submodules = None):
     target_dir = escapifyPath(os.path.join(SRC_DIR, target_name))
     target_dir_exists = os.path.exists(target_dir)
     log(f"Cloning {url} to {target_dir}")
+
+    if submodules:
+        # an explicit submodule list replaces recursive cloning; otherwise every submodule would be fetched anyway
+        recursive = False
 
     if type == "hg":
         repo_exists = os.path.exists(os.path.join(target_dir, ".hg"))
@@ -197,6 +201,10 @@ def cloneRepository(type, url, target_name, revision, try_only_local_operations 
             revision = "HEAD"
         dieIfNonZero(executeCommand(f"{TOOL_COMMAND_GIT} -C {target_dir} reset --hard {revision}"))
         dieIfNonZero(executeCommand(f"{TOOL_COMMAND_GIT} -C {target_dir} clean -fxd"))
+        if submodules and not try_only_local_operations:
+            # only the listed submodules, shallow, at the commits the repository pins
+            submodule_paths = " ".join(f'"{m}"' for m in submodules)
+            dieIfNonZero(executeCommand(f"{TOOL_COMMAND_GIT} -C {target_dir} submodule update --init --depth 1 -- {submodule_paths}"))
 
     elif type == "svn":
         if not try_only_local_operations: # we can't do much without a server connection when dealing with SVN
@@ -856,7 +864,7 @@ def main(argv):
                     try:
                         if force_fallback:
                             raise RuntimeError
-                        cloneRepository(src_type, src_url, name, revision, False, recursive)
+                        cloneRepository(src_type, src_url, name, revision, False, recursive, source.get('submodules', None))
 
                         if create_repo_snapshots:
                             log(f"Creating snapshot of library repository '{name}'")
