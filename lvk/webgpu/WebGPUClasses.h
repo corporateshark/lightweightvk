@@ -13,8 +13,23 @@
 #include <string>
 #include <vector>
 
-#include <dawn/webgpu.h>
 #include <ldrutils/lutils/Pool.h>
+#include <webgpu/webgpu.h>
+
+#if defined(__EMSCRIPTEN__)
+// emdawnwebgpu has no resource table: the parts of Dawn's API LVK uses, implemented in WebGPUEmscripten.js
+const WGPUFeatureName WGPUFeatureName_ChromiumExperimentalSamplingResourceTable = WGPUFeatureName(0x0005003A);
+typedef struct WGPUResourceTableImpl* WGPUResourceTable;
+typedef struct WGPUResourceTableDescriptor {
+  WGPUChainedStruct* nextInChain;
+  WGPUStringView label;
+  uint32_t size;
+} WGPUResourceTableDescriptor;
+typedef struct WGPUBindingResource {
+  WGPUSampler sampler;
+  WGPUTextureView textureView;
+} WGPUBindingResource;
+#endif // __EMSCRIPTEN__
 
 #include <lvk/LVK.h>
 #include <lvk/webgpu/WebGPUUtils.h>

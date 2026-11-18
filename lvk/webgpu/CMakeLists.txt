@@ -46,78 +46,111 @@ foreach(target spirv-cross-core spirv-cross-glsl spirv-cross-wgsl)
   lvk_set_folder(${target} "third-party/spirv-cross-wgsl")
 endforeach()
 
-# Dawn is a separate Release build of the shared library `webgpu_dawn`: its SPIRV-Tools, Vulkan headers and Abseil would
-# clash with LVK's
-set(LVK_DAWN_DIR "${LVK_ROOT_DIR}/third-party/deps/src/dawn")
-if(NOT EXISTS "${LVK_DAWN_DIR}/third_party/abseil-cpp/CMakeLists.txt")
-  message(FATAL_ERROR "${LVK_DAWN_DIR} is missing. Run `deploy_deps.py` with LVK_WITH_WEBGPU=ON first.")
-endif()
+if(EMSCRIPTEN)
+  # emdawnwebgpu: webgpu.h on top of the browser's WebGPU
+  set(LVK_EMDAWNWEBGPU_PORT "${LVK_ROOT_DIR}/third-party/deps/src/emdawnwebgpu/emdawnwebgpu.port.py")
+  if(NOT EXISTS "${LVK_EMDAWNWEBGPU_PORT}")
+    message(FATAL_ERROR "${LVK_EMDAWNWEBGPU_PORT} is missing. Run `deploy_deps.py` with LVK_WITH_WEBGPU=WEB first.")
+  endif()
+  add_library(LVKDawn INTERFACE)
+  target_compile_options(LVKDawn INTERFACE "--use-port=${LVK_EMDAWNWEBGPU_PORT}:cpp_bindings=false")
+  # JSPI: blocking waits suspend the WebAssembly code
+  target_link_options(LVKDawn INTERFACE "--use-port=${LVK_EMDAWNWEBGPU_PORT}:cpp_bindings=false" "-sJSPI")
+  # the resource table, which emdawnwebgpu does not have
+  set(LVK_WEBGPU_EMSCRIPTEN_JS "${CMAKE_CURRENT_SOURCE_DIR}/WebGPUEmscripten.js")
+  target_link_options(LVKDawn INTERFACE "--js-library=${LVK_WEBGPU_EMSCRIPTEN_JS}")
+  set_property(TARGET LVKDawn APPEND PROPERTY INTERFACE_LINK_DEPENDS "${LVK_WEBGPU_EMSCRIPTEN_JS}")
+  target_link_libraries(LVKWebGPU PUBLIC LVKDawn)
 
-include(ExternalProject)
-set(LVK_DAWN_PREFIX "${CMAKE_BINARY_DIR}/dawn")
-# cmake-format: off
-set(LVK_DAWN_CMAKE_ARGS
-    "-DCMAKE_BUILD_TYPE=Release"
-    "-DCMAKE_INSTALL_PREFIX=${LVK_DAWN_PREFIX}"
-    "-DCMAKE_INSTALL_LIBDIR=lib"
-    "-DDAWN_BUILD_MONOLITHIC_LIBRARY=SHARED"
-    "-DDAWN_ENABLE_INSTALL=ON"
-    "-DDAWN_FETCH_DEPENDENCIES=OFF"
-    "-DDAWN_BUILD_SAMPLES=OFF"
-    "-DDAWN_BUILD_TESTS=OFF"
-    "-DDAWN_BUILD_PROTOBUF=OFF"
-    "-DDAWN_USE_GLFW=OFF"
-    "-DDAWN_ENABLE_D3D11=OFF"
-    "-DDAWN_ENABLE_DESKTOP_GL=OFF"
-    "-DDAWN_ENABLE_OPENGLES=OFF"
-    "-DTINT_BUILD_CMD_TOOLS=OFF"
-    "-DTINT_BUILD_TESTS=OFF"
-    "-DTINT_BUILD_IR_BINARY=OFF"
-    "-DTINT_BUILD_GLSL_WRITER=OFF"
-    "-DTINT_BUILD_GLSL_VALIDATOR=OFF")
-# cmake-format: on
-if(Python3_EXECUTABLE)
-  list(APPEND LVK_DAWN_CMAKE_ARGS "-DPython3_EXECUTABLE=${Python3_EXECUTABLE}")
-endif()
-
-if(WIN32)
-  # otherwise Dawn looks for vulkan-1.dll next to webgpu_dawn.dll only (and fails with ERROR_INVALID_PARAMETER)
-  list(APPEND LVK_DAWN_CMAKE_ARGS "-DDAWN_FORCE_SYSTEM_COMPONENT_LOAD=ON")
-  set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/bin/webgpu_dawn.dll")
-  set(LVK_DAWN_IMPLIB "${LVK_DAWN_PREFIX}/lib/webgpu_dawn.lib")
-elseif(APPLE)
-  set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/lib/libwebgpu_dawn.dylib")
+  # the shader compilers, which lvk/vulkan adds on the other platforms
+  # cmake-format: off
+  set(SPIRV_SKIP_TESTS        ON  CACHE BOOL "")
+  set(SPIRV_SKIP_EXECUTABLES  ON  CACHE BOOL "")
+  set(SPIRV_WERROR            OFF CACHE BOOL "")
+  set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
+  set(ENABLE_HLSL             OFF CACHE BOOL "")
+  set(ENABLE_CTEST            OFF CACHE BOOL "")
+  set(ENABLE_OPT              ON  CACHE BOOL "")
+  set(ENABLE_SPVREMAPPER      OFF CACHE BOOL "")
+  set(SKIP_GLSLANG_INSTALL    ON  CACHE BOOL "")
+  # cmake-format: on
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Headers "SPIRV-Headers")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/SPIRV-Tools "SPIRV-Tools")
+  add_subdirectory(${LVK_ROOT_DIR}/third-party/deps/src/glslang "glslang")
 else()
-  set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/lib/libwebgpu_dawn.so")
-endif()
+  # Dawn is a separate Release build of the shared library `webgpu_dawn`: its SPIRV-Tools, Vulkan headers and Abseil would
+  # clash with LVK's
+  set(LVK_DAWN_DIR "${LVK_ROOT_DIR}/third-party/deps/src/dawn")
+  if(NOT EXISTS "${LVK_DAWN_DIR}/third_party/abseil-cpp/CMakeLists.txt")
+    message(FATAL_ERROR "${LVK_DAWN_DIR} is missing. Run `deploy_deps.py` with LVK_WITH_WEBGPU=ON first.")
+  endif()
 
-# a bare --parallel means unlimited jobs with Makefiles
-cmake_host_system_information(RESULT LVK_NUM_CORES QUERY NUMBER_OF_LOGICAL_CORES)
-ExternalProject_Add(Dawn
-  SOURCE_DIR "${LVK_DAWN_DIR}"
-  BINARY_DIR "${LVK_DAWN_PREFIX}/build"
-  CMAKE_ARGS ${LVK_DAWN_CMAKE_ARGS}
-  BUILD_ALWAYS ON
-  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --parallel ${LVK_NUM_CORES}
-  INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config Release
-  BUILD_BYPRODUCTS "${LVK_DAWN_LIBRARY}" ${LVK_DAWN_IMPLIB}
-  # MSBuild takes Dawn's status line "-- Dawn enable error injection: OFF" for an error and fails the build
-  LOG_CONFIGURE ON
-  LOG_OUTPUT_ON_FAILURE ON
-  USES_TERMINAL_BUILD ON)
-lvk_set_folder(Dawn "third-party/dawn")
+  include(ExternalProject)
+  set(LVK_DAWN_PREFIX "${CMAKE_BINARY_DIR}/dawn")
+  # cmake-format: off
+  set(LVK_DAWN_CMAKE_ARGS
+      "-DCMAKE_BUILD_TYPE=Release"
+      "-DCMAKE_INSTALL_PREFIX=${LVK_DAWN_PREFIX}"
+      "-DCMAKE_INSTALL_LIBDIR=lib"
+      "-DDAWN_BUILD_MONOLITHIC_LIBRARY=SHARED"
+      "-DDAWN_ENABLE_INSTALL=ON"
+      "-DDAWN_FETCH_DEPENDENCIES=OFF"
+      "-DDAWN_BUILD_SAMPLES=OFF"
+      "-DDAWN_BUILD_TESTS=OFF"
+      "-DDAWN_BUILD_PROTOBUF=OFF"
+      "-DDAWN_USE_GLFW=OFF"
+      "-DDAWN_ENABLE_D3D11=OFF"
+      "-DDAWN_ENABLE_DESKTOP_GL=OFF"
+      "-DDAWN_ENABLE_OPENGLES=OFF"
+      "-DTINT_BUILD_CMD_TOOLS=OFF"
+      "-DTINT_BUILD_TESTS=OFF"
+      "-DTINT_BUILD_IR_BINARY=OFF"
+      "-DTINT_BUILD_GLSL_WRITER=OFF"
+      "-DTINT_BUILD_GLSL_VALIDATOR=OFF")
+  # cmake-format: on
+  if(Python3_EXECUTABLE)
+    list(APPEND LVK_DAWN_CMAKE_ARGS "-DPython3_EXECUTABLE=${Python3_EXECUTABLE}")
+  endif()
 
-# the include directory of an imported target must exist at configure time
-file(MAKE_DIRECTORY "${LVK_DAWN_PREFIX}/include")
-add_library(LVKDawn SHARED IMPORTED GLOBAL)
-set_target_properties(LVKDawn PROPERTIES IMPORTED_LOCATION "${LVK_DAWN_LIBRARY}"
-                                         INTERFACE_INCLUDE_DIRECTORIES "${LVK_DAWN_PREFIX}/include"
-                                         INTERFACE_COMPILE_DEFINITIONS "WGPU_SHARED_LIBRARY")
-if(WIN32)
-  set_target_properties(LVKDawn PROPERTIES IMPORTED_IMPLIB "${LVK_DAWN_IMPLIB}")
+  if(WIN32)
+    # otherwise Dawn looks for vulkan-1.dll next to webgpu_dawn.dll only (and fails with ERROR_INVALID_PARAMETER)
+    list(APPEND LVK_DAWN_CMAKE_ARGS "-DDAWN_FORCE_SYSTEM_COMPONENT_LOAD=ON")
+    set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/bin/webgpu_dawn.dll")
+    set(LVK_DAWN_IMPLIB "${LVK_DAWN_PREFIX}/lib/webgpu_dawn.lib")
+  elseif(APPLE)
+    set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/lib/libwebgpu_dawn.dylib")
+  else()
+    set(LVK_DAWN_LIBRARY "${LVK_DAWN_PREFIX}/lib/libwebgpu_dawn.so")
+  endif()
+
+  # a bare --parallel means unlimited jobs with Makefiles
+  cmake_host_system_information(RESULT LVK_NUM_CORES QUERY NUMBER_OF_LOGICAL_CORES)
+  ExternalProject_Add(Dawn
+    SOURCE_DIR "${LVK_DAWN_DIR}"
+    BINARY_DIR "${LVK_DAWN_PREFIX}/build"
+    CMAKE_ARGS ${LVK_DAWN_CMAKE_ARGS}
+    BUILD_ALWAYS ON
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --parallel ${LVK_NUM_CORES}
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config Release
+    BUILD_BYPRODUCTS "${LVK_DAWN_LIBRARY}" ${LVK_DAWN_IMPLIB}
+    # MSBuild takes Dawn's status line "-- Dawn enable error injection: OFF" for an error and fails the build
+    LOG_CONFIGURE ON
+    LOG_OUTPUT_ON_FAILURE ON
+    USES_TERMINAL_BUILD ON)
+  lvk_set_folder(Dawn "third-party/dawn")
+
+  # the include directory of an imported target must exist at configure time
+  file(MAKE_DIRECTORY "${LVK_DAWN_PREFIX}/include")
+  add_library(LVKDawn SHARED IMPORTED GLOBAL)
+  set_target_properties(LVKDawn PROPERTIES IMPORTED_LOCATION "${LVK_DAWN_LIBRARY}"
+                                           INTERFACE_INCLUDE_DIRECTORIES "${LVK_DAWN_PREFIX}/include"
+                                           INTERFACE_COMPILE_DEFINITIONS "WGPU_SHARED_LIBRARY")
+  if(WIN32)
+    set_target_properties(LVKDawn PROPERTIES IMPORTED_IMPLIB "${LVK_DAWN_IMPLIB}")
+  endif()
+  add_dependencies(LVKWebGPU Dawn)
+  target_link_libraries(LVKWebGPU PUBLIC LVKDawn)
 endif()
-add_dependencies(LVKWebGPU Dawn)
-target_link_libraries(LVKWebGPU PUBLIC LVKDawn)
 
 target_include_directories(LVKWebGPU PRIVATE ${LVK_SPIRV_CROSS_WGSL_DIR})
 target_compile_definitions(LVKWebGPU PUBLIC "LVK_WITH_WEBGPU=1")

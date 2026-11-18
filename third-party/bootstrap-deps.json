@@ -276,11 +276,11 @@
 },
 {
     "name": "spirv-cross-wgsl",
-    "predicate": "os.environ.get('LVK_WITH_WEBGPU') == 'ON'",
+    "predicate": "os.environ.get('LVK_WITH_WEBGPU') in ('ON', 'WEB')",
     "source": {
         "type": "git",
         "url": "https://github.com/corporateshark/spirv-cross-wgsl",
-        "revision": "a6dceed3280f978b6ddc29d5e490d29cc26e12c9",
+        "revision": "281284395175faab0cfbe51d00d7eddd9f4fcf3e",
         "recursive": false
     }
 },
@@ -301,6 +301,14 @@
             "third_party/vulkan-utility-libraries/src",
             "third_party/webgpu-headers/src"
         ]
+    }
+},
+{
+    "name": "emdawnwebgpu",
+    "predicate": "os.environ.get('LVK_WITH_WEBGPU') == 'WEB'",
+    "source": {
+        "type": "archive",
+        "url": "https://github.com/google/dawn/releases/download/v20261113.214538/emdawnwebgpu_pkg-v20261113.214538.zip"
     }
 },
 {

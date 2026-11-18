@@ -129,7 +129,7 @@ std::string normalizeTextureName(const char* n) {
     return std::string();
   LVK_ASSERT(strlen(n) < MAX_MATERIAL_NAME);
   std::string name(n);
-#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
+#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID) || defined(__EMSCRIPTEN__)
   std::replace(name.begin(), name.end(), '\\', '/');
 #endif
   return name;
@@ -319,7 +319,7 @@ bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
     return false;
   if (!readBytes(indexData_.data(), sizeof(uint32_t) * numIndices))
     return false;
-#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID)
+#if defined(__linux__) || defined(__APPLE__) || defined(ANDROID) || defined(__EMSCRIPTEN__)
   for (CachedMaterial& mtl : cachedMaterials_) {
     std::replace(std::begin(mtl.ambient_texname), std::end(mtl.ambient_texname), '\\', '/');
     std::replace(std::begin(mtl.diffuse_texname), std::end(mtl.diffuse_texname), '\\', '/');
@@ -327,7 +327,7 @@ bool loadFromCache(VulkanApp& app, const char* cacheFileName) {
     std::replace(std::begin(mtl.specular_texname), std::end(mtl.specular_texname), '\\', '/');
     std::replace(std::begin(mtl.normal_texname), std::end(mtl.normal_texname), '\\', '/');
   }
-#endif // __linux__ || __APPLE__ || ANDROID
+#endif // __linux__ || __APPLE__ || ANDROID || __EMSCRIPTEN__
   return true;
 }
 

@@ -43,10 +43,49 @@
 #endif // _WIN32
 #endif // LVK_WITH_GLFW
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif // __EMSCRIPTEN__
+
 #if defined(__APPLE__) && (LVK_WITH_GLFW || LVK_WITH_SDL3)
 // lvk/LVK.mm
 void* createCocoaWindowView(void* window, void** outLayer);
 #endif
+
+#if defined(__EMSCRIPTEN__)
+// Dawn's resource table API, implemented in WebGPUEmscripten.js
+extern "C" {
+WGPUResourceTable lvkWebGPUCreateResourceTable(WGPUDevice device, uint32_t size);
+WGPUStatus lvkWebGPUResourceTableUpdate(WGPUResourceTable table, uint32_t slot, WGPUSampler sampler, WGPUTextureView textureView);
+void lvkWebGPUResourceTableRemove(WGPUResourceTable table, uint32_t slot);
+void lvkWebGPUResourceTableDestroy(WGPUResourceTable table);
+void lvkWebGPUResourceTableRelease(WGPUResourceTable table);
+void lvkWebGPUComputePassEncoderSetResourceTable(WGPUComputePassEncoder pass, WGPUResourceTable table);
+// the browser takes these in descriptors: they apply to the next render pass or pipeline layout
+void lvkWebGPUCommandEncoderSetNextRenderPassResourceTable(WGPUCommandEncoder encoder, WGPUResourceTable table);
+void lvkWebGPUDeviceSetNextPipelineLayoutUsesResourceTable(WGPUDevice device);
+}
+namespace {
+WGPUResourceTable wgpuDeviceCreateResourceTable(WGPUDevice device, const WGPUResourceTableDescriptor* desc) {
+  return lvkWebGPUCreateResourceTable(device, desc->size);
+}
+WGPUStatus wgpuResourceTableUpdate(WGPUResourceTable table, uint32_t slot, const WGPUBindingResource* resource) {
+  return lvkWebGPUResourceTableUpdate(table, slot, resource->sampler, resource->textureView);
+}
+void wgpuResourceTableRemove(WGPUResourceTable table, uint32_t slot) {
+  lvkWebGPUResourceTableRemove(table, slot);
+}
+void wgpuResourceTableDestroy(WGPUResourceTable table) {
+  lvkWebGPUResourceTableDestroy(table);
+}
+void wgpuResourceTableRelease(WGPUResourceTable table) {
+  lvkWebGPUResourceTableRelease(table);
+}
+void wgpuComputePassEncoderSetResourceTable(WGPUComputePassEncoder pass, WGPUResourceTable table) {
+  lvkWebGPUComputePassEncoderSetResourceTable(pass, table);
+}
+} // namespace
+#endif // __EMSCRIPTEN__
 
 // Warns once per call site
 #define LVK_WEBGPU_WARN_ONCE(...)   \
@@ -62,8 +101,10 @@ void* createCocoaWindowView(void* window, void** outLayer);
 
 namespace {
 
+#if !defined(__EMSCRIPTEN__)
 // exposes experimental features, such as the resource table
 const char* kDawnToggles[] = {"allow_unsafe_apis"};
+#endif // !__EMSCRIPTEN__
 
 // nullptr gives the null string {NULL, WGPU_STRLEN}, which is not the empty string {NULL, 0}
 WGPUStringView toStringView(const char* str) {
@@ -778,14 +819,20 @@ void onDeviceLost(const WGPUDevice*, WGPUDeviceLostReason reason, WGPUStringView
 }
 
 WGPUAdapter requestAdapter(WGPUInstance instance, WGPUSurface surface, WGPUBackendType backendType) {
+#if defined(__EMSCRIPTEN__)
+  // the browser has no Dawn toggles
+  WGPUChainedStruct* toggles = nullptr;
+#else
   // not const: WGPURequestAdapterOptions::nextInChain is a non-const pointer
-  WGPUDawnTogglesDescriptor toggles = {
+  WGPUDawnTogglesDescriptor dawnToggles = {
       .chain = {.sType = WGPUSType_DawnTogglesDescriptor},
       .enabledToggleCount = LVK_ARRAY_NUM_ELEMENTS(kDawnToggles),
       .enabledToggles = kDawnToggles,
   };
+  WGPUChainedStruct* toggles = &dawnToggles.chain;
+#endif // __EMSCRIPTEN__
   const WGPURequestAdapterOptions options = {
-      .nextInChain = &toggles.chain,
+      .nextInChain = toggles,
       .featureLevel = WGPUFeatureLevel_Core,
       .powerPreference = WGPUPowerPreference_HighPerformance,
       .backendType = backendType,
@@ -847,30 +894,37 @@ void lvk::WebGPUCommandBuffer::cmdTransitionToRenderingLocalRead(const ldr::Span
   LVK_WEBGPU_NOT_IMPLEMENTED();
 }
 
+// emdawnwebgpu breaks on WGPUStringView by value with wasm64: no debug labels in the browser
 void lvk::WebGPUCommandBuffer::cmdPushDebugGroupLabel(const char* label, uint32_t) const {
   LVK_ASSERT(label);
+#if !defined(__EMSCRIPTEN__)
   if (pass_) {
     wgpuRenderPassEncoderPushDebugGroup(pass_, toStringView(label));
   } else {
     wgpuCommandEncoderPushDebugGroup(encoder_, toStringView(label));
   }
+#endif // !__EMSCRIPTEN__
 }
 
 void lvk::WebGPUCommandBuffer::cmdInsertDebugEventLabel(const char* label, uint32_t) const {
   LVK_ASSERT(label);
+#if !defined(__EMSCRIPTEN__)
   if (pass_) {
     wgpuRenderPassEncoderInsertDebugMarker(pass_, toStringView(label));
   } else {
     wgpuCommandEncoderInsertDebugMarker(encoder_, toStringView(label));
   }
+#endif // !__EMSCRIPTEN__
 }
 
 void lvk::WebGPUCommandBuffer::cmdPopDebugGroupLabel() const {
+#if !defined(__EMSCRIPTEN__)
   if (pass_) {
     wgpuRenderPassEncoderPopDebugGroup(pass_);
   } else {
     wgpuCommandEncoderPopDebugGroup(encoder_);
   }
+#endif // !__EMSCRIPTEN__
 }
 
 void lvk::WebGPUCommandBuffer::cmdBindRayTracingPipeline(RayTracingPipelineHandle) {
@@ -1021,13 +1075,22 @@ void lvk::WebGPUCommandBuffer::cmdBeginRendering(const RenderPass& renderPass, c
       .depthStencilAttachment = depthTex ? &depthStencilAttachment : nullptr,
   };
 
+#if defined(__EMSCRIPTEN__)
+  // the browser takes the resource table in the render pass descriptor
+  if (ctx_->resourceTable_) {
+    lvkWebGPUCommandEncoderSetNextRenderPassResourceTable(encoder_, ctx_->resourceTable_);
+  }
+#endif // __EMSCRIPTEN__
+
   pass_ = wgpuCommandEncoderBeginRenderPass(encoder_, &desc);
 
   // group 0 holds the arenas; draws with push constants in a buffer rebind it
   bindRenderPassArenas();
+#if !defined(__EMSCRIPTEN__)
   if (ctx_->resourceTable_) {
     wgpuRenderPassEncoderSetResourceTable(pass_, ctx_->resourceTable_);
   }
+#endif // !__EMSCRIPTEN__
 
   if (pushConstantsSize_) {
     setRenderPassImmediates(0, pushConstants_, pushConstantsSize_);
@@ -1585,13 +1648,18 @@ lvk::WebGPUContext::WebGPUContext(const ContextConfig& config, const WGPUChained
     }
   }
 
-  WGPUDawnTogglesDescriptor deviceToggles = {
+#if defined(__EMSCRIPTEN__)
+  WGPUChainedStruct* deviceToggles = nullptr;
+#else
+  WGPUDawnTogglesDescriptor dawnDeviceToggles = {
       .chain = {.sType = WGPUSType_DawnTogglesDescriptor},
       .enabledToggleCount = LVK_ARRAY_NUM_ELEMENTS(kDawnToggles),
       .enabledToggles = kDawnToggles,
   };
+  WGPUChainedStruct* deviceToggles = &dawnDeviceToggles.chain;
+#endif // __EMSCRIPTEN__
   const WGPUDeviceDescriptor deviceDesc = {
-      .nextInChain = &deviceToggles.chain,
+      .nextInChain = deviceToggles,
       .label = toStringView("LVK WebGPU device"),
       .requiredFeatureCount = numRequiredFeatures,
       .requiredFeatures = requiredFeatures,
@@ -1627,7 +1695,8 @@ lvk::WebGPUContext::WebGPUContext(const ContextConfig& config, const WGPUChained
         .size = kResourceTableSize,
     };
     resourceTable_ = wgpuDeviceCreateResourceTable(device_, &tableDesc);
-  } else {
+  }
+  if (!resourceTable_) {
     LLOGW("WebGPU: chromium_experimental_sampling_resource_table is not supported, bindless textures will not work\n");
   }
 
@@ -1940,9 +2009,14 @@ lvk::SubmitHandle lvk::WebGPUContext::submit(ICommandBuffer& commandBuffer, Text
 
   if (isPresenting) {
     LVK_PROFILER_ZONE("WebGPU present", LVK_PROFILER_COLOR_PRESENT);
+#if defined(__EMSCRIPTEN__)
+    // the browser presents the canvas from its event loop: yield to it (JSPI)
+    emscripten_sleep(0);
+#else
     if (surface_) {
       wgpuSurfacePresent(surface_);
     }
+#endif // __EMSCRIPTEN__
     LVK_PROFILER_ZONE_END();
     releaseSwapchainTexture();
   }
@@ -1981,6 +2055,10 @@ bool lvk::WebGPUContext::isReady(SubmitHandle handle) const {
   }
   wgpuInstanceProcessEvents(instance_);
   if (completedSubmitValue_ < handle.value_) {
+#if defined(__EMSCRIPTEN__)
+    // the browser completes work only from its event loop: yield to it (JSPI)
+    emscripten_sleep(0);
+#endif // __EMSCRIPTEN__
     return false;
   }
   // the CPU copies of host-visible buffers get what this work wrote
@@ -2380,14 +2458,23 @@ void lvk::WebGPUContext::freeToArena(uint32_t arena, uint64_t offset, uint64_t s
 }
 
 WGPUPipelineLayout lvk::WebGPUContext::createPipelineLayout(bool isCompute, uint32_t immediateSize, const char* debugName) const {
+#if defined(__EMSCRIPTEN__)
+  // the browser takes the flag in the descriptor
+  if (resourceTable_) {
+    lvkWebGPUDeviceSetNextPipelineLayoutUsesResourceTable(device_);
+  }
+  WGPUChainedStruct* resourceTableChain = nullptr;
+#else
   // bindless textures and samplers come from the resource table
   WGPUPipelineLayoutResourceTable layoutResourceTable = {
       .chain = {.sType = WGPUSType_PipelineLayoutResourceTable},
       .usesResourceTable = resourceTable_ != nullptr,
   };
+  WGPUChainedStruct* resourceTableChain = resourceTable_ ? &layoutResourceTable.chain : nullptr;
+#endif // __EMSCRIPTEN__
   const WGPUBindGroupLayout arenasLayout = isCompute ? arenasLayoutReadWrite_ : arenasLayoutReadOnly_;
   const WGPUPipelineLayoutDescriptor layoutDesc = {
-      .nextInChain = resourceTable_ ? &layoutResourceTable.chain : nullptr,
+      .nextInChain = resourceTableChain,
       .label = toStringView(debugName),
       .bindGroupLayoutCount = 1,
       .bindGroupLayouts = &arenasLayout,
@@ -3200,6 +3287,11 @@ lvk::Holder<lvk::ShaderModuleHandle> lvk::WebGPUContext::createShaderModule(cons
 
   WGSLShader shader;
   Result result = compileShaderWGSL(slangGlobalSession_, desc, limits_.maxImmediateSize < 64 ? limits_.maxImmediateSize : 64, &shader);
+
+  const bool needsResourceTable = !resourceTable_ && shader.code.find("enable chromium_experimental_resource_table;") != std::string::npos;
+  if (result.isOk() && needsResourceTable) {
+    result = Result(Result::Code::RuntimeError, "Bindless textures and samplers need the resource table, which is not supported");
+  }
 
   if (!result.isOk()) {
     LLOGW("Shader module `%s` failed: %s\n", desc.debugName, result.message);
@@ -4129,7 +4221,14 @@ std::unique_ptr<lvk::IContext> lvk::createWebGPUContextWithSwapchain(LVKwindow* 
   LVK_PROFILER_FUNCTION();
 
   // the surface source structs must outlive the WebGPUContext constructor
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+  // SDL3 renders into the `#canvas` element of the page
+  const WGPUEmscriptenSurfaceSourceCanvasHTMLSelector source = {
+      .chain = {.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector},
+      .selector = toStringView("#canvas"),
+  };
+  const bool hasSurface = window != nullptr;
+#elif defined(_WIN32)
 #if LVK_WITH_GLFW
   void* hwnd = window ? (void*)glfwGetWin32Window(window) : nullptr;
 #else

@@ -44,7 +44,9 @@ macro(ADD_VULKAN_APP_LIBRARY name)
   target_link_libraries(${name} PUBLIC ktx)
 endmacro()
 
-ADD_VULKAN_APP_LIBRARY(LVKVulkanApp)
+if(NOT EMSCRIPTEN)
+  ADD_VULKAN_APP_LIBRARY(LVKVulkanApp)
+endif()
 
 # the same VulkanApp running on the WebGPU backend (lvk/webgpu)
 if(LVK_WITH_WEBGPU)
@@ -74,6 +76,17 @@ macro(ADD_DEMO_TARGET app target_name defs)
   if("${defs}" MATCHES "LVK_DEMO_WITH_WEBGPU")
     target_link_libraries(${target_name} PRIVATE LVKVulkanAppWebGPU)
     lvk_copy_webgpu_runtime_dlls(${target_name})
+    if(EMSCRIPTEN)
+      # a web page; VulkanApp needs `third-party/content` to exist and the ImGui font
+      set(LVK_WEB_FONT "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf")
+      file(WRITE "${CMAKE_BINARY_DIR}/web-content/README.txt" "The sample content is not deployed to the web.")
+      set_target_properties(${target_name} PROPERTIES SUFFIX ".html")
+      # some samples use std::terminate() without <exception>, which other standard libraries include transitively
+      target_compile_options(${target_name} PRIVATE "SHELL:-include exception")
+      target_link_options(${target_name} PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=8MB"
+                          "--preload-file=${CMAKE_BINARY_DIR}/web-content@/third-party/content"
+                          "--preload-file=${LVK_ROOT_DIR}/third-party/deps/src/${LVK_WEB_FONT}@/third-party/deps/src/${LVK_WEB_FONT}")
+    endif()
   else()
     target_link_libraries(${target_name} PRIVATE LVKVulkanApp)
   endif()
@@ -93,7 +106,7 @@ macro(ADD_WEBGPU_DEMO app)
 endmacro()
 
 macro(ADD_DEMO app) # optional args: `demo_has_slang` `demo_has_openxr`
-  if(NOT ANDROID)
+  if(NOT ANDROID AND NOT EMSCRIPTEN)
     # default values for optional args
     set(demo_has_slang FALSE)
     set(demo_has_openxr FALSE)
@@ -247,6 +260,24 @@ ADD_WEBGPU_DEMO("009_TriplanarMapping")
 ADD_WEBGPU_DEMO("010_OmniShadows")
 ADD_WEBGPU_DEMO("DEMO_001_SolarSystem")
 ADD_WEBGPU_DEMO("Tiny_MeshLarge")
+if(EMSCRIPTEN)
+  # the web pages pack the content they read
+  foreach(pair "009_TriplanarMapping:src/bistro/BuildingTextures/wood_polished_01_diff.png" "DEMO_001_SolarSystem:src/solarsystem")
+    string(REPLACE ":" ";" pair "${pair}")
+    list(GET pair 0 app)
+    list(GET pair 1 path)
+    target_link_options(${app}_WebGPU PRIVATE "--preload-file=${LVK_ROOT_DIR}/third-party/content/${path}@/third-party/content/${path}")
+  endforeach()
+  # the Bistro textures Tiny_MeshLarge uses (the mesh cache comes from a native run of Tiny_MeshLarge)
+  set(LVK_WEB_BISTRO_RSP "${CMAKE_BINARY_DIR}/web-content/Tiny_MeshLarge.rsp")
+  if(EXISTS "${LVK_ROOT_DIR}/third-party/content/cache.data")
+    execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/web_preload_bistro.py" "${LVK_ROOT_DIR}/third-party/content"
+                            "${LVK_WEB_BISTRO_RSP}" COMMAND_ERROR_IS_FATAL ANY)
+    target_link_options(Tiny_MeshLarge_WebGPU PRIVATE "@${LVK_WEB_BISTRO_RSP}")
+  else()
+    message(WARNING "third-party/content/cache.data is missing: run Tiny_MeshLarge natively once before the web build of Tiny_MeshLarge_WebGPU")
+  endif()
+endif()
 
 ADD_DEMO_SOURCES("Tiny_MeshLarge" "${LVK_ROOT_DIR}/third-party/deps/src/imgui/imgui_demo.cpp")
 

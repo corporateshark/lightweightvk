@@ -33,13 +33,15 @@ endif()
 lvk_setup_target(LVKLibrary)
 lvk_set_folder(LVKLibrary "LVK")
 
-add_subdirectory(vulkan)
+# the browser has no Vulkan
+if(NOT EMSCRIPTEN)
+  add_subdirectory(vulkan)
+  target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
+endif()
 
 if(LVK_WITH_WEBGPU)
   add_subdirectory(webgpu)
 endif()
-
-target_link_libraries(LVKLibrary PUBLIC LVKVulkan)
 if(LVK_IMGUI_EXTERNAL)
   target_compile_definitions(LVKLibrary PRIVATE LVK_IMGUI_EXTERNAL)
 endif()

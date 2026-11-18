@@ -9,6 +9,7 @@
 
 #include "LVK.h"
 
+#include <algorithm>
 #include <assert.h>
 
 #define NOMINMAX
@@ -45,7 +46,9 @@
 void* createCocoaWindowView(void* window, void** outLayer);
 #endif
 
+#if !defined(__EMSCRIPTEN__) // the browser has no Vulkan
 #include <lvk/vulkan/VulkanClasses.h>
+#endif // !__EMSCRIPTEN__
 
 namespace {
 
@@ -487,7 +490,12 @@ lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& out
     }
   }
 
+#if defined(__EMSCRIPTEN__)
+  // a canvas for WebGPU
+  Uint32 windowFlags = 0;
+#else
   Uint32 windowFlags = SDL_WINDOW_VULKAN;
+#endif // __EMSCRIPTEN__
   if (wantsWholeArea || resizable) {
     windowFlags |= SDL_WINDOW_RESIZABLE;
   }
@@ -510,7 +518,7 @@ lvk::LVKwindow* lvk::initWindow(const char* windowTitle, int& outWidth, int& out
 }
 #endif // LVK_WITH_SDL3
 
-#if LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)
+#if (LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)) && !defined(__EMSCRIPTEN__)
 std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* window,
                                                                      uint32_t width,
                                                                      uint32_t height,
@@ -641,4 +649,4 @@ std::unique_ptr<lvk::IContext> lvk::createVulkanContextWithSwapchain(LVKwindow* 
 
   return std::move(ctx);
 }
-#endif // LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)
+#endif // (LVK_WITH_GLFW || LVK_WITH_SDL3 || defined(ANDROID)) && !defined(__EMSCRIPTEN__)

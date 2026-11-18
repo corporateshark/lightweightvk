@@ -11,8 +11,6 @@
 
 #include "VulkanApp.h"
 
-#include "lvk/vulkan/VulkanUtils.h"
-
 #include "ldrutils/lmath/GeometryShapes.h"
 #include <ldrutils/lutils/ScopeExit.h>
 #include <lmath/Random.h>
