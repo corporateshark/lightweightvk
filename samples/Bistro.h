@@ -29,9 +29,10 @@
    void cancelLoadingMaterialTextures()
 
  `loadMaterialTextures()` returns immediately; call `processLoadedMaterialTextures()` once per frame to upload whatever
- is ready. The result is stored in the global variable:
+ is ready. The result is stored in the global variables:
 
    std::vector<GPUMaterial> materials_;
+   std::vector<uint8_t> materialsAlphaTested_; // any texel with alpha below 250
 
  With `loadMaterialMaps`, the `map_Ks` (specular) and `map_bump` (normal) textures are loaded too, into `texSpecular` and
  `texNormal` (otherwise they stay 0, meaning "no texture").
@@ -369,6 +370,7 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
 std::vector<GPUMaterial> materials_;
+std::vector<uint8_t> materialsAlphaTested_;
 
 struct LoadedImage {
   uint32_t w = 0;
@@ -377,6 +379,7 @@ struct LoadedImage {
   uint8_t* pixels = nullptr;
   std::string debugName;
   std::string compressedFileName;
+  bool hasTransparentTexels = false;
 };
 
 struct LoadedMaterial {
@@ -541,8 +544,21 @@ LoadedImage loadImage(const char* fileName, int channels) {
 
   int w = 0;
   int h = 0;
+  int fileChannels = 0;
   const std::vector<uint8_t> fileData = texturesApp_->loadFile(fileName);
-  uint8_t* pixels = fileData.empty() ? nullptr : stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, nullptr, channels);
+  uint8_t* pixels = fileData.empty() ? nullptr
+                                     : stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, &fileChannels, channels);
+
+  bool hasTransparentTexels = false;
+
+  // every image with alpha is scanned: the cache returns it for whichever material map asks next
+  const bool hasAlpha = channels == 1 || fileChannels == 2 || fileChannels == 4;
+  if (pixels && hasAlpha) {
+    const size_t numPixels = size_t(w) * size_t(h);
+    for (size_t p = 0; p != numPixels && !hasTransparentTexels; p++) {
+      hasTransparentTexels = pixels[p * channels + channels - 1] < 250;
+    }
+  }
 
   const LoadedImage img = {
       .w = (uint32_t)w,
@@ -551,6 +567,7 @@ LoadedImage loadImage(const char* fileName, int channels) {
       .pixels = pixels,
       .debugName = debugName,
       .compressedFileName = convertFileName(fileName),
+      .hasTransparentTexels = hasTransparentTexels,
   };
 
   if (img.pixels && kEnableTextureCompression && (channels != 1) && !std::filesystem::exists(img.compressedFileName.c_str())) {
@@ -571,23 +588,25 @@ void loadMaterial(size_t i) {
     remainingMaterialsToLoad_.fetch_sub(1u, std::memory_order_release);
   };
 
-#define LOAD_TEX(result, tex, channels, enabled)                                                                 \
-  const LoadedImage result = !(enabled) || std::string(cachedMaterials_[i].tex).empty()                          \
-                                 ? LoadedImage()                                                                 \
-                                 : loadImage((texturesPathPrefix_ + cachedMaterials_[i].tex).c_str(), channels); \
-  if (loaderShouldExit_.load(std::memory_order_acquire)) {                                                       \
-    return;                                                                                                      \
+  // nothing more is loaded once the loader is asked to exit
+  auto load = [](const char* fileName, int channels, bool enabled) -> LoadedImage {
+    const bool skip = !enabled || !*fileName || loaderShouldExit_.load(std::memory_order_acquire);
+    return skip ? LoadedImage() : loadImage((texturesPathPrefix_ + fileName).c_str(), channels);
+  };
+  const CachedMaterial& cached = cachedMaterials_[i];
+  const LoadedMaterial mtl = {
+      .idx = i,
+      .ambient = load(cached.ambient_texname, 4, true),
+      .diffuse = load(cached.diffuse_texname, 4, true),
+      .alpha = load(cached.alpha_texname, 1, true),
+      .specular = load(cached.specular_texname, 4, loadMaterialMaps_),
+      .normal = load(cached.normal_texname, 4, loadMaterialMaps_),
+  };
+  if (loaderShouldExit_.load(std::memory_order_acquire)) {
+    return;
   }
 
-  LOAD_TEX(ambient, ambient_texname, 4, true);
-  LOAD_TEX(diffuse, diffuse_texname, 4, true);
-  LOAD_TEX(alpha, alpha_texname, 1, true);
-  LOAD_TEX(specular, specular_texname, 4, loadMaterialMaps_);
-  LOAD_TEX(normal, normal_texname, 4, loadMaterialMaps_);
-
-#undef LOAD_TEX
-
-  const LoadedMaterial mtl{i, ambient, diffuse, alpha, specular, normal};
+  materialsAlphaTested_[i] = mtl.diffuse.hasTransparentTexels || mtl.alpha.hasTransparentTexels ? 1 : 0;
 
   if (!mtl.ambient.pixels && !mtl.diffuse.pixels && !mtl.specular.pixels && !mtl.normal.pixels) {
     materials_[i].texDiffuse = 0;
@@ -686,6 +705,7 @@ void loadMaterialTextures(VulkanApp& app, const char* pathPrefix, bool loadMater
 
   materials_.clear();
   materials_.reserve(cachedMaterials_.size());
+  materialsAlphaTested_.assign(cachedMaterials_.size(), 0);
 
   for (const CachedMaterial& mtl : cachedMaterials_) {
     materials_.push_back(GPUMaterial{
@@ -914,6 +934,169 @@ class TosaGraphBuilder final {
     const uint32_t graph = nextId_++;
 
     std::vector<uint32_t> spirv = {SpvMagicNumber, SpvVersion1_6, 0, 0, 0};
+    for (const uint32_t capability :
+         {SpvCapabilityShader, SpvCapabilityInt8, SpvCapabilityTensorsARM, SpvCapabilityGraphARM, SpvCapabilityVulkanMemoryModel}) {
+      emit(spirv, SpvOpCapability, {capability});
+    }
+    emit(spirv, SpvOpExtension, literalString("SPV_ARM_tensors"));
+    emit(spirv, SpvOpExtension, literalString("SPV_ARM_graph"));
+    std::vector<uint32_t> import = {tosa_};
+    for (const uint32_t w : literalString("TOSA.001000.1")) {
+      import.push_back(w);
+    }
+    emit(spirv, SpvOpExtInstImport, import);
+    emit(spirv, SpvOpMemoryModel, {SpvAddressingModelLogical, SpvMemoryModelVulkan});
+    emit(spirv, SpvOpDecorate, {varInput, SpvDecorationDescriptorSet, 0});
+    emit(spirv, SpvOpDecorate, {varInput, SpvDecorationBinding, 0});
+    emit(spirv, SpvOpDecorate, {varOutput, SpvDecorationDescriptorSet, 0});
+    emit(spirv, SpvOpDecorate, {varOutput, SpvDecorationBinding, 1});
+    spirv.insert(spirv.end(), declarations_.begin(), declarations_.end());
+    emit(spirv, SpvOpVariable, {pointerInput, varInput, SpvStorageClassUniformConstant});
+    emit(spirv, SpvOpVariable, {pointerOutput, varOutput, SpvStorageClassUniformConstant});
+    std::vector<uint32_t> entryPoint = {graph};
+    for (const uint32_t w : literalString("main")) {
+      entryPoint.push_back(w);
+    }
+    entryPoint.push_back(varInput);
+    entryPoint.push_back(varOutput);
+    emit(spirv, SpvOpGraphEntryPointARM, entryPoint);
+    emit(spirv, SpvOpGraphARM, {typeGraph, graph});
+    emit(spirv, SpvOpGraphInputARM, {typeInput, input_, zero});
+    spirv.insert(spirv.end(), body_.begin(), body_.end());
+    emit(spirv, SpvOpGraphSetOutputARM, {output, zero});
+    emit(spirv, SpvOpGraphEndARM, {});
+    spirv[3] = nextId_;
+    return spirv;
+  }
+
+ private:
+  // the SPIR-V (spirv.core.grammar.json) and TOSA.001000.1 numbers the graph uses
+  enum : uint32_t {
+    SpvMagicNumber = 0x07230203,
+    SpvVersion1_6 = 0x00010600,
+    SpvOpExtension = 10,
+    SpvOpExtInstImport = 11,
+    SpvOpExtInst = 12,
+    SpvOpMemoryModel = 14,
+    SpvOpCapability = 17,
+    SpvOpTypeBool = 20,
+    SpvOpTypeInt = 21,
+    SpvOpTypeArray = 28,
+    SpvOpTypePointer = 32,
+    SpvOpConstantTrue = 41,
+    SpvOpConstantFalse = 42,
+    SpvOpConstant = 43,
+    SpvOpConstantComposite = 44,
+    SpvOpVariable = 59,
+    SpvOpDecorate = 71,
+    SpvOpTypeTensorARM = 4163,
+    SpvOpGraphConstantARM = 4181,
+    SpvOpGraphEntryPointARM = 4182,
+    SpvOpGraphARM = 4183,
+    SpvOpGraphInputARM = 4184,
+    SpvOpGraphSetOutputARM = 4185,
+    SpvOpGraphEndARM = 4186,
+    SpvOpTypeGraphARM = 4190,
+    SpvCapabilityShader = 1,
+    SpvCapabilityInt8 = 39,
+    SpvCapabilityTensorsARM = 4174,
+    SpvCapabilityGraphARM = 4191,
+    SpvCapabilityVulkanMemoryModel = 5345,
+    SpvAddressingModelLogical = 0,
+    SpvMemoryModelVulkan = 3,
+    SpvStorageClassUniformConstant = 0,
+    SpvDecorationBinding = 33,
+    SpvDecorationDescriptorSet = 34,
+    TOSA_CONV2D = 2,
+    TOSA_ADD = 14,
+    TOSA_TABLE = 30,
+    TOSA_RESCALE = 65,
+  };
+
+  static void emit(std::vector<uint32_t>& out, uint32_t opcode, const std::vector<uint32_t>& operands) {
+    out.push_back(uint32_t(operands.size() + 1) << 16 | opcode);
+    out.insert(out.end(), operands.begin(), operands.end());
+  }
+  static std::vector<uint32_t> literalString(const char* str) {
+    std::vector<uint32_t> words(strlen(str) / 4 + 1, 0u);
+    memcpy(words.data(), str, strlen(str));
+    return words;
+  }
+  // types and constants are declared once: a type must be unique, and the graph repeats its zero points and shapes
+  uint32_t declare(uint32_t opcode, uint32_t resultType, const std::vector<uint32_t>& operands) {
+    std::vector<uint32_t> key = {opcode, resultType};
+    key.insert(key.end(), operands.begin(), operands.end());
+    const std::string keyBytes((const char*)key.data(), key.size() * sizeof(uint32_t));
+    const std::unordered_map<std::string, uint32_t>::const_iterator it = declared_.find(keyBytes);
+    if (it != declared_.end()) {
+      return it->second;
+    }
+    const uint32_t id = nextId_++;
+    std::vector<uint32_t> words;
+    if (resultType) {
+      words.push_back(resultType);
+    }
+    words.push_back(id);
+    words.insert(words.end(), operands.begin(), operands.end());
+    emit(declarations_, opcode, words);
+    declared_[keyBytes] = id;
+    return id;
+  }
+  uint32_t constUint(uint32_t v) {
+    return declare(SpvOpConstant, int32_, {v});
+  }
+  uint32_t constInt8(int32_t v) {
+    return declare(SpvOpConstant, int8_, {uint32_t(uint8_t(v))});
+  }
+  uint32_t constBool(bool v) {
+    return declare(v ? SpvOpConstantTrue : SpvOpConstantFalse, declare(SpvOpTypeBool, 0, {}), {});
+  }
+  uint32_t typeTensor(uint32_t element, const std::vector<uint32_t>& dims) {
+    const uint32_t rank = constUint((uint32_t)dims.size());
+    std::vector<uint32_t> values;
+    for (const uint32_t d : dims) {
+      values.push_back(constUint(d));
+    }
+    const uint32_t shape = declare(SpvOpConstantComposite, declare(SpvOpTypeArray, 0, {int32_, rank}), values);
+    return declare(SpvOpTypeTensorARM, 0, {element, rank, shape});
+  }
+  uint32_t typeValue(uint32_t value) {
+    return typeTensor(values_[value].x, {1, height_, width_, values_[value].y});
+  }
+  uint32_t constTensor(uint32_t element, const std::vector<uint32_t>& values) {
+    return declare(SpvOpConstantComposite, typeTensor(element, {(uint32_t)values.size()}), values);
+  }
+  uint32_t zeroPoint(uint32_t element, int32_t v) {
+    return constTensor(element, {element == int32_ ? constUint((uint32_t)v) : constInt8(v)});
+  }
+  uint32_t newValue(uint32_t element, uint32_t channels) {
+    const uint32_t id = nextId_++;
+    values_.resize(nextId_);
+    values_[id] = glm::uvec2(element, channels);
+    return id;
+  }
+  uint32_t op(uint32_t element, uint32_t channels, uint32_t instruction, const std::vector<uint32_t>& operands) {
+    const uint32_t type = typeTensor(element, {1, height_, width_, channels});
+    const uint32_t id = newValue(element, channels);
+    std::vector<uint32_t> words = {type, id, tosa_, instruction};
+    words.insert(words.end(), operands.begin(), operands.end());
+    emit(body_, SpvOpExtInst, words);
+    return id;
+  }
+
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
+  uint32_t nextId_ = 1;
+  uint32_t tosa_ = 0;
+  uint32_t int8_ = 0;
+  uint32_t int32_ = 0;
+  uint32_t input_ = 0;
+  uint32_t constantId_ = 0;
+  std::vector<glm::uvec2> values_; // (element type, channels) of every value id
+  std::vector<uint32_t> declarations_;
+  std::vector<uint32_t> body_;
+  std::unordered_map<std::string, uint32_t> declared_;
+};
 
 // GPU time per stage of a frame: stage `i` runs from timestamp `i - 1` to timestamp `i`, the frame from the first to the last;
 // every kFramesPerMeasurement-th frame writes its timestamps into the next of kFrameSlots sets, read back kFrameSlots - 1

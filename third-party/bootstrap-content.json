@@ -7,6 +7,14 @@
     }
 },
 {
+    "name": "nlg",
+    "source": {
+        "type": "sourcefile",
+        "url": "https://huggingface.co/rokuz7/nlg/resolve/main/nlg.bin",
+        "sha1": "4020380a15f97bfa49d09c52dd165be453124849"
+    }
+},
+{
     "name": "bistro/PropTextures",
     "source": {
         "type": "archive",

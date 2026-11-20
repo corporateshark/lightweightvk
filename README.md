@@ -140,6 +140,38 @@ To enable [Slang](https://github.com/shader-slang/slang), configure the project 
 cmake .. -DLVK_WITH_SLANG=ON
 ```
 
+## Arm tensors and data graphs (neural graphics)
+
+LightweightVK supports [VK_ARM_tensors](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_ARM_tensors.html) and
+[VK_ARM_data_graph](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_ARM_data_graph.html). Neural networks run as data graph
+pipelines, and `lvk::VgfModel` (`lvk/HelpersVgf.h`) creates them from [VGF](https://github.com/arm/ai-ml-sdk-vgf-library) files.
+Shaders never access tensors directly: a tensor aliases a buffer, which shaders reach through its device address, or a
+`TextureUsageBits_TensorAliasing` texture, which shaders sample or store.
+
+```c
+lvk::VgfModel vgf;
+vgf.load(data.data(), data.size());
+lvk::Holder<lvk::TensorHandle> input = ctx_->createTensorBufferAliasing(bufInput, 0, vgf.getInput(0).toTensorDesc());
+lvk::Holder<lvk::TensorHandle> output = ctx_->createTensorBufferAliasing(bufOutput, 0, vgf.getOutput(0).toTensorDesc());
+const lvk::TensorHandle inputs[] = {input};
+const lvk::TensorHandle outputs[] = {output};
+lvk::Holder<lvk::DataGraphPipelineHandle> graph = vgf.createDataGraphPipeline(*ctx_, inputs, outputs);
+...
+buffer.cmdDispatchDataGraph(graph, inputs, outputs);
+```
+
+Samples: `ARM_001_NeuralSuperSampling`, `ARM_002_NeuralOIT`, `ARM_003_NeuralGI`.
+
+GPUs without native support can use the [Arm ML Emulation Layer for Vulkan](https://github.com/arm/ai-ml-emulation-layer-for-vulkan).
+LightweightVK downloads and builds a [fork](https://github.com/rokuz/ai-ml-emulation-layer-for-vulkan) of it from source, with no global
+installation:
+
+```
+cmake .. -DLVK_WITH_ML_EMULATION_LAYER=ON
+```
+
+The samples then load the layer automatically; `--no-ml-emulation` turns it off.
+
 ## Screenshots
 
 Check out [https://github.com/corporateshark/lightweightvk/samples](https://github.com/corporateshark/lightweightvk/tree/master/samples).
