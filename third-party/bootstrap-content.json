@@ -1,5 +1,12 @@
 [
 {
+    "name": "nss",
+    "source": {
+        "type": "sourcefile",
+        "url": "https://huggingface.co/Arm/neural-super-sampling/resolve/main/scenario/assets/960x540_1920x1080/2_nss-960x540-v1_0_1.vgf"
+    }
+},
+{
     "name": "bistro/PropTextures",
     "source": {
         "type": "archive",

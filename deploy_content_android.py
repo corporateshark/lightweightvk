@@ -33,6 +33,7 @@ paths = [
     (os.path.join(ROOT, "third-party", "content"), "content"),
     (os.path.join(ROOT, "third-party", "deps", "src", "3D-Graphics-Rendering-Cookbook", "data"), "deps/src/3D-Graphics-Rendering-Cookbook/data"),
     (os.path.join(ROOT, "third-party", "deps", "src", "ktx-software", "tests", "srcimages", "Iron_Bars"), "deps/src/ktx-software/tests/srcimages/Iron_Bars"),
+    (os.path.join(ROOT, "third-party", "deps", "src", "neural-graphics-sdk", "sdk", "include", "FidelityFX", "gpu"), "deps/src/neural-graphics-sdk/sdk/include/FidelityFX/gpu"),
 ]
 
 exclude_abs = {
