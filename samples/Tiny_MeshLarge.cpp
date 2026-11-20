@@ -32,7 +32,6 @@
 #include <glm/gtc/random.hpp>
 
 #include <meshoptimizer.h>
-#include <shared/UtilsCubemap.h>
 #include <stb/stb_image.h>
 #include <stb/stb_image_resize2.h>
 #include <taskflow/taskflow.hpp>
@@ -491,7 +490,6 @@ struct UniformsPerObject {
 };
 
 bool initModel();
-void loadSkyboxTexture();
 void loadMaterials();
 void createPipelines();
 void createShadowMap();
@@ -568,7 +566,7 @@ bool init() {
   }
 
   // `loadMaterialTextures()` flips stb_image vertically, so the skybox has to be loaded first
-  loadSkyboxTexture();
+  loadSkyboxTextures(*app_, skyboxTextureReference_, skyboxTextureIrradiance_);
   loadMaterials();
 
   return true;
@@ -1094,205 +1092,6 @@ void render(lvk::TextureHandle colorTexture) {
                               pipelineTimestamps,
                               sizeof(pipelineTimestamps[0]));
   }
-}
-
-lvk::Format ktx2iglTextureFormat(ktx_uint32_t format) {
-  switch (format) {
-  case GL_RGBA32F:
-    return lvk::Format_RGBA_F32;
-  case GL_RG16F:
-    return lvk::Format_RG_F16;
-  default:;
-  }
-  LVK_ASSERT_MSG(false, "Code should NOT be reached");
-  return lvk::Format_RGBA_UN8;
-}
-
-void loadCubemapTexture(const std::vector<uint8_t>& dataKTX, const std::string& debugName, lvk::Holder<lvk::TextureHandle>& tex) {
-  LVK_PROFILER_FUNCTION();
-
-  ktxTexture1* texture = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_CreateFromMemory(dataKTX.data(), dataKTX.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &texture) ==
-                   KTX_SUCCESS);
-  SCOPE_EXIT {
-    ktxTexture_Destroy(ktxTexture(texture));
-  };
-
-  if (!LVK_VERIFY(texture->glInternalformat == GL_RGBA32F)) {
-    LVK_ASSERT_MSG(false, "Texture format not supported");
-    return;
-  }
-
-  const uint32_t width = texture->baseWidth;
-  const uint32_t height = texture->baseHeight;
-
-  if (tex.empty()) {
-    tex = ctx_->createTexture({
-        .type = lvk::TextureType_Cube,
-        .format = ktx2iglTextureFormat(texture->glInternalformat),
-        .dimensions = {width, height},
-        .usage = lvk::TextureUsageBits_Sampled,
-        .numMipLevels = lvk::calcNumMipLevels(width, height),
-        .data = texture->pData,
-        // if compression is enabled, upload all mip-levels
-        .dataNumMipLevels = kEnableTextureCompression ? lvk::calcNumMipLevels(width, height) : 1u,
-        .generateMipmaps = !kEnableTextureCompression,
-        .debugName = debugName.c_str(),
-    });
-  }
-}
-
-ktxTexture1* bitmapToCube(Bitmap& bmp) {
-  LVK_ASSERT(bmp.comp_ == 3); // RGB
-  LVK_ASSERT(bmp.type_ == eBitmapType_Cube);
-  LVK_ASSERT(bmp.fmt_ == eBitmapFormat_Float);
-
-  const int w = bmp.w_;
-  const int h = bmp.h_;
-
-  const uint32_t mipLevels = lvk::calcNumMipLevels(w, h);
-
-  ktxTextureCreateInfo createInfo = {
-      .glInternalformat = GL_RGBA32F,
-      .vkFormat = VK_FORMAT_R32G32B32A32_SFLOAT,
-      .baseWidth = static_cast<uint32_t>(w),
-      .baseHeight = static_cast<uint32_t>(h),
-      .baseDepth = 1u,
-      .numDimensions = 2u,
-      .numLevels = mipLevels,
-      .numLayers = 1u,
-      .numFaces = 6u,
-      .generateMipmaps = KTX_FALSE,
-  };
-
-  ktxTexture1* texture = nullptr;
-  (void)LVK_VERIFY(ktxTexture1_Create(&createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) == KTX_SUCCESS);
-
-  const int numFacePixels = w * h;
-
-  for (size_t face = 0; face != 6; face++) {
-    const vec3* src = reinterpret_cast<vec3*>(bmp.data_.data()) + face * numFacePixels;
-    size_t offset = 0;
-    (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(texture), 0, 0, face, &offset) == KTX_SUCCESS);
-    float* dst = (float*)(texture->pData + offset);
-    for (int y = 0; y != h; y++) {
-      for (int x = 0; x != w; x++) {
-        const vec4 rgba = vec4(src[x + y * w], 1.0f);
-        memcpy(dst, &rgba, sizeof(rgba));
-        dst += 4;
-      }
-    }
-  }
-
-  return texture;
-}
-
-void generateMipmaps(const std::string& outFilename, ktxTexture1* cubemap) {
-  LVK_PROFILER_FUNCTION();
-
-  LLOGL("Generating mipmaps");
-
-  LVK_ASSERT(cubemap);
-
-  uint32_t prevWidth = cubemap->baseWidth;
-  uint32_t prevHeight = cubemap->baseHeight;
-
-  for (uint32_t face = 0; face != 6; face++) {
-    LLOGL(".");
-    for (uint32_t miplevel = 1; miplevel < cubemap->numLevels; miplevel++) {
-      LLOGL(":");
-      const uint32_t width = prevWidth > 1 ? prevWidth >> 1 : 1;
-      const uint32_t height = prevHeight > 1 ? prevHeight >> 1 : 1;
-
-      size_t prevOffset = 0;
-      (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(cubemap), miplevel - 1, 0, face, &prevOffset) == KTX_SUCCESS);
-      size_t offset = 0;
-      (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(cubemap), miplevel, 0, face, &offset) == KTX_SUCCESS);
-
-      stbir_resize_float_linear(reinterpret_cast<const float*>(cubemap->pData + prevOffset),
-                                prevWidth,
-                                prevHeight,
-                                0,
-                                reinterpret_cast<float*>(cubemap->pData + offset),
-                                width,
-                                height,
-                                0,
-                                STBIR_RGBA);
-
-      prevWidth = width;
-      prevHeight = height;
-    }
-    prevWidth = cubemap->baseWidth;
-    prevHeight = cubemap->baseHeight;
-  }
-
-  LLOGL("\n");
-  ktxTexture_WriteToNamedFile(ktxTexture(cubemap), outFilename.c_str());
-}
-
-void processCubemap(const std::string& inFilename, const std::string& outFilenameEnv, const std::string& outFilenameIrr) {
-  LVK_PROFILER_FUNCTION();
-
-  int sourceWidth, sourceHeight;
-  float* pxs = stbi_loadf(inFilename.c_str(), &sourceWidth, &sourceHeight, nullptr, 3);
-  SCOPE_EXIT {
-    if (pxs) {
-      stbi_image_free(pxs);
-    }
-  };
-
-  if (!LVK_VERIFY(pxs != nullptr)) {
-    LVK_ASSERT_MSG(false, "Did you read the tutorial at the top of Tiny_MeshLarge.cpp?");
-    return;
-  }
-
-  // Environment map
-  {
-    Bitmap bmp = convertEquirectangularMapToCubeMapFaces(Bitmap(sourceWidth, sourceHeight, 3, eBitmapFormat_Float, pxs));
-    ktxTexture1* cube = bitmapToCube(bmp);
-    generateMipmaps(outFilenameEnv, cube);
-    ktxTexture_Destroy(ktxTexture(cube));
-  }
-
-  // Irradiance map
-  {
-    constexpr int dstW = 256;
-    constexpr int dstH = 128;
-
-    std::vector<vec3> out(dstW * dstH);
-    convolveDiffuse((vec3*)pxs, sourceWidth, sourceHeight, dstW, dstH, out.data(), 1024);
-
-    Bitmap bmp = convertEquirectangularMapToCubeMapFaces(Bitmap(dstW, dstH, 3, eBitmapFormat_Float, out.data()));
-    ktxTexture1* cube = bitmapToCube(bmp);
-    generateMipmaps(outFilenameIrr, cube);
-    ktxTexture_Destroy(ktxTexture(cube));
-  }
-}
-
-void loadSkyboxTexture() {
-  LVK_PROFILER_FUNCTION();
-
-  const std::string skyboxFileName{"immenstadter_horn_2k"};
-  const std::string skyboxSubdir{"src/skybox_hdr/"};
-
-  const std::string fileNameRefKTX = folderContentRoot + skyboxFileName + "_ReferenceMap.ktx";
-  const std::string fileNameIrrKTX = folderContentRoot + skyboxFileName + "_IrradianceMap.ktx";
-
-  std::vector<uint8_t> dataRefKTX = app_->loadFile(fileNameRefKTX.c_str());
-  std::vector<uint8_t> dataIrrKTX = app_->loadFile(fileNameIrrKTX.c_str());
-
-  if (dataRefKTX.empty() || dataIrrKTX.empty()) {
-    const std::string inFilename = folderContentRoot + skyboxSubdir + skyboxFileName + ".hdr";
-    LLOGL("Cubemap in KTX format not found. Extracting from HDR file `%s`...\n", inFilename.c_str());
-
-    processCubemap(inFilename, fileNameRefKTX, fileNameIrrKTX);
-
-    dataRefKTX = app_->loadFile(fileNameRefKTX.c_str());
-    dataIrrKTX = app_->loadFile(fileNameIrrKTX.c_str());
-  }
-
-  loadCubemapTexture(dataRefKTX, fileNameRefKTX, skyboxTextureReference_);
-  loadCubemapTexture(dataIrrKTX, fileNameIrrKTX, skyboxTextureIrradiance_);
 }
 
 inline ImVec4 toVec4(const vec4& c) {
