@@ -42,6 +42,7 @@
    FULLSCREEN_TRIANGLE_GLSL    // GLSL: `fullscreenTriangle()` turned by the swapchain pre-rotation `getClipRotation()`
    vec2 getClipRotation(lvk::IContext* ctx)
    lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(...)
+   class TosaGraphBuilder      // SPIR-V of a TOSA integer graph: CONV2D, RESCALE, TABLE, ADD
    struct GPUStageTimer        // GPU time per stage, measured every 2nd frame and read back a few frames later; its
                                // history in a "GPU time" window with a sparkline per stage (drawWindow())
    SceneAccelStructs createSceneAccelStructs(...)
@@ -827,6 +828,92 @@ lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
   });
   return ctx->createTensorBufferAliasing(outBuffer, 0, desc, debugName, outResult);
 }
+
+// SPIR-V of a TOSA integer graph (SPV_ARM_graph, TOSA.001000.1) over NHWC tensors [1, height, width, channels], written one
+// operator at a time from the int8 graph input: an int8 1x1 CONV2D into int32 (the weights and biases of the i-th one are the
+// graph constants 2i and 2i + 1), a per-channel RESCALE between int8 and int32, a TABLE of 256 int8 entries, an int32 ADD.
+// Every call returns the id of its result, and `build()` writes the module whose output is the given value
+class TosaGraphBuilder final {
+ public:
+  TosaGraphBuilder(uint32_t width, uint32_t height, uint32_t numInputs) : width_(width), height_(height) {
+    tosa_ = nextId_++;
+    int8_ = declare(SpvOpTypeInt, 0, {8, 0});
+    int32_ = declare(SpvOpTypeInt, 0, {32, 0});
+    input_ = newValue(int8_, numInputs);
+  }
+
+  uint32_t input() const {
+    return input_;
+  }
+  uint32_t conv2d(uint32_t value, uint32_t numOutputs, int32_t inputZeroPoint) {
+    const uint32_t numInputs = values_[value].y;
+    const uint32_t zero = constUint(0);
+    const uint32_t one = constUint(1);
+    const uint32_t stride = constTensor(int32_, {one, one});
+    const uint32_t weights = declare(SpvOpGraphConstantARM, typeTensor(int8_, {numOutputs, 1, 1, numInputs}), {constantId_++});
+    const uint32_t biases = declare(SpvOpGraphConstantARM, typeTensor(int32_, {numOutputs}), {constantId_++});
+    const uint32_t accumulatorInt32 = one;
+    return op(int32_,
+              numOutputs,
+              TOSA_CONV2D,
+              {constTensor(int32_, {zero, zero, zero, zero}),
+               stride,
+               stride,
+               accumulatorInt32,
+               constBool(false),
+               value,
+               weights,
+               biases,
+               zeroPoint(int8_, inputZeroPoint),
+               zeroPoint(int8_, 0)});
+  }
+  uint32_t rescale(uint32_t value, bool isInt32Output, const int32_t* multipliers, const int8_t* shifts, int32_t outputZeroPoint) {
+    const uint32_t channels = values_[value].y;
+    const uint32_t element = isInt32Output ? int32_ : int8_;
+    std::vector<uint32_t> multiplierIds;
+    std::vector<uint32_t> shiftIds;
+    for (uint32_t i = 0; i != channels; i++) {
+      multiplierIds.push_back(constUint((uint32_t)multipliers[i]));
+      shiftIds.push_back(constInt8(shifts[i]));
+    }
+    const uint32_t roundingSingle = constUint(1);
+    return op(element,
+              channels,
+              TOSA_RESCALE,
+              {constBool(true),
+               roundingSingle,
+               constBool(true),
+               constBool(false),
+               constBool(false),
+               value,
+               constTensor(int32_, multiplierIds),
+               constTensor(int8_, shiftIds),
+               zeroPoint(values_[value].x, 0),
+               zeroPoint(element, outputZeroPoint)});
+  }
+  uint32_t table(uint32_t value, const int8_t* entries) {
+    std::vector<uint32_t> ids;
+    for (uint32_t i = 0; i != 256; i++) {
+      ids.push_back(constInt8(entries[i]));
+    }
+    return op(int8_, values_[value].y, TOSA_TABLE, {value, constTensor(int8_, ids)});
+  }
+  uint32_t add(uint32_t a, uint32_t b) {
+    return op(int32_, values_[a].y, TOSA_ADD, {a, b});
+  }
+
+  std::vector<uint32_t> build(uint32_t output) {
+    const uint32_t varInput = nextId_++;
+    const uint32_t varOutput = nextId_++;
+    const uint32_t zero = constUint(0);
+    const uint32_t typeInput = typeValue(input_);
+    const uint32_t typeOutput = typeValue(output);
+    const uint32_t pointerInput = declare(SpvOpTypePointer, 0, {SpvStorageClassUniformConstant, typeInput});
+    const uint32_t pointerOutput = declare(SpvOpTypePointer, 0, {SpvStorageClassUniformConstant, typeOutput});
+    const uint32_t typeGraph = declare(SpvOpTypeGraphARM, 0, {1, typeInput, typeOutput});
+    const uint32_t graph = nextId_++;
+
+    std::vector<uint32_t> spirv = {SpvMagicNumber, SpvVersion1_6, 0, 0, 0};
 
 // GPU time per stage of a frame: stage `i` runs from timestamp `i - 1` to timestamp `i`, the frame from the first to the last;
 // every kFramesPerMeasurement-th frame writes its timestamps into the next of kFrameSlots sets, read back kFrameSlots - 1
