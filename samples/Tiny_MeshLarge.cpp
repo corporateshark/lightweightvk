@@ -1202,7 +1202,7 @@ void generateMipmaps(const std::string& outFilename, ktxTexture1* cubemap) {
     for (uint32_t miplevel = 1; miplevel < cubemap->numLevels; miplevel++) {
       LLOGL(":");
       const uint32_t width = prevWidth > 1 ? prevWidth >> 1 : 1;
-      const uint32_t height = prevHeight > 1 ? prevWidth >> 1 : 1;
+      const uint32_t height = prevHeight > 1 ? prevHeight >> 1 : 1;
 
       size_t prevOffset = 0;
       (void)LVK_VERIFY(ktxTexture_GetImageOffset(ktxTexture(cubemap), miplevel - 1, 0, face, &prevOffset) == KTX_SUCCESS);
