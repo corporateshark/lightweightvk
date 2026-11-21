@@ -9596,6 +9596,10 @@ lvk::BufferHandle lvk::VulkanContext::createBuffer(VkDeviceSize bufferSize,
     }
 
     vmaAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    // createTensorBufferAliasing() can put a tensor on a storage buffer, and memory dedicated to the buffer cannot back the tensor
+    if (has_ARM_tensors_ && (usageFlags & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) {
+      vmaAllocInfo.flags |= VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+    }
     vmaAllocInfo.minAlignment = [usageFlags]() -> VkDeviceSize {
       // VUID-VkAccelerationStructureCreateInfo2KHR-addressRange-11605: acceleration structure storage must be 256-byte aligned
       if (usageFlags & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR)
