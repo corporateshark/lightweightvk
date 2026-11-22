@@ -29,12 +29,15 @@
  The network is `third-party/content/src/neural/dfaoit/dfaoit-16x16.bin` (14 -> 16 -> 16 -> 3), the integer weights that
  `train_dfaoit.py` next to it writes, and the sample builds its TOSA graph for its tensor shape at start-up. The network is quantized to
  8 bits, the integer graph an NPU runs natively: int8 tensors in and out, the features quantized to `round(x * 255) - 128` on the way in
- and the tail read back as `(v + 128) / 255`.
+ and the tail read back as `(v + 128) / 255`. The same integer network also runs as int8 cooperative matrices (VK_KHR_cooperative_matrix)
+ in one compute pass from the features to the resolved colour, bit for bit what the data graph computes, with no tensor in between and
+ no VK_ARM_data_graph needed. Both are in the UI, each grayed out without the extensions it runs on.
 
- `--technique wboit|abuffer|dfaoit` (default `wboit`, the cheapest), `--alpha A`, `--layers N`, `--weight-distance D`, `--compare` (mean
- squared error against the A-buffer), `--diff` (show the difference), `--timings` (also prints the GPU time of every stage to the log); it
- renders at the size of the monitor, or `--width W --height H`. On Android the same options are read from `args.txt` next to the OBB, and
- the numbers go to logcat.
+ `--technique wboit|abuffer|dfaoit|dfaoit-cm` (default `wboit`, the cheapest; `dfaoit` is the data graph, `dfaoit-cm` the cooperative
+ matrices, and an unavailable one falls back on the other), `--alpha A`, `--layers N`, `--weight-distance D`, `--compare` (mean squared
+ error against the A-buffer), `--diff` (show the difference), `--timings` (also prints the GPU time of every stage to the log); it renders
+ at the size of the monitor, or `--width W --height H`. On Android the same options are read from `args.txt` next to the OBB, and the
+ numbers go to logcat.
 */
 
 #include <algorithm>
@@ -289,8 +292,6 @@ void main() {
 )";
 
 const char* kCodeDfaoitCommon = R"(
-layout (local_size_x = 16, local_size_y = 16) in;
-
 layout (set = 0, binding = 0) uniform texture2D kTextures2D[];
 
 layout(std430, buffer_reference) readonly buffer Nearest {
@@ -305,6 +306,14 @@ layout(std430, buffer_reference) buffer TensorBytes {
   int8_t value[];
 };
 
+layout(std430, buffer_reference) readonly buffer CooperativeWeights {
+  int8_t v[];
+};
+
+layout(std430, buffer_reference) readonly buffer CooperativeParams {
+  int v[];
+};
+
 layout(push_constant) uniform constants {
   vec4 background;
   Nearest nearest;
@@ -312,6 +321,8 @@ layout(push_constant) uniform constants {
   Uints counter;
   TensorBytes tensorInput;
   TensorBytes tensorOutput;
+  CooperativeWeights weights;
+  CooperativeParams params;
   uint texSum;
   uint texAccumulated;
   uint texCount;
@@ -384,6 +395,8 @@ const char* kCodeDfaoitExtensions = R"(
 )";
 
 const char* kCodeDfaoitPackCS = R"(
+layout (local_size_x = 16, local_size_y = 16) in;
+
 shared uint sGroupCount;
 shared uint sGroupBase;
 
@@ -427,6 +440,8 @@ void main() {
 )";
 
 const char* kCodeDfaoitResolveCS = R"(
+layout (local_size_x = 16, local_size_y = 16) in;
+
 layout (set = 0, binding = 2, rgba16f) uniform writeonly image2D kImagesRGBA16F[];
 
 void main() {
@@ -451,6 +466,135 @@ void main() {
     }
   }
 
+  imageStore(kImagesRGBA16F[pc.imageOut], coord, vec4(color + p.transmittance * pc.background.rgb, 1.0));
+}
+)";
+
+// DFAOIT on VK_KHR_cooperative_matrix: one pass does what pack, the data graph and resolve do, with the network as int8 cooperative
+// matrices. Every invocation is a pixel and a row of the A matrices, and a subgroup multiplies its own rows kTileM at a time, so
+// no subgroup ever waits for another. The rows of the pixels that do not ask the network are zeros:
+// the matrices are cheaper than deciding to skip them, which does not hold on every driver. Every pixel gets bit for bit what the
+// data graph would give it: the layers' input zero points are folded into their biases, so the raw int8 activations are the A
+// matrices, and the RESCALE is TOSA's single rounding one. A pixel never misses the tensor here, so none falls back to its
+// analytic tail
+const char* kCodeDfaoitCooperativeExtensions = R"(
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+)";
+
+const char* kCodeDfaoitCooperativeCS = R"(
+// a workgroup is a 16x16 block of pixels, laid out in X: a subgroup scope cooperative matrix needs a multiple of the subgroup size
+layout (local_size_x = 256) in;
+layout (set = 0, binding = 2, rgba16f) uniform writeonly image2D kImagesRGBA16F[];
+
+const uint kRows = 256u;
+
+// a row of A per pixel, which ends up holding the outputs of the network too; C is one tile per subgroup
+shared int8_t sA[kRows * kStrideA];
+shared int sC[kRows / kMinSubgroupSize * kTileM * kStrideC];
+
+// TOSA RESCALE with scale32 and single rounding, (value * multiplier + 2^(shift - 1)) >> shift in 64 bits, saturated to int8
+int rescale(int value, int multiplier, int shift, int zeroPoint) {
+  int hi;
+  int lo;
+  imulExtended(value, multiplier, hi, lo);
+  uint carry;
+  const uint low = uaddCarry(uint(lo), shift <= 32 ? 1u << (shift - 1) : 0u, carry);
+  const int high = hi + int(carry) + (shift > 32 ? 1 << (shift - 33) : 0);
+  int result;
+  if (shift >= 32) {
+    result = high >> (shift - 32);
+  } else {
+    const int top = high >> shift;
+    const int bottom = int((low >> shift) | (uint(high) << (32 - shift)));
+    result = top == (bottom >> 31) ? bottom : (high < 0 ? -1024 : 1024);
+  }
+  return clamp(clamp(result, -1024, 1024) + zeroPoint, -128, 127);
+}
+
+// a hidden layer's output is the next layer's input; the last layer's, through the sigmoid table, is the network's
+void storeOutput(uint row, uint column, int q, bool last) {
+  sA[row * kStrideA + column] = int8_t(last && kHasTable ? pc.params.v[kTableAt + uint(q + 128)] : q);
+}
+
+void main() {
+  // a subgroup works on its own invocations' pixels only, kTileM rows of A at a time, so it never waits for another one
+  const uint firstRow = gl_SubgroupID * gl_SubgroupSize;
+  const uint row = firstRow + gl_SubgroupInvocationID;
+  const uint tileC = gl_SubgroupID * kTileM * kStrideC;
+  const ivec2 coord = ivec2(gl_WorkGroupID.xy * 16u + uvec2(row % 16u, row / 16u));
+  const bool inside = coord.x < int(pc.viewWidth) && coord.y < int(pc.viewHeight);
+  Pixel p;
+  bool wanted = false;
+  if (inside) {
+    p = loadPixel(coord);
+    wanted = p.count > kDfaoitNumNearest;
+  }
+  // the padded columns of A meet the zero rows of B, so whatever they hold adds nothing: only the inputs are written
+  [[unroll]] for (uint i = 0u; i != kDfaoitNumInputs; i++) {
+    sA[row * kStrideA + i] = wanted ? int8_t(clamp(int(round(p.inputs[i] * 255.0)) - 128, -128, 127)) : int8_t(0);
+  }
+  subgroupMemoryBarrierShared();
+  subgroupBarrier();
+
+  // everything is unrolled, so the sizes of a layer are constants; B comes from the cache, since keeping it in registers is
+  // slower than that on some drivers
+  for (uint tileRow = firstRow; tileRow != firstRow + gl_SubgroupSize; tileRow += kTileM) {
+    [[unroll]] for (uint layer = 0u; layer != kNumLayers; layer++) {
+      const uint paddedOutputs = kPaddedOutputs[layer];
+      [[unroll]] for (uint n = 0u; n != paddedOutputs; n += kTileN) {
+        coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
+        [[unroll]] for (uint k = 0u; k != kPaddedInputs[layer]; k += kTileK) {
+          coopmat<int8_t, gl_ScopeSubgroup, kTileM, kTileK, gl_MatrixUseA> a;
+          coopMatLoad(a, sA, tileRow * kStrideA + k, kStrideA, gl_CooperativeMatrixLayoutRowMajor);
+          coopmat<int8_t, gl_ScopeSubgroup, kTileK, kTileN, gl_MatrixUseB> b;
+          coopMatLoad(b, pc.weights.v, kWeightsAt[layer] + k * paddedOutputs + n, paddedOutputs, gl_CooperativeMatrixLayoutRowMajor);
+          c = coopMatMulAdd(a, b, c);
+        }
+        coopMatStore(c, sC, tileC + n, kStrideC, gl_CooperativeMatrixLayoutRowMajor);
+      }
+      subgroupMemoryBarrierShared();
+      subgroupBarrier();
+      const bool last = layer + 1u == kNumLayers;
+      const uint outputs = kOutputs[layer];
+      const uint params = kParamsAt[layer];
+      const int zeroPoint = kOutputZeroPoints[layer];
+      if (gl_SubgroupSize % outputs == 0u) {
+        // an invocation always gets the same output, so it loads its parameters once
+        const uint o = gl_SubgroupInvocationID % outputs;
+        const int bias = pc.params.v[params + o];
+        const int multiplier = pc.params.v[params + paddedOutputs + o];
+        const int shift = pc.params.v[params + 2u * paddedOutputs + o];
+        for (uint r = gl_SubgroupInvocationID / outputs; r < kTileM; r += gl_SubgroupSize / outputs) {
+          storeOutput(tileRow + r, o, rescale(sC[tileC + r * kStrideC + o] + bias, multiplier, shift, zeroPoint), last);
+        }
+      } else {
+        for (uint i = gl_SubgroupInvocationID; i < kTileM * outputs; i += gl_SubgroupSize) {
+          const uint r = i / outputs;
+          const uint o = i % outputs;
+          const int acc = sC[tileC + r * kStrideC + o] + pc.params.v[params + o];
+          storeOutput(tileRow + r,
+                      o,
+                      rescale(acc, pc.params.v[params + paddedOutputs + o], pc.params.v[params + 2u * paddedOutputs + o], zeroPoint),
+                      last);
+        }
+      }
+      subgroupMemoryBarrierShared();
+      subgroupBarrier();
+    }
+  }
+
+  if (!inside) {
+    return;
+  }
+  vec3 color = p.nearest;
+  if (wanted) {
+    const vec3 outputs = vec3(sA[row * kStrideA], sA[row * kStrideA + 1u], sA[row * kStrideA + 2u]);
+    color += p.attenuation * (outputs + 128.0) / 255.0;
+  }
   imageStore(kImagesRGBA16F[pc.imageOut], coord, vec4(color + p.transmittance * pc.background.rgb, 1.0));
 }
 )";
@@ -533,7 +677,8 @@ void main() {
 enum Technique {
   Technique_ABuffer = 0,
   Technique_WeightedBlended,
-  Technique_DFAOIT,
+  Technique_DFAOIT, // the network as a VK_ARM_data_graph pipeline
+  Technique_DFAOITCooperative, // the same network as VK_KHR_cooperative_matrix tiles in a compute shader
 };
 
 enum GPUTimestamp {
@@ -587,6 +732,8 @@ struct DfaoitPushConstants {
   uint64_t counter;
   uint64_t tensorInput;
   uint64_t tensorOutput;
+  uint64_t weights; // the cooperative matrix path, kCodeDfaoitCooperativeCS
+  uint64_t params;
   uint32_t texSum;
   uint32_t texAccumulated;
   uint32_t texCount;
@@ -594,7 +741,7 @@ struct DfaoitPushConstants {
   uint32_t viewWidth;
   uint32_t viewHeight;
 };
-static_assert(sizeof(DfaoitPushConstants) == 80);
+static_assert(sizeof(DfaoitPushConstants) == 96);
 
 struct ErrorPushConstants {
   uint64_t rows;
@@ -714,6 +861,82 @@ std::vector<uint32_t> buildMlpGraph(const Mlp& mlp, uint32_t width, uint32_t hei
   return graph.build(value);
 }
 
+// the same network for `kCodeDfaoitCooperativeCS`: per layer, B = the int8 weights as a K x N row-major matrix padded to the tile
+// size with zeros (so the shader never clears the padded columns of A), and the biases (with the input zero point folded in, since sum((x -
+// zp) * w) = sum(x * w) - zp * sum(w)), the multipliers and the shifts as int32; then the 256 entries of the sigmoid table. Returns the
+// GLSL constants describing the layout
+std::string buildMlpCooperative(const Mlp& mlp,
+                                const CooperativeMatrixShape& tile,
+                                std::vector<int8_t>& outWeights,
+                                std::vector<int32_t>& outParams) {
+  auto roundUp = [](uint32_t value, uint32_t multiple) { return (value + multiple - 1) / multiple * multiple; };
+  auto list = [](const std::vector<int32_t>& values, const char* type) {
+    std::string s = std::string(type) + "[](";
+    for (size_t i = 0; i != values.size(); i++) {
+      s += (i ? ", " : "") + std::to_string(values[i]);
+    }
+    return s + ")";
+  };
+  std::vector<int32_t> paddedInputs;
+  std::vector<int32_t> paddedOutputs;
+  std::vector<int32_t> outputs;
+  std::vector<int32_t> zeroPoints;
+  std::vector<int32_t> weightsAt;
+  std::vector<int32_t> paramsAt;
+  int32_t inputZeroPoint = mlp.inputZeroPoint;
+  uint32_t strideA = 0;
+  uint32_t strideC = 0;
+  outWeights.clear();
+  outParams.clear();
+  for (const MlpLayer& layer : mlp.layers) {
+    const uint32_t k = roundUp(layer.numInputs, tile.k);
+    const uint32_t n = roundUp(layer.numOutputs, tile.n);
+    paddedInputs.push_back((int32_t)k);
+    paddedOutputs.push_back((int32_t)n);
+    outputs.push_back((int32_t)layer.numOutputs);
+    zeroPoints.push_back(layer.outputZeroPoint);
+    // every matrix starts 16-byte aligned
+    outWeights.resize(roundUp((uint32_t)outWeights.size(), 16), 0);
+    weightsAt.push_back((int32_t)outWeights.size());
+    outWeights.resize(outWeights.size() + size_t(k) * n, 0);
+    int8_t* b = outWeights.data() + weightsAt.back();
+    paramsAt.push_back((int32_t)outParams.size());
+    outParams.resize(outParams.size() + 3 * size_t(n), 0);
+    int32_t* params = outParams.data() + paramsAt.back();
+    for (uint32_t o = 0; o != layer.numOutputs; o++) {
+      int32_t sum = 0;
+      for (uint32_t i = 0; i != layer.numInputs; i++) {
+        const int8_t w = layer.weights[size_t(o) * layer.numInputs + i];
+        b[size_t(i) * n + o] = w;
+        sum += w;
+      }
+      params[o] = layer.biases[o] - inputZeroPoint * sum;
+      params[n + o] = layer.multipliers[o];
+      params[2 * n + o] = layer.shifts[o];
+    }
+    inputZeroPoint = layer.outputZeroPoint;
+    strideA = std::max(strideA, k);
+    strideC = std::max(strideC, n);
+  }
+  const MlpLayer& last = mlp.layers.back();
+  const uint32_t tableAt = (uint32_t)outParams.size();
+  for (uint32_t i = 0; last.table && i != kMlpTableSize; i++) {
+    outParams.push_back(last.table[i]);
+  }
+  // a row of A holds the widest padded input (every layer's outputs are the next one's inputs), a row of C the widest padded
+  // output, both 16-byte aligned
+  return "const uint kTileM = " + std::to_string(tile.m) + ";\nconst uint kTileN = " + std::to_string(tile.n) +
+         ";\nconst uint kTileK = " + std::to_string(tile.k) + ";\nconst uint kStrideA = " + std::to_string(roundUp(strideA, 16)) +
+         ";\nconst uint kStrideC = " + std::to_string(roundUp(strideC, 4)) +
+         ";\nconst uint kNumLayers = " + std::to_string(mlp.layers.size()) +
+         ";\nconst uint kPaddedInputs[] = " + list(paddedInputs, "uint") +
+         ";\nconst uint kPaddedOutputs[] = " + list(paddedOutputs, "uint") + ";\nconst uint kOutputs[] = " + list(outputs, "uint") +
+         ";\nconst int kOutputZeroPoints[] = " + list(zeroPoints, "int") + ";\nconst uint kWeightsAt[] = " + list(weightsAt, "uint") +
+         ";\nconst uint kParamsAt[] = " + list(paramsAt, "uint") +
+         ";\nconst uint kMinSubgroupSize = " + std::to_string(tile.minSubgroupSize) +
+         ";\nconst uint kTableAt = " + std::to_string(tableAt) + ";\nconst bool kHasTable = " + (last.table ? "true" : "false") + ";\n";
+}
+
 VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
       // the size of the monitor unless `--width` and `--height` say otherwise
@@ -743,7 +966,10 @@ VULKAN_APP_MAIN {
     const char* arg = argv[i];
     const char* next = i + 1 < argc ? argv[i + 1] : nullptr;
     if (!strcmp(arg, "--technique") && next) {
-      technique = !strcmp(next, "dfaoit") ? Technique_DFAOIT : !strcmp(next, "abuffer") ? Technique_ABuffer : Technique_WeightedBlended;
+      technique = !strcmp(next, "dfaoit")      ? Technique_DFAOIT
+                  : !strcmp(next, "dfaoit-cm") ? Technique_DFAOITCooperative
+                  : !strcmp(next, "abuffer")   ? Technique_ABuffer
+                                               : Technique_WeightedBlended;
       i++;
     } else if (!strcmp(arg, "--weight-distance") && next) {
       weightDistance = (float)atof(next);
@@ -832,7 +1058,7 @@ VULKAN_APP_MAIN {
   const uint32_t tensorHeight = (uint32_t)app.height_ * 3 / 4;
 #endif // ANDROID
 
-  auto createGraph = [&]() -> bool {
+  auto loadNetwork = [&]() -> bool {
     if (blobMlp.empty() || !parseMlp(blobMlp, mlp)) {
       LLOGW("Cannot load `%s`. Run `train_dfaoit.py` next to it.\n", modelFileName.c_str());
       return false;
@@ -843,6 +1069,10 @@ VULKAN_APP_MAIN {
       LLOGW("`%s` is not the network this sample expects: 3 layers from at least 12 inputs to 3 outputs\n", modelFileName.c_str());
       return false;
     }
+    return true;
+  };
+
+  auto createGraph = [&]() -> bool {
     if (!ctx->supportsTensorsARM() || !ctx->supportsDataGraphARM()) {
       LLOGW("VK_ARM_tensors and VK_ARM_data_graph are not available (configure with LVK_WITH_ML_EMULATION_LAYER=ON to emulate them)\n");
       return false;
@@ -895,11 +1125,46 @@ VULKAN_APP_MAIN {
         &result);
     return !isFailed();
   };
-  const bool graphReady = createGraph();
-  technique = technique == Technique_DFAOIT && !graphReady ? Technique_WeightedBlended : technique;
+  const bool networkReady = loadNetwork();
+  const bool graphReady = networkReady && createGraph();
+
+  // the same network as int8 cooperative matrices in a compute shader, which needs no VK_ARM_data_graph
+  const CooperativeMatrixShape tile =
+      networkReady ? getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR)
+                   : CooperativeMatrixShape{};
+  const bool cooperativeReady = tile.m != 0;
+  lvk::Holder<lvk::BufferHandle> cooperativeWeights;
+  lvk::Holder<lvk::BufferHandle> cooperativeParams;
+  std::string cooperativeConstants;
+  if (cooperativeReady) {
+    std::vector<int8_t> weights;
+    std::vector<int32_t> params;
+    cooperativeConstants = buildMlpCooperative(mlp, tile, weights, params);
+    cooperativeWeights = ctx->createBuffer({.usage = lvk::BufferUsageBits_Storage,
+                                            .storage = lvk::StorageType_Device,
+                                            .size = weights.size(),
+                                            .data = weights.data(),
+                                            .debugName = "DFAOIT: cooperative matrix weights"});
+    cooperativeParams = ctx->createBuffer({.usage = lvk::BufferUsageBits_Storage,
+                                           .storage = lvk::StorageType_Device,
+                                           .size = sizeof(int32_t) * params.size(),
+                                           .data = params.data(),
+                                           .debugName = "DFAOIT: cooperative matrix parameters"});
+    LLOGL("DFAOIT: the network runs as %ux%ux%u int8 cooperative matrices\n", tile.m, tile.n, tile.k);
+  } else if (networkReady) {
+    LLOGW("DFAOIT: int8 cooperative matrices (VK_KHR_cooperative_matrix) are not available\n");
+  }
+  const bool dfaoitReady = graphReady || cooperativeReady;
+  // an unavailable DFAOIT falls back on the other one, and without either on weighted blended
+  const bool isDfaoit = technique == Technique_DFAOIT || technique == Technique_DFAOITCooperative;
+  technique = !isDfaoit                                      ? technique
+              : !dfaoitReady                                 ? Technique_WeightedBlended
+              : technique == Technique_DFAOIT && !graphReady ? Technique_DFAOITCooperative
+              : !cooperativeReady                            ? Technique_DFAOIT
+                                                             : technique;
 
   // the network reads k = inputs - 10 nearest fragments; without it nothing reads them
-  const uint32_t numInputs = graphReady ? mlp.numInputs : 12u;
+  const uint32_t numInputs = dfaoitReady ? mlp.numInputs : 12u;
   const uint32_t numNearest = numInputs - 10u;
   const std::string nearest = "const uint kDfaoitNumNearest = " + std::to_string(numNearest) + ";\n";
 
@@ -911,6 +1176,8 @@ VULKAN_APP_MAIN {
                                        std::to_string(tensorWidth * tensorHeight) + ";\n" + kCodeDfaoitCommon;
   const std::string codeResolveCS = codeDfaoitCommon + kCodeDfaoitResolveCS;
   const std::string codePackCS = codeDfaoitCommon + kCodeDfaoitPackCS;
+  const std::string codeCooperativeCS =
+      kCodeDfaoitCooperativeExtensions + codeDfaoitCommon + cooperativeConstants + kCodeDfaoitCooperativeCS;
 
   lvk::Holder<lvk::ShaderModuleHandle> smMeshVert = ctx->createShaderModule({kCodeMeshVS, lvk::Stage_Vert, "Shader Module: mesh (vert)"});
   lvk::Holder<lvk::ShaderModuleHandle> smABufferFrag =
@@ -935,12 +1202,19 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::ShaderModuleHandle> smPackComp;
   lvk::Holder<lvk::ComputePipelineHandle> pipelineResolve;
   lvk::Holder<lvk::ComputePipelineHandle> pipelinePack;
+  lvk::Holder<lvk::ShaderModuleHandle> smCooperativeComp;
+  lvk::Holder<lvk::ComputePipelineHandle> pipelineCooperative;
 
   if (graphReady) {
     smResolveComp = ctx->createShaderModule({codeResolveCS.c_str(), lvk::Stage_Comp, "Shader Module: DFAOIT resolve (comp)"});
     smPackComp = ctx->createShaderModule({codePackCS.c_str(), lvk::Stage_Comp, "Shader Module: DFAOIT pack (comp)"});
     pipelineResolve = ctx->createComputePipeline({.smComp = smResolveComp});
     pipelinePack = ctx->createComputePipeline({.smComp = smPackComp});
+  }
+  if (cooperativeReady) {
+    smCooperativeComp =
+        ctx->createShaderModule({codeCooperativeCS.c_str(), lvk::Stage_Comp, "Shader Module: DFAOIT cooperative matrices (comp)"});
+    pipelineCooperative = ctx->createComputePipeline({.smComp = smCooperativeComp});
   }
 
   lvk::Holder<lvk::SamplerHandle> sampler = ctx->createSampler({
@@ -1231,8 +1505,10 @@ VULKAN_APP_MAIN {
           .nearest = ctx->gpuAddress(nearestBuffer),
           .slots = ctx->gpuAddress(slotsBuffer),
           .counter = ctx->gpuAddress(counterBuffer),
-          .tensorInput = ctx->gpuAddress(tensorInputBuffer),
-          .tensorOutput = ctx->gpuAddress(tensorOutputBuffer),
+          .tensorInput = graphReady ? ctx->gpuAddress(tensorInputBuffer) : 0,
+          .tensorOutput = graphReady ? ctx->gpuAddress(tensorOutputBuffer) : 0,
+          .weights = cooperativeReady ? ctx->gpuAddress(cooperativeWeights) : 0,
+          .params = cooperativeReady ? ctx->gpuAddress(cooperativeParams) : 0,
           .texSum = texSum.index(),
           .texAccumulated = texAccumulated.index(),
           .texCount = texCount.index(),
@@ -1255,35 +1531,52 @@ VULKAN_APP_MAIN {
 
       timestamp(GPUTimestamp_Features);
 
-      buf.cmdPushDebugGroupLabel("DFAOIT: data graph", 0xff00ff00);
-      buf.cmdFillBuffer(counterBuffer, 0, sizeof(uint32_t), 0);
-      buf.cmdBindComputePipeline(pipelinePack);
-      buf.cmdPushConstants(pcDfaoit);
-      buf.cmdDispatch(groups16,
-                      {
-                          .sampledImages = {texSum, texAccumulated, texCount},
-                          .buffers = {nearestBuffer, slotsBuffer, counterBuffer},
-                          .buffersSrcStages = lvk::PipelineStageBits_Fragment | lvk::PipelineStageBits_Transfer,
-                          .tensors = {tensorInput},
-                      });
-      const lvk::TensorHandle graphInputs[] = {tensorInput};
-      const lvk::TensorHandle graphOutputs[] = {tensorOutput};
-      buf.cmdDispatchDataGraph(pipelineGraph, graphInputs, graphOutputs);
-      buf.cmdPopDebugGroupLabel();
+      if (technique == Technique_DFAOIT) {
+        buf.cmdPushDebugGroupLabel("DFAOIT: data graph", 0xff00ff00);
+        buf.cmdFillBuffer(counterBuffer, 0, sizeof(uint32_t), 0);
+        buf.cmdBindComputePipeline(pipelinePack);
+        buf.cmdPushConstants(pcDfaoit);
+        buf.cmdDispatch(groups16,
+                        {
+                            .sampledImages = {texSum, texAccumulated, texCount},
+                            .buffers = {nearestBuffer, slotsBuffer, counterBuffer},
+                            .buffersSrcStages = lvk::PipelineStageBits_Fragment | lvk::PipelineStageBits_Transfer,
+                            .tensors = {tensorInput},
+                        });
+        const lvk::TensorHandle graphInputs[] = {tensorInput};
+        const lvk::TensorHandle graphOutputs[] = {tensorOutput};
+        buf.cmdDispatchDataGraph(pipelineGraph, graphInputs, graphOutputs);
+        buf.cmdPopDebugGroupLabel();
 
-      timestamp(GPUTimestamp_Inference);
+        timestamp(GPUTimestamp_Inference);
 
-      buf.cmdPushDebugGroupLabel("DFAOIT: resolve", 0xff00ff00);
-      buf.cmdBindComputePipeline(pipelineResolve);
-      buf.cmdPushConstants(pcDfaoit);
-      buf.cmdDispatch(groups16,
-                      {
-                          .sampledImages = {texSum, texAccumulated, texCount},
-                          .storageImages = {texApproximate},
-                          .buffers = {nearestBuffer, slotsBuffer},
-                          .tensors = {tensorOutput},
-                      });
-      buf.cmdPopDebugGroupLabel();
+        buf.cmdPushDebugGroupLabel("DFAOIT: resolve", 0xff00ff00);
+        buf.cmdBindComputePipeline(pipelineResolve);
+        buf.cmdPushConstants(pcDfaoit);
+        buf.cmdDispatch(groups16,
+                        {
+                            .sampledImages = {texSum, texAccumulated, texCount},
+                            .storageImages = {texApproximate},
+                            .buffers = {nearestBuffer, slotsBuffer},
+                            .tensors = {tensorOutput},
+                        });
+        buf.cmdPopDebugGroupLabel();
+      } else {
+        // features, the network and the resolve in one pass: there is no tensor in between
+        buf.cmdPushDebugGroupLabel("DFAOIT: cooperative matrices", 0xff00ff00);
+        buf.cmdBindComputePipeline(pipelineCooperative);
+        buf.cmdPushConstants(pcDfaoit);
+        buf.cmdDispatch(groups16,
+                        {
+                            .sampledImages = {texSum, texAccumulated, texCount},
+                            .storageImages = {texApproximate},
+                            .buffers = {nearestBuffer},
+                            .buffersSrcStages = lvk::PipelineStageBits_Fragment | lvk::PipelineStageBits_Transfer,
+                        });
+        buf.cmdPopDebugGroupLabel();
+
+        timestamp(GPUTimestamp_Inference);
+      }
 
       timestamp(GPUTimestamp_Resolve);
     } else {
@@ -1331,8 +1624,12 @@ VULKAN_APP_MAIN {
     ImGui::SeparatorText("Technique");
     ImGui::RadioButton("A-buffer", &technique, Technique_ABuffer);
     ImGui::RadioButton("Weighted blended", &technique, Technique_WeightedBlended);
+    // each DFAOIT is grayed out without the extensions it runs on
     ImGui::BeginDisabled(!graphReady);
-    ImGui::RadioButton(graphReady ? "DFAOIT" : "DFAOIT (the data graph is not available)", &technique, Technique_DFAOIT);
+    ImGui::RadioButton("DFAOIT (VK_ARM_tensors + VK_ARM_data_graph)", &technique, Technique_DFAOIT);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(!cooperativeReady);
+    ImGui::RadioButton("DFAOIT (VK_KHR_cooperative_matrix)", &technique, Technique_DFAOITCooperative);
     ImGui::EndDisabled();
     ImGui::SliderFloat("Alpha", &alpha, 0.0f, 1.0f);
     if (technique == Technique_WeightedBlended) {

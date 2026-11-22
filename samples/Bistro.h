@@ -43,6 +43,8 @@
    FULLSCREEN_TRIANGLE_GLSL    // GLSL: `fullscreenTriangle()` turned by the swapchain pre-rotation `getClipRotation()`
    vec2 getClipRotation(lvk::IContext* ctx)
    lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(...)
+   CooperativeMatrixShape getCooperativeMatrixShape(...)
+                               // a VK_KHR_cooperative_matrix tile shape, for the networks where VK_ARM_data_graph is missing
    class TosaGraphBuilder      // SPIR-V of a TOSA integer graph: CONV2D, RESCALE, TABLE, ADD
    struct GPUStageTimer        // GPU time per stage, measured every 2nd frame and read back a few frames later; its
                                // history in a "GPU time" window with a sparkline per stage (drawWindow())
@@ -81,6 +83,7 @@
 
 #include <ldrutils/lutils/ScopeExit.h>
 #include <lvk/LVK.h>
+#include <lvk/vulkan/VulkanUtils.h>
 
 #include "VulkanApp.h"
 
@@ -847,6 +850,43 @@ lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
       .debugName = debugName,
   });
   return ctx->createTensorBufferAliasing(outBuffer, 0, desc, debugName, outResult);
+}
+
+// an M x N x K shape of subgroup-scope cooperative matrices computing A * B + C with these component types; all 0 without one
+struct CooperativeMatrixShape {
+  uint32_t m = 0;
+  uint32_t n = 0;
+  uint32_t k = 0;
+  uint32_t minSubgroupSize = 0; // of the device, never smaller than m
+};
+
+// the networks fall back on VK_KHR_cooperative_matrix where VK_ARM_data_graph is missing; square tiles are preferred, and M is
+// never larger than the smallest subgroup, so that a subgroup's own invocations can fill the rows of a tile
+CooperativeMatrixShape getCooperativeMatrixShape(lvk::IContext* ctx,
+                                                 VkComponentTypeKHR typeA,
+                                                 VkComponentTypeKHR typeB,
+                                                 VkComponentTypeKHR typeC) {
+  if (!ctx->supportsCooperativeMatrix()) {
+    return {};
+  }
+  const VkPhysicalDevice physicalDevice = lvk::getVkPhysicalDevice(ctx);
+  VkPhysicalDeviceVulkan13Properties properties13 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES};
+  VkPhysicalDeviceProperties2 properties2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &properties13};
+  vkGetPhysicalDeviceProperties2(physicalDevice, &properties2);
+  uint32_t count = 0;
+  vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(physicalDevice, &count, nullptr);
+  std::vector<VkCooperativeMatrixPropertiesKHR> properties(count, {.sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR});
+  vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(physicalDevice, &count, properties.data());
+  CooperativeMatrixShape shape;
+  for (const VkCooperativeMatrixPropertiesKHR& p : properties) {
+    const bool isMatch = p.AType == typeA && p.BType == typeB && p.CType == typeC && p.ResultType == typeC &&
+                         p.scope == VK_SCOPE_SUBGROUP_KHR && !p.saturatingAccumulation && p.MSize <= properties13.minSubgroupSize;
+    const bool isBetter = !shape.m || (p.MSize == p.NSize && shape.m != shape.n);
+    if (isMatch && isBetter) {
+      shape = {.m = p.MSize, .n = p.NSize, .k = p.KSize, .minSubgroupSize = properties13.minSubgroupSize};
+    }
+  }
+  return shape;
 }
 
 // SPIR-V of a TOSA integer graph (SPV_ARM_graph, TOSA.001000.1) over NHWC tensors [1, height, width, channels], written one
