@@ -42,6 +42,7 @@
    FULLSCREEN_TRIANGLE_GLSL    // GLSL: `fullscreenTriangle()` turned by the swapchain pre-rotation `getClipRotation()`
    vec2 getClipRotation(lvk::IContext* ctx)
    lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(...)
+   class TosaGraphBuilder      // SPIR-V of a TOSA integer graph: CONV2D, RESCALE, TABLE
    struct GPUStageTimer        // GPU time per stage, measured every 2nd frame and read back a few frames later; its
                                // history in a "GPU time" window with a sparkline per stage (drawWindow())
    SceneAccelStructs createSceneAccelStructs(...)
@@ -827,6 +828,251 @@ lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
   });
   return ctx->createTensorBufferAliasing(outBuffer, 0, desc, debugName, outResult);
 }
+
+// SPIR-V of a TOSA integer graph (SPV_ARM_graph, TOSA.001000.1) over NHWC tensors [1, height, width, channels], written one
+// operator at a time from the int8 graph input: an int8 1x1 CONV2D into int32 (the weights and biases of the i-th one are the
+// graph constants 2i and 2i + 1), a per-channel RESCALE between int8 and int32, and a TABLE of 256 int8 entries.
+// Every call returns the id of its result, and `build()` writes the module whose output is the given value
+class TosaGraphBuilder final {
+ public:
+  TosaGraphBuilder(uint32_t width, uint32_t height, uint32_t numInputs) : width_(width), height_(height) {
+    tosa_ = nextId_++;
+    int8_ = declare(SpvOpTypeInt, 0, {8, 0});
+    int32_ = declare(SpvOpTypeInt, 0, {32, 0});
+    input_ = newValue(int8_, numInputs);
+  }
+
+  uint32_t input() const {
+    return input_;
+  }
+  uint32_t conv2d(uint32_t value, uint32_t numOutputs, int32_t inputZeroPoint) {
+    const uint32_t numInputs = values_[value].y;
+    const uint32_t zero = constUint(0);
+    const uint32_t one = constUint(1);
+    const uint32_t stride = constTensor(int32_, {one, one});
+    const uint32_t weights = declare(SpvOpGraphConstantARM, typeTensor(int8_, {numOutputs, 1, 1, numInputs}), {constantId_++});
+    const uint32_t biases = declare(SpvOpGraphConstantARM, typeTensor(int32_, {numOutputs}), {constantId_++});
+    const uint32_t accumulatorInt32 = one;
+    return op(int32_,
+              numOutputs,
+              TOSA_CONV2D,
+              {constTensor(int32_, {zero, zero, zero, zero}),
+               stride,
+               stride,
+               accumulatorInt32,
+               constBool(false),
+               value,
+               weights,
+               biases,
+               zeroPoint(int8_, inputZeroPoint),
+               zeroPoint(int8_, 0)});
+  }
+  uint32_t rescale(uint32_t value, bool isInt32Output, const int32_t* multipliers, const int8_t* shifts, int32_t outputZeroPoint) {
+    const uint32_t channels = values_[value].y;
+    const uint32_t element = isInt32Output ? int32_ : int8_;
+    std::vector<uint32_t> multiplierIds;
+    std::vector<uint32_t> shiftIds;
+    for (uint32_t i = 0; i != channels; i++) {
+      multiplierIds.push_back(constUint((uint32_t)multipliers[i]));
+      shiftIds.push_back(constInt8(shifts[i]));
+    }
+    const uint32_t roundingSingle = constUint(1);
+    return op(element,
+              channels,
+              TOSA_RESCALE,
+              {constBool(true),
+               roundingSingle,
+               constBool(true),
+               constBool(false),
+               constBool(false),
+               value,
+               constTensor(int32_, multiplierIds),
+               constTensor(int8_, shiftIds),
+               zeroPoint(values_[value].x, 0),
+               zeroPoint(element, outputZeroPoint)});
+  }
+  uint32_t table(uint32_t value, const int8_t* entries) {
+    std::vector<uint32_t> ids;
+    for (uint32_t i = 0; i != 256; i++) {
+      ids.push_back(constInt8(entries[i]));
+    }
+    return op(int8_, values_[value].y, TOSA_TABLE, {value, constTensor(int8_, ids)});
+  }
+
+  std::vector<uint32_t> build(uint32_t output) {
+    const uint32_t varInput = nextId_++;
+    const uint32_t varOutput = nextId_++;
+    const uint32_t zero = constUint(0);
+    const uint32_t typeInput = typeValue(input_);
+    const uint32_t typeOutput = typeValue(output);
+    const uint32_t pointerInput = declare(SpvOpTypePointer, 0, {SpvStorageClassUniformConstant, typeInput});
+    const uint32_t pointerOutput = declare(SpvOpTypePointer, 0, {SpvStorageClassUniformConstant, typeOutput});
+    const uint32_t typeGraph = declare(SpvOpTypeGraphARM, 0, {1, typeInput, typeOutput});
+    const uint32_t graph = nextId_++;
+
+    std::vector<uint32_t> spirv = {SpvMagicNumber, SpvVersion1_6, 0, 0, 0};
+    for (const uint32_t capability :
+         {SpvCapabilityShader, SpvCapabilityInt8, SpvCapabilityTensorsARM, SpvCapabilityGraphARM, SpvCapabilityVulkanMemoryModel}) {
+      emit(spirv, SpvOpCapability, {capability});
+    }
+    emit(spirv, SpvOpExtension, literalString("SPV_ARM_tensors"));
+    emit(spirv, SpvOpExtension, literalString("SPV_ARM_graph"));
+    std::vector<uint32_t> import = {tosa_};
+    for (const uint32_t w : literalString("TOSA.001000.1")) {
+      import.push_back(w);
+    }
+    emit(spirv, SpvOpExtInstImport, import);
+    emit(spirv, SpvOpMemoryModel, {SpvAddressingModelLogical, SpvMemoryModelVulkan});
+    emit(spirv, SpvOpDecorate, {varInput, SpvDecorationDescriptorSet, 0});
+    emit(spirv, SpvOpDecorate, {varInput, SpvDecorationBinding, 0});
+    emit(spirv, SpvOpDecorate, {varOutput, SpvDecorationDescriptorSet, 0});
+    emit(spirv, SpvOpDecorate, {varOutput, SpvDecorationBinding, 1});
+    spirv.insert(spirv.end(), declarations_.begin(), declarations_.end());
+    emit(spirv, SpvOpVariable, {pointerInput, varInput, SpvStorageClassUniformConstant});
+    emit(spirv, SpvOpVariable, {pointerOutput, varOutput, SpvStorageClassUniformConstant});
+    std::vector<uint32_t> entryPoint = {graph};
+    for (const uint32_t w : literalString("main")) {
+      entryPoint.push_back(w);
+    }
+    entryPoint.push_back(varInput);
+    entryPoint.push_back(varOutput);
+    emit(spirv, SpvOpGraphEntryPointARM, entryPoint);
+    emit(spirv, SpvOpGraphARM, {typeGraph, graph});
+    emit(spirv, SpvOpGraphInputARM, {typeInput, input_, zero});
+    spirv.insert(spirv.end(), body_.begin(), body_.end());
+    emit(spirv, SpvOpGraphSetOutputARM, {output, zero});
+    emit(spirv, SpvOpGraphEndARM, {});
+    spirv[3] = nextId_;
+    return spirv;
+  }
+
+ private:
+  // the SPIR-V (spirv.core.grammar.json) and TOSA.001000.1 numbers the graph uses
+  enum : uint32_t {
+    SpvMagicNumber = 0x07230203,
+    SpvVersion1_6 = 0x00010600,
+    SpvOpExtension = 10,
+    SpvOpExtInstImport = 11,
+    SpvOpExtInst = 12,
+    SpvOpMemoryModel = 14,
+    SpvOpCapability = 17,
+    SpvOpTypeBool = 20,
+    SpvOpTypeInt = 21,
+    SpvOpTypeArray = 28,
+    SpvOpTypePointer = 32,
+    SpvOpConstantTrue = 41,
+    SpvOpConstantFalse = 42,
+    SpvOpConstant = 43,
+    SpvOpConstantComposite = 44,
+    SpvOpVariable = 59,
+    SpvOpDecorate = 71,
+    SpvOpTypeTensorARM = 4163,
+    SpvOpGraphConstantARM = 4181,
+    SpvOpGraphEntryPointARM = 4182,
+    SpvOpGraphARM = 4183,
+    SpvOpGraphInputARM = 4184,
+    SpvOpGraphSetOutputARM = 4185,
+    SpvOpGraphEndARM = 4186,
+    SpvOpTypeGraphARM = 4190,
+    SpvCapabilityShader = 1,
+    SpvCapabilityInt8 = 39,
+    SpvCapabilityTensorsARM = 4174,
+    SpvCapabilityGraphARM = 4191,
+    SpvCapabilityVulkanMemoryModel = 5345,
+    SpvAddressingModelLogical = 0,
+    SpvMemoryModelVulkan = 3,
+    SpvStorageClassUniformConstant = 0,
+    SpvDecorationBinding = 33,
+    SpvDecorationDescriptorSet = 34,
+    TOSA_CONV2D = 2,
+    TOSA_TABLE = 30,
+    TOSA_RESCALE = 65,
+  };
+
+  static void emit(std::vector<uint32_t>& out, uint32_t opcode, const std::vector<uint32_t>& operands) {
+    out.push_back(uint32_t(operands.size() + 1) << 16 | opcode);
+    out.insert(out.end(), operands.begin(), operands.end());
+  }
+  static std::vector<uint32_t> literalString(const char* str) {
+    std::vector<uint32_t> words(strlen(str) / 4 + 1, 0u);
+    memcpy(words.data(), str, strlen(str));
+    return words;
+  }
+  // types and constants are declared once: a type must be unique, and the graph repeats its zero points and shapes
+  uint32_t declare(uint32_t opcode, uint32_t resultType, const std::vector<uint32_t>& operands) {
+    std::vector<uint32_t> key = {opcode, resultType};
+    key.insert(key.end(), operands.begin(), operands.end());
+    const std::string keyBytes((const char*)key.data(), key.size() * sizeof(uint32_t));
+    const std::unordered_map<std::string, uint32_t>::const_iterator it = declared_.find(keyBytes);
+    if (it != declared_.end()) {
+      return it->second;
+    }
+    const uint32_t id = nextId_++;
+    std::vector<uint32_t> words;
+    if (resultType) {
+      words.push_back(resultType);
+    }
+    words.push_back(id);
+    words.insert(words.end(), operands.begin(), operands.end());
+    emit(declarations_, opcode, words);
+    declared_[keyBytes] = id;
+    return id;
+  }
+  uint32_t constUint(uint32_t v) {
+    return declare(SpvOpConstant, int32_, {v});
+  }
+  uint32_t constInt8(int32_t v) {
+    return declare(SpvOpConstant, int8_, {uint32_t(uint8_t(v))});
+  }
+  uint32_t constBool(bool v) {
+    return declare(v ? SpvOpConstantTrue : SpvOpConstantFalse, declare(SpvOpTypeBool, 0, {}), {});
+  }
+  uint32_t typeTensor(uint32_t element, const std::vector<uint32_t>& dims) {
+    const uint32_t rank = constUint((uint32_t)dims.size());
+    std::vector<uint32_t> values;
+    for (const uint32_t d : dims) {
+      values.push_back(constUint(d));
+    }
+    const uint32_t shape = declare(SpvOpConstantComposite, declare(SpvOpTypeArray, 0, {int32_, rank}), values);
+    return declare(SpvOpTypeTensorARM, 0, {element, rank, shape});
+  }
+  uint32_t typeValue(uint32_t value) {
+    return typeTensor(values_[value].x, {1, height_, width_, values_[value].y});
+  }
+  uint32_t constTensor(uint32_t element, const std::vector<uint32_t>& values) {
+    return declare(SpvOpConstantComposite, typeTensor(element, {(uint32_t)values.size()}), values);
+  }
+  uint32_t zeroPoint(uint32_t element, int32_t v) {
+    return constTensor(element, {element == int32_ ? constUint((uint32_t)v) : constInt8(v)});
+  }
+  uint32_t newValue(uint32_t element, uint32_t channels) {
+    const uint32_t id = nextId_++;
+    values_.resize(nextId_);
+    values_[id] = glm::uvec2(element, channels);
+    return id;
+  }
+  uint32_t op(uint32_t element, uint32_t channels, uint32_t instruction, const std::vector<uint32_t>& operands) {
+    const uint32_t type = typeTensor(element, {1, height_, width_, channels});
+    const uint32_t id = newValue(element, channels);
+    std::vector<uint32_t> words = {type, id, tosa_, instruction};
+    words.insert(words.end(), operands.begin(), operands.end());
+    emit(body_, SpvOpExtInst, words);
+    return id;
+  }
+
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
+  uint32_t nextId_ = 1;
+  uint32_t tosa_ = 0;
+  uint32_t int8_ = 0;
+  uint32_t int32_ = 0;
+  uint32_t input_ = 0;
+  uint32_t constantId_ = 0;
+  std::vector<glm::uvec2> values_; // (element type, channels) of every value id
+  std::vector<uint32_t> declarations_;
+  std::vector<uint32_t> body_;
+  std::unordered_map<std::string, uint32_t> declared_;
+};
 
 // GPU time per stage of a frame: stage `i` runs from timestamp `i - 1` to timestamp `i`, the frame from the first to the last;
 // every kFramesPerMeasurement-th frame writes its timestamps into the next of kFrameSlots sets, read back kFrameSlots - 1

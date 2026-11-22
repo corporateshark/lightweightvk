@@ -211,6 +211,7 @@ endif()
 
 if(LVK_WITH_TENSORS)
   ADD_DEMO("ARM_001_NeuralSuperSampling" FALSE)
+  ADD_DEMO("ARM_002_NeuralOIT" FALSE)
 endif()
 ADD_DEMO("DEMO_001_SolarSystem" LVK_WITH_SLANG)
 ADD_DEMO("Tiny_MeshLarge" LVK_WITH_SLANG)
