@@ -858,6 +858,7 @@ struct CooperativeMatrixShape {
   uint32_t n = 0;
   uint32_t k = 0;
   uint32_t minSubgroupSize = 0; // of the device, never smaller than m
+  uint32_t maxSharedMemorySize = 0; // of a compute workgroup on the device
 };
 
 // the networks fall back on VK_KHR_cooperative_matrix where VK_ARM_data_graph is missing; square tiles are preferred, and M is
@@ -883,7 +884,11 @@ CooperativeMatrixShape getCooperativeMatrixShape(lvk::IContext* ctx,
                          p.scope == VK_SCOPE_SUBGROUP_KHR && !p.saturatingAccumulation && p.MSize <= properties13.minSubgroupSize;
     const bool isBetter = !shape.m || (p.MSize == p.NSize && shape.m != shape.n);
     if (isMatch && isBetter) {
-      shape = {.m = p.MSize, .n = p.NSize, .k = p.KSize, .minSubgroupSize = properties13.minSubgroupSize};
+      shape = {.m = p.MSize,
+               .n = p.NSize,
+               .k = p.KSize,
+               .minSubgroupSize = properties13.minSubgroupSize,
+               .maxSharedMemorySize = properties2.properties.limits.maxComputeSharedMemorySize};
     }
   }
   return shape;

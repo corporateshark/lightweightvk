@@ -8,7 +8,7 @@
  */
 
 /*
- * Arm Neural Super Sampling (NSS) on top of VK_ARM_tensors and VK_ARM_data_graph, fully bindless.
+ * Arm Neural Super Sampling (NSS) on top of VK_ARM_tensors and VK_ARM_data_graph, or VK_KHR_cooperative_matrix, fully bindless.
  *
  * The window opens at the size of the monitor (`--width W --height H`, or the shorthands `--1080p` and `--4k`), and the
  * Bistro scene is rendered at half of it with subpixel jitter into color, depth and motion vector targets and upscaled 2x to
@@ -17,6 +17,11 @@
  *   depth scatter (compute) -> preprocess (compute, writes the int8 input tensor) -> data graph (VK_ARM_data_graph,
  *   the neural network from a VGF file) -> postprocess (compute, kernel prediction filter + temporal accumulation), plus a
  *   feedback-to-texture copy (compute) where the int8 feedback tensor cannot alias its texture
+ *
+ * The same network also runs as int8 cooperative matrices (VK_KHR_cooperative_matrix) with no VK_ARM_* extension, bit for bit
+ * what the data graph computes: the sample turns the graph into compute dispatches, one per CONV2D with the RESCALE and TABLE
+ * after it and the RESIZE or CONCAT before it folded in. Both are in the UI, each grayed out without the extensions it runs on;
+ * `--nss-cm` starts with the cooperative matrices.
  *
  * The NSS algorithm comes from a fork of the Arm Neural Graphics SDK that binds NSS resources bindlessly, deployed by
  * `deploy_deps.py`; the compute entry points and the shader permutation are compiled into this file. The Arm ML Emulation
@@ -863,6 +868,202 @@ std::string expandIncludes(const std::string& text, std::vector<std::string>& in
   return result;
 }
 
+// a layer of the network on VK_KHR_cooperative_matrix: a CONV2D (int8 into int32) with the RESCALE after it and the TABLE after
+// that, reading the RESIZE (nearest, 2x) or the CONCAT (of channels) before it straight from the activations they combine; the
+// input zero point is folded into the biases, so the staged int8 input is the A matrices as it is, and the padding outside the
+// input is the zero point itself. A subgroup computes tiles of kTileM pixels by 4 rows of the output from the input rows it staged
+// itself, so no subgroup ever waits for another; bit for bit what the data graph computes
+const char* kNssCooperativeExtensions = R"(
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_shader_8bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
+)";
+
+const char* kNssCooperativeCS = R"(
+layout (local_size_x = 64) in;
+
+layout(std430, buffer_reference) readonly buffer Words {
+  uint v[];
+};
+layout(std430, buffer_reference) readonly buffer Weights {
+  int8_t v[];
+};
+layout(std430, buffer_reference) writeonly buffer Activations {
+  int8_t v[];
+};
+layout(std430, buffer_reference) readonly buffer Params {
+  int v[];
+};
+
+layout(push_constant) uniform constants {
+  Words source0;
+  Words source1;
+  Activations destination;
+  Weights weights; // per tap, B = kPaddedChannels x kPaddedOutputs int8, row-major
+  Params params;   // the folded biases, the multipliers, the shifts (kPaddedOutputs each), then the table
+} pc;
+
+const uint kSpan = (kTileM - 1u) * kStride + kKernelWidth; // the input pixels of a staged row
+const uint kStagedRows = 3u * kStride + kKernelHeight;       // of the 4 output rows of a tile
+const uint kStaged = kStagedRows * kSpan * kPaddedChannels;
+const uint kRowStep = kStride * kSpan * kPaddedChannels; // from the staged rows of an output row to those of the next one
+const uint kMaxSubgroups = 64u / kMinSubgroupSize;
+
+shared int8_t sA[kMaxSubgroups * kStaged];
+shared int sC[kMaxSubgroups * kTileM * kTileN];
+
+// TOSA RESCALE with scale32 and single rounding, (value * multiplier + 2^(shift - 1)) >> shift in 64 bits, saturated to int8
+int rescale(int value, int multiplier, int shift, int zeroPoint) {
+  int hi;
+  int lo;
+  imulExtended(value, multiplier, hi, lo);
+  uint carry;
+  const uint low = uaddCarry(uint(lo), shift <= 32 ? 1u << (shift - 1) : 0u, carry);
+  const int high = hi + int(carry) + (shift > 32 ? 1 << (shift - 33) : 0);
+  int result;
+  if (shift >= 32) {
+    result = high >> (shift - 32);
+  } else {
+    const int top = high >> shift;
+    const int bottom = int((low >> shift) | (uint(high) << (32 - shift)));
+    result = top == (bottom >> 31) ? bottom : (high < 0 ? -1024 : 1024);
+  }
+  return clamp(clamp(result, -1024, 1024) + zeroPoint, -128, 127);
+}
+
+void storeOutput(uint pixel, uint channel, int acc, int multiplier, int shift) {
+  const int q = rescale(acc, multiplier, shift, kOutputZeroPoint);
+  pc.destination.v[pixel * kOutputs + channel] = int8_t(kHasTable ? pc.params.v[kTableAt + uint(q + 128)] : q);
+}
+
+// the RESCALE (and the TABLE) of the accumulators of an output row, which C holds, into the output
+void storeOutputs(uint firstPixel, uint ox0, uint n, uint cAt) {
+  if (gl_SubgroupSize % kTileN == 0u) {
+    // an invocation always gets the same output channel, so it loads its parameters once
+    const uint col = gl_SubgroupInvocationID % kTileN;
+    const uint o = n + col;
+    const int bias = pc.params.v[o];
+    const int multiplier = pc.params.v[kPaddedOutputs + o];
+    const int shift = pc.params.v[2u * kPaddedOutputs + o];
+    for (uint r = gl_SubgroupInvocationID / kTileN; r < kTileM; r += gl_SubgroupSize / kTileN) {
+      if (o < kOutputs && ox0 + r < kOutputWidth) {
+        storeOutput(firstPixel + r, o, sC[cAt + r * kTileN + col] + bias, multiplier, shift);
+      }
+    }
+  } else {
+    for (uint i = gl_SubgroupInvocationID; i < kTileM * kTileN; i += gl_SubgroupSize) {
+      const uint r = i / kTileN;
+      const uint o = n + i % kTileN;
+      if (o < kOutputs && ox0 + r < kOutputWidth) {
+        storeOutput(firstPixel + r, o, sC[cAt + i] + pc.params.v[o], pc.params.v[kPaddedOutputs + o], pc.params.v[2u * kPaddedOutputs + o]);
+      }
+    }
+  }
+}
+
+void main() {
+  const uint tilesPerRow = (kOutputWidth + kTileM - 1u) / kTileM;
+  const uint stagedAt = gl_SubgroupID * kStaged;
+  const uint cAt = gl_SubgroupID * kTileM * kTileN;
+  for (uint t = gl_SubgroupID; t < kTilesPerGroup; t += gl_NumSubgroups) {
+    const uint tile = gl_WorkGroupID.x * kTilesPerGroup + t;
+    const uint oy0 = tile / tilesPerRow * 4u;
+    if (oy0 >= kOutputHeight) {
+      break;
+    }
+    const uint ox0 = tile % tilesPerRow * kTileM;
+
+    // the input rows of the tile: the zero point outside the input, the channels of the sources (concatenated) inside it; the
+    // padded channels meet the zero rows of B, so they are never written
+    const int iy0 = int(oy0 * kStride) - kPadTop;
+    const int ix0 = int(ox0 * kStride) - kPadLeft;
+    for (uint w = gl_SubgroupInvocationID; w < kStagedRows * kSpan * (kChannels / 4u); w += gl_SubgroupSize) {
+      const uint c4 = w % (kChannels / 4u);
+      const uint pixel = w / (kChannels / 4u);
+      const int iy = iy0 + int(pixel / kSpan);
+      const int ix = ix0 + int(pixel % kSpan);
+      uint word = kInputZeroPointWord;
+      if (iy >= 0 && iy < int(kInputHeight) && ix >= 0 && ix < int(kInputWidth)) {
+        const uint source = (uint(iy) >> kUpsample) * (kInputWidth >> kUpsample) + (uint(ix) >> kUpsample);
+        word = c4 < kChannels0 / 4u ? pc.source0.v[source * (kChannels0 / 4u) + c4]
+                                    : pc.source1.v[source * (kChannels1 / 4u) + c4 - kChannels0 / 4u];
+      }
+      const uint at = stagedAt + pixel * kPaddedChannels + 4u * c4;
+      [[unroll]] for (uint b = 0u; b != 4u; b++) {
+        sA[at + b] = int8_t(bitfieldExtract(int(word), int(8u * b), 8));
+      }
+    }
+    subgroupMemoryBarrierShared();
+    subgroupBarrier();
+
+    // 4 output rows at a time, so that a B tile is loaded once for 4 A tiles; the accumulators are 4 variables, since some
+    // drivers are much slower with an array of cooperative matrices
+    [[unroll]] for (uint n = 0u; n != kPaddedOutputs; n += kTileN) {
+      coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c0 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
+      coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c1 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
+      coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c2 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
+      coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c3 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
+      [[unroll]] for (uint tap = 0u; tap != kKernelHeight * kKernelWidth; tap++) {
+        const uint ky = tap / kKernelWidth;
+        const uint kx = tap % kKernelWidth;
+        [[unroll]] for (uint k = 0u; k != kPaddedChannels; k += kTileK) {
+          coopmat<int8_t, gl_ScopeSubgroup, kTileK, kTileN, gl_MatrixUseB> b;
+          coopMatLoad(b, pc.weights.v, (tap * kPaddedChannels + k) * kPaddedOutputs + n, kPaddedOutputs, gl_CooperativeMatrixLayoutRowMajor);
+          const uint aAt = stagedAt + (ky * kSpan + kx) * kPaddedChannels + k;
+          coopmat<int8_t, gl_ScopeSubgroup, kTileM, kTileK, gl_MatrixUseA> a;
+          coopMatLoad(a, sA, aAt, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+          c0 = coopMatMulAdd(a, b, c0);
+          coopMatLoad(a, sA, aAt + kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+          c1 = coopMatMulAdd(a, b, c1);
+          coopMatLoad(a, sA, aAt + 2u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+          c2 = coopMatMulAdd(a, b, c2);
+          coopMatLoad(a, sA, aAt + 3u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+          c3 = coopMatMulAdd(a, b, c3);
+        }
+      }
+      // a tile at the bottom of the output computes rows past it too, which are left out
+      [[unroll]] for (uint row = 0u; row != 4u; row++) {
+        if (oy0 + row >= kOutputHeight) {
+          break;
+        }
+        if (row == 0u) {
+          coopMatStore(c0, sC, cAt, kTileN, gl_CooperativeMatrixLayoutRowMajor);
+        } else if (row == 1u) {
+          coopMatStore(c1, sC, cAt, kTileN, gl_CooperativeMatrixLayoutRowMajor);
+        } else if (row == 2u) {
+          coopMatStore(c2, sC, cAt, kTileN, gl_CooperativeMatrixLayoutRowMajor);
+        } else {
+          coopMatStore(c3, sC, cAt, kTileN, gl_CooperativeMatrixLayoutRowMajor);
+        }
+        subgroupMemoryBarrierShared();
+        subgroupBarrier();
+        storeOutputs((oy0 + row) * kOutputWidth + ox0, ox0, n, cAt);
+        subgroupMemoryBarrierShared();
+        subgroupBarrier();
+      }
+    }
+  }
+}
+)";
+
+struct NssCooperativePushConstants {
+  uint64_t source0;
+  uint64_t source1;
+  uint64_t destination;
+  uint64_t weights;
+  uint64_t params;
+};
+
+enum NssPath {
+  NssPath_DataGraph = 0, // VK_ARM_tensors + VK_ARM_data_graph
+  NssPath_Cooperative, // VK_KHR_cooperative_matrix
+};
+
 struct NeuralSuperSampling {
   enum {
     kAlignment = FFX_NSS_RESOURCE_ALIGNMENT,
@@ -871,6 +1072,7 @@ struct NeuralSuperSampling {
     kInputChannels = 12,
     kFeedbackChannels = 4,
     kJitterPhaseCount = 8 * 2 * 2,
+    kCooperativeTilesPerGroup = 4, // of `kNssCooperativeCS`
   };
   static_assert(FFX_NSS_THREAD_GROUP_WIDTH == FFX_NSS_THREAD_GROUP_HEIGHT, "The dispatches below assume square thread groups");
   inline static uint32_t kGraphWidth = 0;
@@ -1077,7 +1279,379 @@ struct NeuralSuperSampling {
     return true;
   }
 
+  // the network for the cooperative matrix path: a layer is a CONV2D with the RESCALE after it and the TABLE after that, reading
+  // the RESIZE (nearest, 2x) or the CONCAT (of channels) before it straight from the activations they combine
+  struct CooperativeLayer {
+    uint32_t sources[2] = {}; // activations, 0 being the input of the graph
+    uint32_t sourceChannels[2] = {};
+    bool upsample = false;
+    glm::ivec4 inputShape = glm::ivec4(0); // of the CONV2D, after the RESIZE
+    glm::ivec4 outputShape = glm::ivec4(0);
+    glm::ivec4 kernelShape = glm::ivec4(0); // OHWI
+    uint32_t stride = 0;
+    int32_t padTop = 0;
+    int32_t padLeft = 0;
+    int32_t inputZeroPoint = 0;
+    int32_t outputZeroPoint = 0;
+    std::vector<int32_t> weights;
+    std::vector<int32_t> biases;
+    std::vector<int32_t> multipliers;
+    std::vector<int32_t> shifts;
+    std::vector<int32_t> table; // empty without a TABLE
+    uint32_t output = 0; // activation
+  };
+
+  // the layers of a (reshaped) graph and the shapes of its activations; false for anything else than what `kNssCooperativeCS`
+  // computes exactly
+  static bool buildCooperativeLayers(const std::vector<uint32_t>& words,
+                                     ldr::Span<const lvk::DataGraphConstant> constants,
+                                     std::vector<CooperativeLayer>& outLayers,
+                                     std::vector<glm::ivec4>& outActivations,
+                                     uint32_t (&outOutputs)[2]) {
+    enum {
+      SpvOpExtInst = 12,
+      SpvOpTypeInt = 21,
+      SpvOpConstantTrue = 41,
+      SpvOpConstantFalse = 42,
+      SpvOpConstant = 43,
+      SpvOpConstantComposite = 44,
+      SpvOpConstantNull = 46,
+      SpvOpTypeTensorARM = 4163,
+      SpvOpGraphConstantARM = 4181,
+      SpvOpGraphInputARM = 4184,
+      SpvOpGraphSetOutputARM = 4185,
+      SpvOpConstantCompositeReplicateEXT = 4461,
+      TOSA_CONV2D = 2,
+      TOSA_TABLE = 30,
+      TOSA_CONCAT = 54,
+      TOSA_RESIZE = 63,
+      TOSA_RESCALE = 65,
+      kAccumulatorInt32 = 1,
+      kResizeNearest = 1,
+      kRoundingSingle = 1,
+      kTableSize = 256,
+    };
+    const uint32_t bound = words.size() > 5 ? words[3] : 0;
+    std::vector<uint32_t> definitions(bound, 0);
+    std::vector<uint32_t> operators; // the offsets of the TOSA operators, in order
+    uint32_t input = 0;
+    uint32_t outputs[2] = {};
+    for (uint32_t offset = 5; offset < words.size();) {
+      const uint32_t length = words[offset] >> 16;
+      const uint32_t op = words[offset] & 0xFFFF;
+      if (!length || offset + length > words.size()) {
+        return false;
+      }
+      const bool isType = op == SpvOpTypeInt || op == SpvOpTypeTensorARM;
+      const bool isValue = op == SpvOpConstant || op == SpvOpConstantComposite || op == SpvOpConstantNull || op == SpvOpConstantTrue ||
+                           op == SpvOpConstantFalse || op == SpvOpConstantCompositeReplicateEXT || op == SpvOpGraphConstantARM ||
+                           op == SpvOpGraphInputARM || op == SpvOpExtInst;
+      const uint32_t id = isType ? words[offset + 1] : isValue ? words[offset + 2] : 0;
+      if (id >= bound) {
+        return false;
+      }
+      definitions[id] = id ? offset : definitions[id];
+      input = op == SpvOpGraphInputARM ? id : input;
+      if (op == SpvOpExtInst) {
+        operators.push_back(offset);
+      }
+      if (op == SpvOpGraphSetOutputARM) {
+        const uint32_t index = words[definitions[words[offset + 2]] + 3];
+        if (index > 1) {
+          return false;
+        }
+        outputs[index] = words[offset + 1];
+      }
+      offset += length;
+    }
+
+    auto opcode = [&](uint32_t id) -> uint32_t { return words[definitions[id]] & 0xFFFF; };
+    auto typeOf = [&](uint32_t id) -> uint32_t { return words[definitions[id] + 1]; };
+    // a scalar constant, sign-extended from the width of its type
+    auto scalar = [&](uint32_t id) -> int32_t {
+      if (opcode(id) != SpvOpConstant) {
+        return opcode(id) == SpvOpConstantTrue ? 1 : 0;
+      }
+      const uint32_t width = words[definitions[typeOf(id)] + 2];
+      const uint32_t v = words[definitions[id] + 3];
+      return width >= 32 ? (int32_t)v : (int32_t)(v << (32 - width)) >> (32 - width);
+    };
+    // the shape of a tensor type, its unused trailing dimensions 1
+    auto shapeOf = [&](uint32_t type) -> glm::ivec4 {
+      const uint32_t rank = (uint32_t)scalar(words[definitions[type] + 3]);
+      const uint32_t shape = words[definitions[type] + 4];
+      glm::ivec4 result(1);
+      for (uint32_t i = 0; i != std::min(rank, 4u); i++) {
+        result[i] = opcode(shape) == SpvOpConstantComposite ? scalar(words[definitions[shape] + 3 + i]) : 1;
+      }
+      return result;
+    };
+    auto countOf = [&](uint32_t type) -> size_t {
+      const glm::ivec4 shape = shapeOf(type);
+      return size_t(shape.x) * shape.y * shape.z * shape.w;
+    };
+    // the elements of a constant (scalar, tensor or graph constant) as int32
+    auto ints = [&](uint32_t id) -> std::vector<int32_t> {
+      const uint32_t offset = definitions[id];
+      const uint32_t op = opcode(id);
+      if (op == SpvOpConstantComposite) {
+        std::vector<int32_t> result;
+        for (uint32_t i = 3; i != (words[offset] >> 16); i++) {
+          result.push_back(scalar(words[offset + i]));
+        }
+        return result;
+      }
+      if (op == SpvOpConstantNull) {
+        return std::vector<int32_t>(countOf(typeOf(id)), 0);
+      }
+      if (op == SpvOpConstantCompositeReplicateEXT) {
+        return std::vector<int32_t>(countOf(typeOf(id)), scalar(words[offset + 3]));
+      }
+      if (op == SpvOpGraphConstantARM) {
+        for (const lvk::DataGraphConstant& c : constants) {
+          if (c.id != words[offset + 3]) {
+            continue;
+          }
+          size_t count = 1;
+          for (uint32_t i = 0; i != c.rank; i++) {
+            count *= (size_t)c.dimensions[i];
+          }
+          std::vector<int32_t> result(count);
+          for (size_t i = 0; i != count; i++) {
+            result[i] = c.format == lvk::Format_R_I32   ? ((const int32_t*)c.data)[i]
+                        : c.format == lvk::Format_R_I16 ? ((const int16_t*)c.data)[i]
+                                                        : ((const int8_t*)c.data)[i];
+          }
+          return result;
+        }
+        return {};
+      }
+      return {scalar(id)};
+    };
+
+    std::vector<uint32_t> readers(bound, 0); // how many operators read a value
+    for (const uint32_t offset : operators) {
+      const uint32_t instruction = words[offset + 4];
+      const uint32_t first = instruction == TOSA_CONV2D || instruction == TOSA_RESCALE ? 10
+                             : instruction == TOSA_RESIZE                              ? 6
+                             : instruction == TOSA_CONCAT                              ? 6
+                                                                                       : 5;
+      const uint32_t last = instruction == TOSA_CONCAT ? (words[offset] >> 16) : first + 1;
+      for (uint32_t i = first; i != last; i++) {
+        readers[words[offset + i]]++;
+      }
+    }
+
+    std::vector<int32_t> activationOf(bound, -1);
+    std::vector<int32_t> layerOf(bound, -1); // of a CONV2D result
+    std::vector<int32_t> resized(bound, -1); // the activation a RESIZE result upsamples
+    std::vector<glm::ivec2> concatenated(bound, glm::ivec2(-1)); // the activations a CONCAT result joins
+    outLayers.clear();
+    outActivations = {shapeOf(typeOf(input))};
+    activationOf[input] = 0;
+    for (const uint32_t offset : operators) {
+      const uint32_t type = words[offset + 1];
+      const uint32_t result = words[offset + 2];
+      const uint32_t instruction = words[offset + 4];
+      const uint32_t* operands = &words[offset + 5];
+      const uint32_t numOperands = (words[offset] >> 16) - 5;
+      if (instruction == TOSA_CONV2D) {
+        const uint32_t source = operands[5];
+        CooperativeLayer layer;
+        const bool isActivation = activationOf[source] >= 0;
+        const bool isResized = resized[source] >= 0;
+        const bool isConcatenated = concatenated[source].x >= 0;
+        if (!isActivation && !isResized && !isConcatenated) {
+          return false;
+        }
+        layer.sources[0] = isActivation ? activationOf[source] : isResized ? resized[source] : concatenated[source].x;
+        layer.sources[1] = isConcatenated ? concatenated[source].y : layer.sources[0];
+        layer.sourceChannels[0] = outActivations[layer.sources[0]].w;
+        layer.sourceChannels[1] = isConcatenated ? outActivations[layer.sources[1]].w : 0;
+        layer.upsample = isResized;
+        layer.inputShape = shapeOf(typeOf(source));
+        layer.outputShape = shapeOf(type);
+        layer.kernelShape = shapeOf(typeOf(operands[6]));
+        const std::vector<int32_t> pad = ints(operands[0]);
+        const std::vector<int32_t> stride = ints(operands[1]);
+        const std::vector<int32_t> dilation = ints(operands[2]);
+        layer.weights = ints(operands[6]);
+        layer.biases = ints(operands[7]);
+        layer.inputZeroPoint = ints(operands[8])[0];
+        const uint32_t channels = layer.sourceChannels[0] + layer.sourceChannels[1];
+        const bool isSupported = pad.size() == 4 && stride.size() == 2 && stride[0] == stride[1] && stride[0] > 0 && dilation.size() == 2 &&
+                                 dilation[0] == 1 && dilation[1] == 1 && scalar(operands[3]) == kAccumulatorInt32 &&
+                                 ints(operands[9])[0] == 0 && layer.kernelShape.w == (int32_t)channels &&
+                                 layer.inputShape.w == (int32_t)channels && layer.sourceChannels[0] % 4 == 0 &&
+                                 layer.sourceChannels[1] % 4 == 0 && layer.weights.size() == countOf(typeOf(operands[6])) &&
+                                 layer.biases.size() == (size_t)layer.kernelShape.x;
+        if (!isSupported) {
+          return false;
+        }
+        layer.stride = (uint32_t)stride[0];
+        layer.padTop = pad[0];
+        layer.padLeft = pad[2];
+        layerOf[result] = (int32_t)outLayers.size();
+        outLayers.push_back(std::move(layer));
+      } else if (instruction == TOSA_RESCALE) {
+        const uint32_t source = operands[5];
+        if (layerOf[source] < 0 || readers[source] != 1) {
+          return false;
+        }
+        CooperativeLayer& layer = outLayers[layerOf[source]];
+        layer.multipliers = ints(operands[6]);
+        layer.shifts = ints(operands[7]);
+        layer.outputZeroPoint = ints(operands[9])[0];
+        const bool isSupported = scalar(operands[0]) == 1 && scalar(operands[1]) == kRoundingSingle && scalar(operands[2]) == 1 &&
+                                 !scalar(operands[3]) && !scalar(operands[4]) && ints(operands[8])[0] == 0 &&
+                                 layer.multipliers.size() == (size_t)layer.kernelShape.x &&
+                                 layer.shifts.size() == (size_t)layer.kernelShape.x && shapeOf(type) == layer.outputShape;
+        if (!isSupported) {
+          return false;
+        }
+        layer.output = (uint32_t)outActivations.size();
+        activationOf[result] = (int32_t)layer.output;
+        outActivations.push_back(layer.outputShape);
+      } else if (instruction == TOSA_TABLE) {
+        const uint32_t source = operands[0];
+        const int32_t activation = activationOf[source];
+        CooperativeLayer* producer = nullptr;
+        for (CooperativeLayer& layer : outLayers) {
+          producer = activation > 0 && layer.output == (uint32_t)activation ? &layer : producer;
+        }
+        if (!producer || readers[source] != 1 || !producer->table.empty()) {
+          return false;
+        }
+        producer->table = ints(operands[1]);
+        if (producer->table.size() != kTableSize) {
+          return false;
+        }
+        activationOf[result] = activation;
+      } else if (instruction == TOSA_RESIZE) {
+        // only a 2x nearest upsampling, which reads the input at (x >> 1, y >> 1)
+        const int32_t activation = activationOf[operands[1]];
+        const std::vector<int32_t> scale = ints(operands[2]); // y_n, y_d, x_n, x_d
+        const std::vector<int32_t> offsets = ints(operands[3]);
+        if (activation < 0 || scalar(operands[0]) != kResizeNearest || scale.size() != 4 || offsets.size() != 2) {
+          return false;
+        }
+        const glm::ivec4 from = outActivations[activation];
+        const glm::ivec4 to = shapeOf(type);
+        for (int32_t axis = 0; axis != 2; axis++) {
+          const int32_t n = scale[2 * axis];
+          const int32_t d = scale[2 * axis + 1];
+          const int32_t size = from[1 + axis];
+          if (to[1 + axis] != 2 * size || n <= 0 || d <= 0) {
+            return false;
+          }
+          for (int32_t o = 0; o != to[1 + axis]; o++) {
+            const int32_t v = o * d + offsets[axis];
+            const int32_t floor = v >= 0 ? v / n : -((-v + n - 1) / n);
+            const int32_t i = std::clamp(floor + (2 * (v - floor * n) >= n ? 1 : 0), 0, size - 1);
+            if (i != o / 2) {
+              return false;
+            }
+          }
+        }
+        resized[result] = activation;
+      } else if (instruction == TOSA_CONCAT) {
+        const bool isSupported = numOperands == 3 && ints(operands[0])[0] == 3 && activationOf[operands[1]] >= 0 &&
+                                 activationOf[operands[2]] >= 0;
+        if (!isSupported) {
+          return false;
+        }
+        concatenated[result] = glm::ivec2(activationOf[operands[1]], activationOf[operands[2]]);
+      } else {
+        return false;
+      }
+    }
+    for (uint32_t i = 0; i != 2; i++) {
+      if (!outputs[i] || activationOf[outputs[i]] <= 0) {
+        return false;
+      }
+      outOutputs[i] = (uint32_t)activationOf[outputs[i]];
+    }
+    for (const CooperativeLayer& layer : outLayers) {
+      if (layer.multipliers.empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // the B matrices (per tap, the channels padded to K by the outputs padded to N, zeros in the padding) and the parameters (the
+  // biases with the input zero point folded in, the multipliers, the shifts, then the table) of a layer, appended to `weights`
+  // and `params`; returns the GLSL constants of its `kNssCooperativeCS`
+  static std::string buildCooperativeLayer(const CooperativeLayer& layer,
+                                           const CooperativeMatrixShape& tile,
+                                           std::vector<int8_t>& weights,
+                                           std::vector<int32_t>& params) {
+    auto roundUp = [](uint32_t value, uint32_t multiple) { return (value + multiple - 1) / multiple * multiple; };
+    const uint32_t outputs = (uint32_t)layer.kernelShape.x;
+    const uint32_t taps = uint32_t(layer.kernelShape.y * layer.kernelShape.z);
+    const uint32_t channels = (uint32_t)layer.kernelShape.w;
+    const uint32_t paddedChannels = roundUp(channels, tile.k);
+    const uint32_t paddedOutputs = roundUp(outputs, tile.n);
+    const size_t weightsAt = weights.size();
+    weights.resize(weightsAt + size_t(taps) * paddedChannels * paddedOutputs, 0);
+    const size_t paramsAt = params.size();
+    params.resize(paramsAt + 3 * size_t(paddedOutputs), 0);
+    for (uint32_t o = 0; o != outputs; o++) {
+      int32_t sum = 0;
+      for (uint32_t tap = 0; tap != taps; tap++) {
+        for (uint32_t c = 0; c != channels; c++) {
+          const int32_t w = layer.weights[(size_t(o) * taps + tap) * channels + c];
+          weights[weightsAt + (size_t(tap) * paddedChannels + c) * paddedOutputs + o] = (int8_t)w;
+          sum += w;
+        }
+      }
+      params[paramsAt + o] = layer.biases[o] - layer.inputZeroPoint * sum;
+      params[paramsAt + paddedOutputs + o] = layer.multipliers[o];
+      params[paramsAt + 2 * paddedOutputs + o] = layer.shifts[o];
+    }
+    params.insert(params.end(), layer.table.begin(), layer.table.end());
+    const uint32_t zeroPoint = uint32_t(layer.inputZeroPoint) & 0xFF;
+    struct Constant {
+      const char* name;
+      int64_t value;
+    };
+    const Constant values[] = {
+        {"kTilesPerGroup", kCooperativeTilesPerGroup},
+        {"kTileM", tile.m},
+        {"kTileN", tile.n},
+        {"kTileK", tile.k},
+        {"kMinSubgroupSize", tile.minSubgroupSize},
+        {"kKernelHeight", layer.kernelShape.y},
+        {"kKernelWidth", layer.kernelShape.z},
+        {"kStride", layer.stride},
+        {"kInputWidth", layer.inputShape.z},
+        {"kInputHeight", layer.inputShape.y},
+        {"kUpsample", layer.upsample ? 1 : 0},
+        {"kChannels", channels},
+        {"kChannels0", layer.sourceChannels[0]},
+        {"kChannels1", layer.sourceChannels[1]},
+        {"kPaddedChannels", paddedChannels},
+        {"kOutputWidth", layer.outputShape.z},
+        {"kOutputHeight", layer.outputShape.y},
+        {"kOutputs", outputs},
+        {"kPaddedOutputs", paddedOutputs},
+        {"kInputZeroPointWord", zeroPoint * 0x01010101u},
+        {"kTableAt", 3 * paddedOutputs},
+    };
+    std::string code;
+    for (const Constant& v : values) {
+      code += std::string("const uint ") + v.name + " = " + std::to_string(v.value) + "u;\n";
+    }
+    code += "const int kPadTop = " + std::to_string(layer.padTop) + ";\nconst int kPadLeft = " + std::to_string(layer.padLeft) +
+            ";\nconst int kOutputZeroPoint = " + std::to_string(layer.outputZeroPoint) +
+            ";\nconst bool kHasTable = " + (layer.table.empty() ? "false" : "true") + ";\n";
+    return code;
+  }
+
   bool supported = false;
+  bool graphReady = false;
+  bool cooperativeReady = false;
+  int path = NssPath_DataGraph;
   bool resetHistory = true;
   float exposure = 1.0f;
   uint32_t frameIndex = 0;
@@ -1109,6 +1683,20 @@ struct NeuralSuperSampling {
   lvk::Holder<lvk::DataGraphPipelineHandle> pipelineGraph;
   lvk::TensorHandle graphInputs[1] = {};
   lvk::TensorHandle graphOutputs[2] = {};
+  struct CooperativeDispatch {
+    lvk::Holder<lvk::ShaderModuleHandle> sm;
+    lvk::Holder<lvk::ComputePipelineHandle> pipeline;
+    uint32_t sources[2] = {};
+    uint32_t output = 0;
+    uint32_t groups = 0;
+    size_t weightsAt = 0;
+    size_t paramsAt = 0;
+  };
+  std::vector<CooperativeDispatch> cooperativeDispatches;
+  std::vector<lvk::Holder<lvk::BufferHandle>> cooperativeActivations;
+  std::vector<lvk::BufferHandle> activationBuffers; // of every activation, the tensors' buffers included
+  lvk::Holder<lvk::BufferHandle> cooperativeWeights;
+  lvk::Holder<lvk::BufferHandle> cooperativeParams;
 
   static float halton(int32_t index, int32_t base) {
     float f = 1.0f;
@@ -1127,11 +1715,8 @@ struct NeuralSuperSampling {
 
   bool init(lvk::IContext* ctx) {
     supported = false;
-
-    if (!ctx->supportsTensorsARM() || !ctx->supportsDataGraphARM()) {
-      LLOGW("NSS requires VK_ARM_tensors and VK_ARM_data_graph (configure with LVK_WITH_ML_EMULATION_LAYER=ON to emulate them)\n");
-      return false;
-    }
+    graphReady = false;
+    cooperativeReady = false;
 
     lvk::VgfModel vgf;
     const std::vector<uint8_t> blobVGF = app_->loadFile((app_->folderContentRoot_ + kNssModelFile).c_str());
@@ -1163,6 +1748,49 @@ struct NeuralSuperSampling {
       return false;
     }
 
+    // the tensors' buffers: the data graph reaches them through the tensors aliasing them, the cooperative matrices directly
+    auto createTensorBuffer = [ctx](const int64_t (&dims)[4], const char* debugName) -> lvk::Holder<lvk::BufferHandle> {
+      return ctx->createBuffer({
+          .usage = lvk::BufferUsageBits_Storage,
+          .storage = lvk::StorageType_Device,
+          .size = size_t(dims[0] * dims[1] * dims[2] * dims[3]),
+          .debugName = debugName,
+      });
+    };
+    bufTensorInput = createTensorBuffer(dimsInput, "NSS: input tensor");
+    bufTensorKpn = createTensorBuffer(dimsKpn, "NSS: KPN coefficients");
+    bufTensorFeedback = createTensorBuffer(dimsFeedback, "NSS: temporal feedback");
+
+    // the same network as int8 cooperative matrices in compute shaders, which needs no VK_ARM_* extension
+    const CooperativeMatrixShape tile =
+        getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR);
+    std::vector<CooperativeLayer> layers;
+    std::vector<glm::ivec4> activations;
+    uint32_t cooperativeOutputs[2] = {};
+    const bool isComputable = tile.m && buildCooperativeLayers(spirv, vgf.getConstants(), layers, activations, cooperativeOutputs);
+    // the staged input rows and the C tile of every subgroup a workgroup can have
+    bool isSharedMemoryEnough = isComputable;
+    for (const CooperativeLayer& layer : layers) {
+      const uint32_t span = (tile.m - 1) * layer.stride + uint32_t(layer.kernelShape.z);
+      const uint32_t stagedRows = 3 * layer.stride + uint32_t(layer.kernelShape.y);
+      const uint32_t paddedChannels = (uint32_t(layer.kernelShape.w) + tile.k - 1) / tile.k * tile.k;
+      const uint32_t sharedMemory = 64 / tile.minSubgroupSize * (stagedRows * span * paddedChannels + sizeof(int32_t) * tile.m * tile.n);
+      isSharedMemoryEnough = isSharedMemoryEnough && sharedMemory <= tile.maxSharedMemorySize;
+    }
+    cooperativeReady = isSharedMemoryEnough && activations[0] == glm::ivec4(1, kGraphHeight, kGraphWidth, kInputChannels) &&
+                       activations[cooperativeOutputs[indexKpn]] == shapeKpn &&
+                       activations[cooperativeOutputs[indexFeedback]] == shapeFeedback;
+    if (!cooperativeReady) {
+      LLOGW(!tile.m         ? "NSS: int8 cooperative matrices (VK_KHR_cooperative_matrix) are not available\n"
+            : !isComputable ? "NSS: the graph has operators the cooperative matrix path does not compute\n"
+                            : "NSS: the cooperative matrix path needs more shared memory than the device has\n");
+    }
+
+    const bool hasTensors = ctx->supportsTensorsARM() && ctx->supportsDataGraphARM();
+    if (!hasTensors) {
+      LLOGW(
+          "NSS: VK_ARM_tensors and VK_ARM_data_graph are not available (configure with LVK_WITH_ML_EMULATION_LAYER=ON to emulate them)\n");
+    }
     lvk::Result result;
     auto graphTensorDesc = [](const int64_t (&dims)[4]) -> lvk::TensorDesc {
       return {
@@ -1172,23 +1800,28 @@ struct NeuralSuperSampling {
           .usage = lvk::TensorUsageBits_DataGraph,
       };
     };
-    tensorInput = createTensorWithBuffer(ctx, graphTensorDesc(dimsInput), bufTensorInput, "NSS: input tensor", &result);
-    if (!result.isOk()) {
-      LLOGW("NSS: cannot create the input tensor: %s\n", result.message);
-      return false;
+    bool tensorsReady = hasTensors;
+    if (tensorsReady) {
+      tensorInput = ctx->createTensorBufferAliasing(bufTensorInput, 0, graphTensorDesc(dimsInput), "NSS: input tensor", &result);
+      tensorsReady = result.isOk();
     }
-    tensorKpn = createTensorWithBuffer(ctx, graphTensorDesc(dimsKpn), bufTensorKpn, "NSS: KPN coefficients", &result);
-    if (!result.isOk()) {
-      LLOGW("NSS: cannot create the KPN tensor: %s\n", result.message);
-      return false;
+    if (tensorsReady) {
+      tensorKpn = ctx->createTensorBufferAliasing(bufTensorKpn, 0, graphTensorDesc(dimsKpn), "NSS: KPN coefficients", &result);
+      tensorsReady = result.isOk();
     }
-    feedbackAliasing = ctx->getTensorFormatSupport(lvk::Format_R_I8, lvk::TensorTiling_Optimal) & lvk::TensorUsageBits_ImageAliasing;
+    if (hasTensors && !tensorsReady) {
+      LLOGW("NSS: cannot create the tensors: %s\n", result.message);
+    }
+    // the cooperative matrices always write the feedback into its buffer and copy it into the texture
+    feedbackAliasing = tensorsReady &&
+                       (ctx->getTensorFormatSupport(lvk::Format_R_I8, lvk::TensorTiling_Optimal) & lvk::TensorUsageBits_ImageAliasing);
     if (feedbackAliasing) {
       texFeedback = ctx->createTexture({
           .type = lvk::TextureType_2D,
           .format = lvk::Format_RGBA_SN8,
           .dimensions = {kGraphWidth, kGraphHeight},
-          .usage = lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_TensorAliasing,
+          .usage = lvk::TextureUsageFlags(lvk::TextureUsageBits_Sampled | lvk::TextureUsageBits_TensorAliasing |
+                                          (cooperativeReady ? lvk::TextureUsageBits_Storage : 0)),
           .debugName = "NSS: temporal feedback (texture)",
       });
       tensorFeedback = ctx->createTensorTextureAliasing(texFeedback, graphTensorDesc(dimsFeedback), "NSS: temporal feedback", &result);
@@ -1199,10 +1832,13 @@ struct NeuralSuperSampling {
       }
     }
     if (!feedbackAliasing) {
-      tensorFeedback = createTensorWithBuffer(ctx, graphTensorDesc(dimsFeedback), bufTensorFeedback, "NSS: temporal feedback", &result);
-      if (!result.isOk()) {
-        LLOGW("NSS: cannot create the feedback tensor: %s\n", result.message);
-        return false;
+      if (tensorsReady) {
+        tensorFeedback =
+            ctx->createTensorBufferAliasing(bufTensorFeedback, 0, graphTensorDesc(dimsFeedback), "NSS: temporal feedback", &result);
+        tensorsReady = result.isOk();
+        if (!tensorsReady) {
+          LLOGW("NSS: cannot create the feedback tensor: %s\n", result.message);
+        }
       }
       texFeedback = ctx->createTexture({
           .type = lvk::TextureType_2D,
@@ -1212,7 +1848,9 @@ struct NeuralSuperSampling {
           .debugName = "NSS: temporal feedback (texture)",
       });
     }
-    LLOGL("NSS: temporal feedback via %s\n", feedbackAliasing ? "a texture aliased by the tensor" : "a buffer copied into a texture");
+    if (tensorsReady) {
+      LLOGL("NSS: temporal feedback via %s\n", feedbackAliasing ? "a texture aliased by the tensor" : "a buffer copied into a texture");
+    }
 
     for (uint32_t i = 0; i != 2; i++) {
       texLumaDeriv[i] = ctx->createTexture({
@@ -1289,34 +1927,99 @@ struct NeuralSuperSampling {
       LLOGL("NSS: compiled `%s` in %.1f ms\n", pass.debugName, 1000.0 * (glfwGetTime() - start));
     }
 
-    graphInputs[0] = tensorInput;
-    graphOutputs[indexKpn] = tensorKpn;
-    graphOutputs[indexFeedback] = tensorFeedback;
-    const double start = glfwGetTime();
-    const lvk::Holder<lvk::ShaderModuleHandle> smGraph =
-        ctx->createShaderModule({spirv.data(), spirv.size() * sizeof(uint32_t), lvk::Stage_DataGraph, "NSS: data graph"});
-    // the pipeline is described by the tensors it gets bound to, which may be optimally tiled copies of the buffer-aliasing ones
-    const lvk::TensorDesc boundInputs[] = {ctx->getTensorDesc(graphInputs[0])};
-    const lvk::TensorDesc boundOutputs[] = {ctx->getTensorDesc(graphOutputs[0]), ctx->getTensorDesc(graphOutputs[1])};
-    pipelineGraph = ctx->createDataGraphPipeline(
-        {
-            .smGraph = smGraph,
-            .entryPoint = vgf.getEntryPoint(),
-            .inputs = {boundInputs, 1},
-            .outputs = {boundOutputs, 2},
-            .constants = vgf.getConstants(),
-            .debugName = "NSS: data graph",
-        },
-        &result);
-    if (!result.isOk()) {
-      LLOGW("NSS: cannot create the data graph pipeline: %s\n", result.message);
-      return false;
+    if (tensorsReady) {
+      graphInputs[0] = tensorInput;
+      graphOutputs[indexKpn] = tensorKpn;
+      graphOutputs[indexFeedback] = tensorFeedback;
+      const double start = glfwGetTime();
+      const lvk::Holder<lvk::ShaderModuleHandle> smGraph =
+          ctx->createShaderModule({spirv.data(), spirv.size() * sizeof(uint32_t), lvk::Stage_DataGraph, "NSS: data graph"});
+      // the pipeline is described by the tensors it gets bound to, which may be optimally tiled copies of the buffer-aliasing ones
+      const lvk::TensorDesc boundInputs[] = {ctx->getTensorDesc(graphInputs[0])};
+      const lvk::TensorDesc boundOutputs[] = {ctx->getTensorDesc(graphOutputs[0]), ctx->getTensorDesc(graphOutputs[1])};
+      pipelineGraph = ctx->createDataGraphPipeline(
+          {
+              .smGraph = smGraph,
+              .entryPoint = vgf.getEntryPoint(),
+              .inputs = {boundInputs, 1},
+              .outputs = {boundOutputs, 2},
+              .constants = vgf.getConstants(),
+              .debugName = "NSS: data graph",
+          },
+          &result);
+      graphReady = result.isOk();
+      if (graphReady) {
+        LLOGL("NSS: data graph pipeline created in %.1f ms\n", 1000.0 * (glfwGetTime() - start));
+      } else {
+        LLOGW("NSS: cannot create the data graph pipeline: %s\n", result.message);
+      }
     }
-    LLOGL("NSS: data graph pipeline created in %.1f ms\n", 1000.0 * (glfwGetTime() - start));
 
-    supported = true;
+    if (cooperativeReady) {
+      const double start = glfwGetTime();
+      // the activations the layers write; the input and the outputs of the graph are the tensors' buffers
+      activationBuffers.assign(activations.size(), {});
+      activationBuffers[0] = bufTensorInput;
+      activationBuffers[cooperativeOutputs[indexKpn]] = bufTensorKpn;
+      activationBuffers[cooperativeOutputs[indexFeedback]] = bufTensorFeedback;
+      for (uint32_t i = 1; i != activations.size(); i++) {
+        if (activationBuffers[i].valid()) {
+          continue;
+        }
+        const glm::ivec4 shape = activations[i];
+        cooperativeActivations.push_back(ctx->createBuffer({
+            .usage = lvk::BufferUsageBits_Storage,
+            .storage = lvk::StorageType_Device,
+            .size = size_t(shape.x) * shape.y * shape.z * shape.w,
+            .debugName = "NSS: activation",
+        }));
+        activationBuffers[i] = cooperativeActivations.back();
+      }
+      std::vector<int8_t> weights;
+      std::vector<int32_t> params;
+      for (const CooperativeLayer& layer : layers) {
+        const size_t weightsAt = weights.size();
+        const size_t paramsAt = sizeof(int32_t) * params.size();
+        const std::string code = kNssCooperativeExtensions + buildCooperativeLayer(layer, tile, weights, params) + kNssCooperativeCS;
+        CooperativeDispatch dispatch = {
+            .sm = ctx->createShaderModule({code.c_str(), lvk::Stage_Comp, "Shader Module: NSS cooperative matrices (comp)"}),
+            .sources = {layer.sources[0], layer.sources[1]},
+            .output = layer.output,
+            .groups = (uint32_t(layer.outputShape.z + tile.m - 1) / tile.m * (uint32_t(layer.outputShape.y + 3) / 4) +
+                       kCooperativeTilesPerGroup - 1) /
+                      kCooperativeTilesPerGroup,
+            .weightsAt = weightsAt,
+            .paramsAt = paramsAt,
+        };
+        dispatch.pipeline = ctx->createComputePipeline({.smComp = dispatch.sm, .debugName = "NSS: cooperative matrices"});
+        cooperativeDispatches.push_back(std::move(dispatch));
+      }
+      cooperativeWeights = ctx->createBuffer({
+          .usage = lvk::BufferUsageBits_Storage,
+          .storage = lvk::StorageType_Device,
+          .size = weights.size(),
+          .data = weights.data(),
+          .debugName = "NSS: cooperative matrix weights",
+      });
+      cooperativeParams = ctx->createBuffer({
+          .usage = lvk::BufferUsageBits_Storage,
+          .storage = lvk::StorageType_Device,
+          .size = sizeof(int32_t) * params.size(),
+          .data = params.data(),
+          .debugName = "NSS: cooperative matrix parameters",
+      });
+      LLOGL("NSS: %u layers as %ux%ux%u int8 cooperative matrices, created in %.1f ms\n",
+            (uint32_t)layers.size(),
+            tile.m,
+            tile.n,
+            tile.k,
+            1000.0 * (glfwGetTime() - start));
+    }
+
+    supported = graphReady || cooperativeReady;
+    path = graphReady ? NssPath_DataGraph : NssPath_Cooperative;
     resetHistory = true;
-    return true;
+    return supported;
   }
 
   lvk::TextureHandle history() const {
@@ -1435,6 +2138,12 @@ struct NeuralSuperSampling {
                        });
     buffer.cmdPopDebugGroupLabel();
 
+    // the cooperative matrices read and write the tensors' buffers directly
+    const bool isGraph = path == NssPath_DataGraph;
+    lvk::TensorHandle tensorsInput[] = {tensorInput};
+    lvk::TensorHandle tensorsOutput[] = {tensorKpn, tensorFeedback};
+    lvk::TensorHandle tensorsFeedback[] = {tensorFeedback};
+
     buffer.cmdPushDebugGroupLabel("NSS: preprocess", 0xff0000ff);
     buffer.cmdBindComputePipeline(pipelinePreprocess);
     buffer.cmdPushConstants(pc);
@@ -1443,16 +2152,35 @@ struct NeuralSuperSampling {
         {
             .sampledImages = {res_.texColorLR, res_.texDepthLR, res_.texMotionLR, texHistory, texFeedback, lumaDerivTm1, texDepthTm1},
             .storageImages = {lumaDeriv, texNearestDepthCoord},
-            .buffers = {bufConstants},
-            .tensors = {tensorInput},
+            .buffers = {bufConstants, bufTensorInput},
+            .tensors = {tensorsInput, isGraph ? 1u : 0u},
         });
     buffer.cmdPopDebugGroupLabel();
 
-    buffer.cmdPushDebugGroupLabel("NSS: data graph", 0xff0000ff);
-    buffer.cmdDispatchDataGraph(pipelineGraph, graphInputs, graphOutputs);
-    buffer.cmdPopDebugGroupLabel();
+    if (isGraph) {
+      buffer.cmdPushDebugGroupLabel("NSS: data graph", 0xff0000ff);
+      buffer.cmdDispatchDataGraph(pipelineGraph, graphInputs, graphOutputs);
+      buffer.cmdPopDebugGroupLabel();
+    } else {
+      buffer.cmdPushDebugGroupLabel("NSS: cooperative matrices", 0xff0000ff);
+      for (const CooperativeDispatch& layer : cooperativeDispatches) {
+        const lvk::BufferHandle source0 = activationBuffers[layer.sources[0]];
+        const lvk::BufferHandle source1 = activationBuffers[layer.sources[1]];
+        const lvk::BufferHandle destination = activationBuffers[layer.output];
+        buffer.cmdBindComputePipeline(layer.pipeline);
+        buffer.cmdPushConstants(NssCooperativePushConstants{
+            .source0 = ctx->gpuAddress(source0),
+            .source1 = ctx->gpuAddress(source1),
+            .destination = ctx->gpuAddress(destination),
+            .weights = ctx->gpuAddress(cooperativeWeights, layer.weightsAt),
+            .params = ctx->gpuAddress(cooperativeParams, layer.paramsAt),
+        });
+        buffer.cmdDispatch({layer.groups, 1, 1}, {.buffers = {source0, source1, destination}});
+      }
+      buffer.cmdPopDebugGroupLabel();
+    }
 
-    if (!feedbackAliasing) {
+    if (!isGraph || !feedbackAliasing) {
       buffer.cmdPushDebugGroupLabel("NSS: feedback to texture", 0xff0000ff);
       buffer.cmdBindComputePipeline(pipelineFeedbackToTexture);
       const struct {
@@ -1470,7 +2198,8 @@ struct NeuralSuperSampling {
       buffer.cmdDispatch({groups(kGraphWidth), groups(kGraphHeight), 1},
                          {
                              .storageImages = {texFeedback},
-                             .tensors = {tensorFeedback},
+                             .buffers = {bufTensorFeedback},
+                             .tensors = {tensorsFeedback, isGraph ? 1u : 0u},
                          });
       buffer.cmdPopDebugGroupLabel();
     }
@@ -1482,8 +2211,8 @@ struct NeuralSuperSampling {
                        {
                            .sampledImages = {res_.texColorLR, res_.texMotionLR, texHistory, texFeedback, texNearestDepthCoord},
                            .storageImages = {texOut},
-                           .buffers = {bufConstants},
-                           .tensors = {tensorKpn, tensorFeedback},
+                           .buffers = {bufConstants, bufTensorKpn},
+                           .tensors = {tensorsOutput, isGraph ? 2u : 0u},
                        });
     buffer.cmdPopDebugGroupLabel();
   }
@@ -1552,6 +2281,7 @@ VULKAN_APP_MAIN {
 
   bool cameraRotate = false;
   bool measureTime = false;
+  bool preferCooperative = false;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--no-nss")) {
       renderMode_ = RenderMode_HalfResolution;
@@ -1561,6 +2291,8 @@ VULKAN_APP_MAIN {
       cameraRotate = true;
     } else if (!strcmp(argv[i], "--timings")) {
       measureTime = true;
+    } else if (!strcmp(argv[i], "--nss-cm")) {
+      preferCooperative = true;
     } else if (!strcmp(argv[i], "--full-res")) {
       renderMode_ = RenderMode_FullResolution;
       sceneWidth_ = kOutputWidth;
@@ -1591,6 +2323,8 @@ VULKAN_APP_MAIN {
   }
 
   nss_.init(ctx_);
+  // `--nss-cm` prefers the cooperative matrices to the data graph
+  nss_.path = preferCooperative && nss_.cooperativeReady ? NssPath_Cooperative : nss_.path;
   if (!nss_.supported && renderMode_ == RenderMode_HalfResolutionNSS) {
     renderMode_ = RenderMode_HalfResolution;
   }
@@ -1799,7 +2533,10 @@ VULKAN_APP_MAIN {
         app.imgui_->beginFrame(fbMain);
         drawMaterialTexturesLoadingProgress();
         ImGui::Begin("Neural Super Sampling", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs);
-        ImGui::Text("W/S/A/D - camera movement, Shift - fast movement");
+        ImGui::Text("W/S/A/D - camera movement");
+        ImGui::Text("1/2 - camera up/down");
+        ImGui::Text("Shift - fast movement");
+        ImGui::Text("Space - reset camera");
         ImGui::Text("N - toggle NSS, R - reset history, F - full-resolution scene");
         ImGui::Separator();
         char modes[RenderMode_NUM_MODES][64] = {};
@@ -1823,6 +2560,16 @@ VULKAN_APP_MAIN {
         if (ImGui::Combo("Rendering", &renderMode_, items, numItems)) {
           nss_.resetHistory = true;
         }
+        // the network on either, each grayed out without the extensions it runs on
+        const float indentSize = 16.0f;
+        ImGui::Indent(indentSize);
+        ImGui::BeginDisabled(!nss_.graphReady || renderMode_ != RenderMode_HalfResolutionNSS);
+        ImGui::RadioButton("NSS (VK_ARM_tensors + VK_ARM_data_graph)", &nss_.path, NssPath_DataGraph);
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(!nss_.cooperativeReady || renderMode_ != RenderMode_HalfResolutionNSS);
+        ImGui::RadioButton("NSS (VK_KHR_cooperative_matrix)", &nss_.path, NssPath_Cooperative);
+        ImGui::EndDisabled();
+        ImGui::Unindent(indentSize);
         ImGui::Separator();
         if (rayQuery_) {
           ImGui::SliderInt("Ray-traced AO samples per pixel", &aoSamples_, 0, 16);
@@ -1838,7 +2585,9 @@ VULKAN_APP_MAIN {
           }
           ImGui::SliderFloat("Exposure", &nss_.exposure, 0.1f, 8.0f);
         } else {
-          ImGui::Text("VK_ARM_tensors / VK_ARM_data_graph are not available: showing the %ux%u input", kRenderWidth, kRenderHeight);
+          ImGui::Text("NSS needs VK_ARM_tensors + VK_ARM_data_graph or VK_KHR_cooperative_matrix: showing the %ux%u input",
+                      kRenderWidth,
+                      kRenderHeight);
         }
         ImGui::End();
         const GPUStageTimer::Row rows[] = {
