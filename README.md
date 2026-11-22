@@ -160,7 +160,7 @@ lvk::Holder<lvk::DataGraphPipelineHandle> graph = vgf.createDataGraphPipeline(*c
 buffer.cmdDispatchDataGraph(graph, inputs, outputs);
 ```
 
-Samples: `ARM_001_NeuralSuperSampling`, `ARM_002_NeuralOIT`.
+Samples: `ARM_001_NeuralSuperSampling`, `ARM_002_NeuralOIT`, `ARM_003_NeuralGI`.
 
 GPUs without native support can use the [Arm ML Emulation Layer for Vulkan](https://github.com/arm/ai-ml-emulation-layer-for-vulkan).
 LightweightVK downloads and builds a [fork](https://github.com/rokuz/ai-ml-emulation-layer-for-vulkan) of it from source, with no global

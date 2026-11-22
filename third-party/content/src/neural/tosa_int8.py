@@ -5,7 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""The integer arithmetic of the int8 TOSA graphs `train_dfaoit.py` writes."""
+"""The integer arithmetic of the int8 TOSA graphs `train_dfaoit.py` and `train_nlg.py` write."""
 import numpy as np
 
 

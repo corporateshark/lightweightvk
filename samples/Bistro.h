@@ -29,9 +29,10 @@
    void cancelLoadingMaterialTextures()
 
  `loadMaterialTextures()` returns immediately; call `processLoadedMaterialTextures()` once per frame to upload whatever
- is ready. The result is stored in the global variable:
+ is ready. The result is stored in the global variables:
 
    std::vector<GPUMaterial> materials_;
+   std::vector<uint8_t> materialsAlphaTested_; // any texel with alpha below 250
 
  With `loadMaterialMaps`, the `map_Ks` (specular) and `map_bump` (normal) textures are loaded too, into `texSpecular` and
  `texNormal` (otherwise they stay 0, meaning "no texture").
@@ -42,7 +43,7 @@
    FULLSCREEN_TRIANGLE_GLSL    // GLSL: `fullscreenTriangle()` turned by the swapchain pre-rotation `getClipRotation()`
    vec2 getClipRotation(lvk::IContext* ctx)
    lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(...)
-   class TosaGraphBuilder      // SPIR-V of a TOSA integer graph: CONV2D, RESCALE, TABLE
+   class TosaGraphBuilder      // SPIR-V of a TOSA integer graph: CONV2D, RESCALE, TABLE, ADD
    struct GPUStageTimer        // GPU time per stage, measured every 2nd frame and read back a few frames later; its
                                // history in a "GPU time" window with a sparkline per stage (drawWindow())
    SceneAccelStructs createSceneAccelStructs(...)
@@ -369,6 +370,7 @@ struct GPUMaterial {
 static_assert(sizeof(GPUMaterial) % 16 == 0);
 
 std::vector<GPUMaterial> materials_;
+std::vector<uint8_t> materialsAlphaTested_;
 
 struct LoadedImage {
   uint32_t w = 0;
@@ -377,6 +379,7 @@ struct LoadedImage {
   uint8_t* pixels = nullptr;
   std::string debugName;
   std::string compressedFileName;
+  bool hasTransparentTexels = false;
 };
 
 struct LoadedMaterial {
@@ -541,8 +544,21 @@ LoadedImage loadImage(const char* fileName, int channels) {
 
   int w = 0;
   int h = 0;
+  int fileChannels = 0;
   const std::vector<uint8_t> fileData = texturesApp_->loadFile(fileName);
-  uint8_t* pixels = fileData.empty() ? nullptr : stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, nullptr, channels);
+  uint8_t* pixels = fileData.empty() ? nullptr
+                                     : stbi_load_from_memory(fileData.data(), (int)fileData.size(), &w, &h, &fileChannels, channels);
+
+  bool hasTransparentTexels = false;
+
+  // every image with alpha is scanned: the cache returns it for whichever material map asks next
+  const bool hasAlpha = channels == 1 || fileChannels == 2 || fileChannels == 4;
+  if (pixels && hasAlpha) {
+    const size_t numPixels = size_t(w) * size_t(h);
+    for (size_t p = 0; p != numPixels && !hasTransparentTexels; p++) {
+      hasTransparentTexels = pixels[p * channels + channels - 1] < 250;
+    }
+  }
 
   const LoadedImage img = {
       .w = (uint32_t)w,
@@ -551,6 +567,7 @@ LoadedImage loadImage(const char* fileName, int channels) {
       .pixels = pixels,
       .debugName = debugName,
       .compressedFileName = convertFileName(fileName),
+      .hasTransparentTexels = hasTransparentTexels,
   };
 
   if (img.pixels && kEnableTextureCompression && (channels != 1) && !std::filesystem::exists(img.compressedFileName.c_str())) {
@@ -571,23 +588,25 @@ void loadMaterial(size_t i) {
     remainingMaterialsToLoad_.fetch_sub(1u, std::memory_order_release);
   };
 
-#define LOAD_TEX(result, tex, channels, enabled)                                                                 \
-  const LoadedImage result = !(enabled) || std::string(cachedMaterials_[i].tex).empty()                          \
-                                 ? LoadedImage()                                                                 \
-                                 : loadImage((texturesPathPrefix_ + cachedMaterials_[i].tex).c_str(), channels); \
-  if (loaderShouldExit_.load(std::memory_order_acquire)) {                                                       \
-    return;                                                                                                      \
+  // nothing more is loaded once the loader is asked to exit
+  auto load = [](const char* fileName, int channels, bool enabled) -> LoadedImage {
+    const bool skip = !enabled || !*fileName || loaderShouldExit_.load(std::memory_order_acquire);
+    return skip ? LoadedImage() : loadImage((texturesPathPrefix_ + fileName).c_str(), channels);
+  };
+  const CachedMaterial& cached = cachedMaterials_[i];
+  const LoadedMaterial mtl = {
+      .idx = i,
+      .ambient = load(cached.ambient_texname, 4, true),
+      .diffuse = load(cached.diffuse_texname, 4, true),
+      .alpha = load(cached.alpha_texname, 1, true),
+      .specular = load(cached.specular_texname, 4, loadMaterialMaps_),
+      .normal = load(cached.normal_texname, 4, loadMaterialMaps_),
+  };
+  if (loaderShouldExit_.load(std::memory_order_acquire)) {
+    return;
   }
 
-  LOAD_TEX(ambient, ambient_texname, 4, true);
-  LOAD_TEX(diffuse, diffuse_texname, 4, true);
-  LOAD_TEX(alpha, alpha_texname, 1, true);
-  LOAD_TEX(specular, specular_texname, 4, loadMaterialMaps_);
-  LOAD_TEX(normal, normal_texname, 4, loadMaterialMaps_);
-
-#undef LOAD_TEX
-
-  const LoadedMaterial mtl{i, ambient, diffuse, alpha, specular, normal};
+  materialsAlphaTested_[i] = mtl.diffuse.hasTransparentTexels || mtl.alpha.hasTransparentTexels ? 1 : 0;
 
   if (!mtl.ambient.pixels && !mtl.diffuse.pixels && !mtl.specular.pixels && !mtl.normal.pixels) {
     materials_[i].texDiffuse = 0;
@@ -686,6 +705,7 @@ void loadMaterialTextures(VulkanApp& app, const char* pathPrefix, bool loadMater
 
   materials_.clear();
   materials_.reserve(cachedMaterials_.size());
+  materialsAlphaTested_.assign(cachedMaterials_.size(), 0);
 
   for (const CachedMaterial& mtl : cachedMaterials_) {
     materials_.push_back(GPUMaterial{
@@ -831,7 +851,7 @@ lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
 
 // SPIR-V of a TOSA integer graph (SPV_ARM_graph, TOSA.001000.1) over NHWC tensors [1, height, width, channels], written one
 // operator at a time from the int8 graph input: an int8 1x1 CONV2D into int32 (the weights and biases of the i-th one are the
-// graph constants 2i and 2i + 1), a per-channel RESCALE between int8 and int32, and a TABLE of 256 int8 entries.
+// graph constants 2i and 2i + 1), a per-channel RESCALE between int8 and int32, a TABLE of 256 int8 entries, an int32 ADD.
 // Every call returns the id of its result, and `build()` writes the module whose output is the given value
 class TosaGraphBuilder final {
  public:
@@ -897,6 +917,9 @@ class TosaGraphBuilder final {
       ids.push_back(constInt8(entries[i]));
     }
     return op(int8_, values_[value].y, TOSA_TABLE, {value, constTensor(int8_, ids)});
+  }
+  uint32_t add(uint32_t a, uint32_t b) {
+    return op(int32_, values_[a].y, TOSA_ADD, {a, b});
   }
 
   std::vector<uint32_t> build(uint32_t output) {
@@ -985,6 +1008,7 @@ class TosaGraphBuilder final {
     SpvDecorationBinding = 33,
     SpvDecorationDescriptorSet = 34,
     TOSA_CONV2D = 2,
+    TOSA_ADD = 14,
     TOSA_TABLE = 30,
     TOSA_RESCALE = 65,
   };
