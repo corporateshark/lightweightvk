@@ -36,8 +36,15 @@
  With `loadMaterialMaps`, the `map_Ks` (specular) and `map_bump` (normal) textures are loaded too, into `texSpecular` and
  `texNormal` (otherwise they stay 0, meaning "no texture").
 
- The samples rendering them share the skybox too:
+ The samples rendering them share a few more helpers:
 
+   BISTRO_GLSL                 // GLSL: `GPUMaterial` as `Material`, and `unpackOctahedral16()` for `VertexData::normal`
+   FULLSCREEN_TRIANGLE_GLSL    // GLSL: `fullscreenTriangle()` turned by the swapchain pre-rotation `getClipRotation()`
+   vec2 getClipRotation(lvk::IContext* ctx)
+   lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(...)
+   struct GPUStageTimer        // GPU time per stage, measured every 2nd frame and read back a few frames later; its
+                               // history in a "GPU time" window with a sparkline per stage (drawWindow())
+   SceneAccelStructs createSceneAccelStructs(...)
    void loadSkyboxTextures(const VulkanApp& app, lvk::Holder<lvk::TextureHandle>& outReference,
                            lvk::Holder<lvk::TextureHandle>& outIrradiance)
 */
@@ -74,6 +81,10 @@
 #include <lvk/LVK.h>
 
 #include "VulkanApp.h"
+
+#if defined(LVK_WITH_IMPLOT)
+#include <implot.h>
+#endif // LVK_WITH_IMPLOT
 
 // must come after "VulkanApp.h": `gl_format.h` defines its own `VkFormat` unless `vulkan_core.h` was included first (`LVK_WITH_OPENXR`)
 #include <ktx-software/lib/src/gl_format.h>
@@ -763,6 +774,263 @@ void cancelLoadingMaterialTextures() {
   }
   imagesCache_.clear();
   texturesApp_ = nullptr;
+}
+
+// GLSL: `GPUMaterial` and the octahedral normal of `VertexData`
+#define BISTRO_GLSL                                                 \
+  "struct Material {\n"                                             \
+  "  vec4 ambient;\n"                                               \
+  "  vec4 diffuse;\n"                                               \
+  "  uint texAmbient;\n"                                            \
+  "  uint texDiffuse;\n"                                            \
+  "  uint texAlpha;\n"                                              \
+  "  uint texSpecular;\n"                                           \
+  "  uint texNormal;\n"                                             \
+  "  uint padding[3];\n"                                            \
+  "};\n"                                                            \
+  "vec3 unpackOctahedral16(uint data) {\n"                          \
+  "  vec2 v = vec2(uvec2(data, data >> 8) & 255u) / 127.5 - 1.0;\n" \
+  "  vec3 n = vec3(v, 1.0 - abs(v.x) - abs(v.y));\n"                \
+  "  float t = max(-n.z, 0.0);\n"                                   \
+  "  n.x += (n.x > 0.0) ? -t : t;\n"                                \
+  "  n.y += (n.y > 0.0) ? -t : t;\n"                                \
+  "  return normalize(n);\n"                                        \
+  "}\n"
+
+// GLSL: a fullscreen triangle turned by the swapchain pre-rotation, `rotation` is `getClipRotation()`
+#define FULLSCREEN_TRIANGLE_GLSL                                                                         \
+  "vec4 fullscreenTriangle(vec2 rotation, out vec2 uv) {\n"                                              \
+  "  uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n"                                        \
+  "  const vec2 p = uv * vec2(2, -2) + vec2(-1, 1);\n"                                                   \
+  "  return vec4(rotation.x * p.x - rotation.y * p.y, rotation.y * p.x + rotation.x * p.y, 0.0, 1.0);\n" \
+  "}\n"
+
+// the swapchain pre-rotation as (cos, sin)
+vec2 getClipRotation(lvk::IContext* ctx) {
+  float c = 1.0f;
+  float s = 0.0f;
+  lvk::getSurfaceTransformRotation(ctx->getSwapchainSurfaceTransform(), c, s);
+  return vec2(c, s);
+}
+
+// a tensor aliasing a new storage buffer of its size, which shaders reach through the buffer's device address
+lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
+                                                      const lvk::TensorDesc& desc,
+                                                      lvk::Holder<lvk::BufferHandle>& outBuffer,
+                                                      const char* debugName,
+                                                      lvk::Result* outResult) {
+  outBuffer = ctx->createBuffer({
+      .usage = lvk::BufferUsageBits_Storage,
+      .storage = lvk::StorageType_Device,
+      .size = lvk::getTensorDataSize(desc),
+      .debugName = debugName,
+  });
+  return ctx->createTensorBufferAliasing(outBuffer, 0, desc, debugName, outResult);
+}
+
+// GPU time per stage of a frame: stage `i` runs from timestamp `i - 1` to timestamp `i`, the frame from the first to the last;
+// every kFramesPerMeasurement-th frame writes its timestamps into the next of kFrameSlots sets, read back kFrameSlots - 1
+// measurements later, when the GPU is done with them, so reading never waits; `isMeasuring` says whether the times got a new frame,
+// and they are smoothed over the measured frames; the last kHistory of them are kept for drawWindow()
+struct GPUStageTimer {
+  enum {
+    kMaxTimestamps = 8,
+    kFramesPerMeasurement = 2,
+    kFrameSlots = 4,
+    kHistory = 128,
+  };
+  lvk::Holder<lvk::QueryPoolHandle> queryPool;
+  uint32_t numTimestamps = 0;
+  bool isWriting = false;
+  bool isMeasuring = false;
+  uint32_t slot = 0;
+  bool slotWritten[kFrameSlots] = {};
+  double stageTime[kMaxTimestamps] = {}; // ms
+  double frameTime = 0.0; // ms
+  float history[kMaxTimestamps][kHistory] = {}; // ms, the newest last; entry 0 is the whole frame
+  uint32_t numHistory = 0;
+  uint32_t windowFramesDrawn = 0;
+
+  void create(lvk::IContext* ctx, uint32_t num) {
+    LVK_ASSERT(num >= 2 && num <= kMaxTimestamps);
+    numTimestamps = num;
+    queryPool = ctx->createQueryPool(kFrameSlots * num, "Query pool: timestamps");
+  }
+  // writes timestamp 0
+  void beginFrame(lvk::ICommandBuffer& buf, uint64_t frameIndex) {
+    isWriting = frameIndex % kFramesPerMeasurement == 0;
+    if (isWriting) {
+      slot = (frameIndex / kFramesPerMeasurement) % kFrameSlots;
+      slotWritten[slot] = true;
+      buf.cmdResetQueryPool(queryPool, slot * numTimestamps, numTimestamps);
+      buf.cmdWriteTimestamp(queryPool, slot * numTimestamps);
+    }
+  }
+  void timestamp(lvk::ICommandBuffer& buf, uint32_t index) const {
+    if (isWriting) {
+      buf.cmdWriteTimestamp(queryPool, slot * numTimestamps + index);
+    }
+  }
+  // after the frame was submitted: a measured frame reads back the oldest set, which the next measured frame writes again
+  void endFrame(lvk::IContext* ctx) {
+    const uint32_t oldest = (slot + 1) % kFrameSlots;
+    isMeasuring = isWriting && slotWritten[oldest];
+    if (!isMeasuring) {
+      return;
+    }
+    slotWritten[oldest] = false;
+    uint64_t timestamps[kMaxTimestamps] = {};
+    ctx->getQueryPoolResults(
+        queryPool, oldest * numTimestamps, numTimestamps, sizeof(timestamps[0]) * numTimestamps, timestamps, sizeof(timestamps[0]));
+    const double toMs = ctx->getTimestampPeriodToMs();
+    auto smooth = [](double& time, double ms) { time = time > 0.0 ? glm::mix(time, ms, 0.25) : ms; };
+    for (uint32_t i = 1; i != numTimestamps; i++) {
+      smooth(stageTime[i], double(timestamps[i] - timestamps[i - 1]) * toMs);
+    }
+    smooth(frameTime, double(timestamps[numTimestamps - 1] - timestamps[0]) * toMs);
+    for (uint32_t i = 0; i != numTimestamps; i++) {
+      std::copy(history[i] + 1, history[i] + kHistory, history[i]);
+      history[i][kHistory - 1] = float(i ? stageTime[i] : frameTime);
+    }
+    numHistory = std::min<uint32_t>(numHistory + 1, kHistory);
+  }
+
+  // a row of the "GPU time" window: timestamp 0 is the whole frame
+  struct Row {
+    const char* name;
+    uint32_t timestamp;
+    ImVec4 color;
+  };
+  // the time of every row with a sparkline of its history (with ImPlot), 10 pixels off the bottom left corner, then free to move
+  void drawWindow(ldr::Span<const Row> rows) {
+    // an auto-resized window gets its size only on its second frame
+    if (windowFramesDrawn < 2) {
+      windowFramesDrawn++;
+      const ImGuiViewport* v = ImGui::GetMainViewport();
+      ImGui::SetNextWindowPos(ImVec2(v->WorkPos.x + 10.0f, v->WorkPos.y + v->WorkSize.y - 10.0f), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+    }
+    ImGui::SetNextWindowBgAlpha(0.8f);
+    ImGui::Begin("GPU time",
+                 nullptr,
+                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav);
+    if (ImGui::BeginTable("##gpuTime", 3)) {
+      ImGui::TableSetupColumn("Stage");
+      ImGui::TableSetupColumn("ms");
+      ImGui::TableSetupColumn("History", ImGuiTableColumnFlags_WidthFixed, 12.0f * ImGui::GetFontSize());
+      ImGui::TableHeadersRow();
+      for (const Row& row : rows) {
+        const float* values = history[row.timestamp] + kHistory - numHistory;
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextColored(row.color, "%s", row.name);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextColored(row.color, "%6.2f", numHistory ? values[numHistory - 1] : 0.0f);
+        ImGui::TableSetColumnIndex(2);
+#if defined(LVK_WITH_IMPLOT)
+        const float sparklineHeight = ImGui::GetTextLineHeight() * 1.5f;
+        if (numHistory < 2) {
+          // the window keeps its size once the sparklines appear
+          ImGui::Dummy(ImVec2(0.0f, sparklineHeight));
+          continue;
+        }
+        const float maxTime = *std::max_element(values, values + numHistory);
+        ImGui::PushID(row.name);
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(0, 0));
+        ImPlot::SetNextAxesLimits(0, kHistory - 1, 0.0, std::max(1.2f * maxTime, 0.01f), ImGuiCond_Always);
+        if (ImPlot::BeginPlot("##sparkline", ImVec2(-1, sparklineHeight), ImPlotFlags_CanvasOnly)) {
+          ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoDecorations, ImPlotAxisFlags_NoDecorations);
+          // right-aligned: the newest measurement is always at the right edge
+          const double xstart = double(kHistory - numHistory);
+          ImPlot::PlotShaded(
+              "##sparkline", values, numHistory, 0.0, 1.0, xstart, ImPlotSpec(ImPlotProp_LineColor, row.color, ImPlotProp_FillAlpha, 0.4f));
+          ImPlot::PlotLine("##sparkline", values, numHistory, 1.0, xstart, ImPlotSpec(ImPlotProp_LineColor, row.color));
+          ImPlot::EndPlot();
+        }
+        ImPlot::PopStyleVar();
+        ImGui::PopID();
+#endif // LVK_WITH_IMPLOT
+      }
+      ImGui::EndTable();
+    }
+    ImGui::End();
+  }
+};
+
+// ray tracing: BLASes over the triangles of `indexBuffer`, each small enough for `getMaxStorageBufferRange()`, in one TLAS scaling
+// them by `scale`; the first `numOpaque` triangles are flagged opaque (ray queries skip their alpha test), and the instance custom
+// index of a BLAS is its first triangle
+struct SceneAccelStructs {
+  std::vector<lvk::Holder<lvk::AccelStructHandle>> BLAS;
+  lvk::Holder<lvk::AccelStructHandle> TLAS;
+};
+
+SceneAccelStructs createSceneAccelStructs(lvk::IContext* ctx,
+                                          lvk::BufferHandle vertexBuffer,
+                                          uint32_t numVertices,
+                                          lvk::BufferHandle indexBuffer,
+                                          uint32_t numTriangles,
+                                          uint32_t numOpaque,
+                                          float scale) {
+  SceneAccelStructs out;
+  const uint32_t maxStorageBufferSize = ctx->getMaxStorageBufferRange();
+  const glm::mat3x4 transform(glm::scale(mat4(1.0f), vec3(scale)));
+  const uint32_t ranges[2][2] = {{0, numOpaque}, {numOpaque, numTriangles}};
+  std::vector<lvk::AccelStructInstance> instances;
+  for (uint32_t r = 0; r != 2; r++) {
+    const uint32_t begin = ranges[r][0];
+    const uint32_t end = ranges[r][1];
+    if (begin == end) {
+      continue;
+    }
+    lvk::AccelStructDesc blasDesc{
+        .type = lvk::AccelStructType_BLAS,
+        .geometryType = lvk::AccelStructGeomType_Triangles,
+        .geometryFlags = r == 0 ? uint8_t(lvk::AccelStructGeometryFlagBits_Opaque) : uint8_t(0),
+        .vertexFormat = lvk::VertexFormat_Float3,
+        .vertexBuffer = vertexBuffer,
+        .vertexStride = sizeof(VertexData),
+        .numVertices = numVertices,
+        .indexFormat = lvk::IndexFormat_UI32,
+        .indexBuffer = indexBuffer,
+        .buildRange = {.primitiveCount = end - begin},
+        .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+        .debugName = r == 0 ? "BLAS: opaque" : "BLAS",
+    };
+    const lvk::AccelStructSizes sizes = ctx->getAccelStructSizes(blasDesc);
+    const uint32_t numBLAS = 1 + std::max(uint32_t(sizes.buildScratchSize / maxStorageBufferSize),
+                                          uint32_t(sizes.accelerationStructureSize / maxStorageBufferSize));
+    const uint32_t primitiveCount = (end - begin + numBLAS - 1) / numBLAS;
+    for (uint32_t first = begin; first < end; first += primitiveCount) {
+      blasDesc.buildRange.primitiveOffset = first * 3 * sizeof(uint32_t);
+      blasDesc.buildRange.primitiveCount = std::min(primitiveCount, end - first);
+      out.BLAS.emplace_back(ctx->createAccelerationStructure(blasDesc));
+      instances.push_back(lvk::AccelStructInstance{
+          .transform = (const lvk::mat3x4&)transform,
+          .instanceCustomIndex = first,
+          .mask = 0xff,
+          .instanceShaderBindingTableRecordOffset = 0,
+          .flags = lvk::AccelStructInstanceFlagBits_TriangleFacingCullDisable,
+          .accelerationStructureReference = ctx->gpuAddress(out.BLAS.back()),
+      });
+    }
+  }
+  const lvk::Holder<lvk::BufferHandle> instancesBuffer = ctx->createBuffer({
+      .usage = lvk::BufferUsageBits_AccelStructBuildInputReadOnly,
+      .storage = lvk::StorageType_HostVisible,
+      .size = sizeof(lvk::AccelStructInstance) * instances.size(),
+      .data = instances.data(),
+      .debugName = "Buffer: TLAS instances",
+  });
+  out.TLAS = ctx->createAccelerationStructure({
+      .type = lvk::AccelStructType_TLAS,
+      .geometryType = lvk::AccelStructGeomType_Instances,
+      .instancesBuffer = instancesBuffer,
+      .buildRange = {.primitiveCount = uint32_t(instances.size())},
+      .buildFlags = lvk::AccelStructBuildFlagBits_PreferFastTrace,
+      .debugName = "TLAS",
+  });
+  return out;
 }
 
 // skybox: the reference and irradiance cubemaps of an equirectangular HDR image, converted into KTX files in the content root on

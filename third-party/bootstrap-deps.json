@@ -325,6 +325,16 @@
     }
 },
 {
+    "name": "neural-graphics-sdk",
+    "predicate": "os.environ.get('LVK_WITH_TENSORS') != 'OFF'",
+    "source": {
+        "type": "git",
+        "url": "https://github.com/rokuz/neural-graphics-sdk-for-game-engines.git",
+        "revision": "84c9e660900691a1602047c00a5dd9d8fc94ef13",
+        "recursive": false
+    }
+},
+{
     "name": "ml-sdk/json",
     "predicate": "os.environ.get('LVK_WITH_ML_EMULATION_LAYER') == 'ON'",
     "source": {
