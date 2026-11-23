@@ -13,14 +13,16 @@
 
  Lit with the specular color, gloss and normal maps the MTL names (GGX sun, the indirect light around the reflection
  for the specular part). Every probe gets a weighting function over 8192 support points; the generator (`nlg.bin`: its int8 layers as a
- `VK_ARM_data_graph` pipeline built at start-up, or its float layers in compute) turns it into a 3-8-8-1 network. Probe lighting is
- integrated over 256 support points whenever the sun moves. Probes form `--probe-levels` lattices, each half the spacing of the last, the
- finer ones only near geometry; a pixel blends the 8 probes of its cell on the finest level that weights it. The whole bake runs in the
- sample.
+ `VK_ARM_data_graph` pipeline built at start-up, its float layers as f16 `VK_KHR_cooperative_matrix` tiles accumulated in f32, or its
+ float layers in a compute shader; the UI switches between them, each grayed out without what it runs on, and bakes the probes again
+ with the new one) turns it into a 3-8-8-1 network. Probe lighting is integrated over 256 support points whenever the sun moves. Probes form
+ `--probe-levels` lattices, each half the spacing of the last, the finer ones only near geometry; a pixel blends the 8 probes of its cell on
+ the finest level that weights it. The whole bake runs in the sample.
 
  `--scene exterior|interior|sponza`, `--probe-spacing S`, `--probe-levels N`, `--sun-elevation E`, `--sun-azimuth A`,
  `--no-gi` (G toggles), `--textures` (T toggles), `--no-auto-exposure`,
- `--timings`, `--rebake`, `--no-ui`; it renders at the size of the monitor, or `--width W --height H`.
+ `--timings`, `--rebake`, `--no-ui`, `--generator compute|data-graph|cm` (by default the data graph, else the
+ compute shader); it renders at the size of the monitor, or `--width W --height H`.
 
  The baked probes are saved to `nlg_<scene>.bake` in the content folder and loaded on the next run with the same lattice,
  generator and sun; only the lighting is computed then. Textures are off at first and stream in the first time they are enabled:
@@ -77,6 +79,23 @@ enum {
   kGraphLayers = kGeneratorLayers + 2, // the PCA, the float layers, the output layer
   kGraphTableSize = 256,
   kGeneratorInputZeroPoint = -128,
+  kCooperativeOutputs = 128, // kCoefficients padded to whole tiles
+  kCooperativeTilesPerGroup = 2,
+  kCooperativeBlock = 2, // a subgroup multiplies 2x2 tiles, loading every A and B tile once for two of them
+  // the sums over k are split into slices summed by a second pass, which also finishes the layer
+  kCooperativePcaSplits = 8,
+  kCooperativeSplits = 4,
+  // the layers of the cooperative matrix generator
+  kCooperativePca = 0,
+  kCooperativeFirst,
+  kCooperativeSkip,
+  kCooperativeOutput,
+};
+
+enum GeneratorPath {
+  GeneratorPath_Compute = 0,
+  GeneratorPath_DataGraph,
+  GeneratorPath_Cooperative,
 };
 static_assert(kHidden == 8 && kNetworkVec4s == 15);
 constexpr float kDiffusionSigma = 0.15f;
@@ -1569,6 +1588,149 @@ void main() {
 }
 )";
 
+const char* kCodeGeneratorCooperativeExtensions = R"(
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+)";
+
+// the generator as f16 cooperative matrices accumulated in f32: per layer over the probes of a batch, a dispatch of partial
+// sums over slices of k and one that sums them and finishes the layer, the activations in f16 (the A matrices of the next
+// layer) and the skip connections summed in f32
+const char* kCodeGeneratorCooperativePushConstants = R"(
+layout(std430, buffer_reference) readonly buffer Halves {
+  float16_t v[];
+};
+
+layout(std430, buffer_reference) buffer HalvesRW {
+  float16_t v[];
+};
+
+layout(push_constant) uniform constants {
+  Halves inputs;      // [kBakeBatch][k]
+  Halves weights;     // [k][n]
+  Floats biases;      // [n]
+  FloatsRW stream;    // [kBakeBatch][kGeneratorWidth]
+  FloatsRW partials;  // [splits][kBakeBatch][n]
+  HalvesRW outputs;   // [kBakeBatch][n]
+  Nlg nlg;
+  uint first;
+  uint count;
+  uint k;
+  uint n;
+  uint mode;
+  uint splits;
+} pc;
+
+// f32 to f16 rounded to nearest even on every driver, as some round toward zero: the value is rounded to 11 significant bits
+// (or to the f16 subnormal step) first, which converts exactly
+float16_t toHalf(float x) {
+  if (abs(x) < 6.103515625e-5) {
+    return float16_t(roundEven(x * 16777216.0) / 16777216.0);
+  }
+  const uint u = floatBitsToUint(x);
+  return float16_t(uintBitsToFloat((u + 0xFFFu + ((u >> 13) & 1u)) & ~0x1FFFu));
+}
+)";
+
+const char* kCodeGeneratorCooperativeInputCS = R"(
+layout (local_size_x = 256) in;
+
+void main() {
+  const uint index = gl_GlobalInvocationID.x;
+  if (index >= pc.count * kSupportPoints) {
+    return;
+  }
+  pc.outputs.v[index] = toHalf(pc.nlg.phiA.v[index] - pc.nlg.pcaMean.v[index % kSupportPoints]);
+}
+)";
+
+const char* kCodeGeneratorCooperativeCS = R"(
+layout (local_size_x = 64) in;
+
+#define MatA coopmat<float16_t, gl_ScopeSubgroup, kTileM, kTileK, gl_MatrixUseA>
+#define MatB coopmat<float16_t, gl_ScopeSubgroup, kTileK, kTileN, gl_MatrixUseB>
+#define MatC coopmat<float, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>
+
+void main() {
+  const uint blocksN = pc.n / (kTileN * kBlock);
+  const uint blocks = (pc.count + kTileM * kBlock - 1u) / (kTileM * kBlock) * blocksN;
+  const uint slice = pc.k / pc.splits;
+  for (uint t = gl_SubgroupID; t < kTilesPerGroup; t += gl_NumSubgroups) {
+    // the blocks of a slice are next to each other, sharing its rows of the weights in the cache
+    const uint job = gl_WorkGroupID.x * kTilesPerGroup + t;
+    if (job >= blocks * pc.splits) {
+      break;
+    }
+    const uint split = job / blocks;
+    const uint block = job % blocks;
+    // the rows past the batch multiply what the buffers hold there, and are left out by the second pass
+    const uint m0 = block / blocksN * kTileM * kBlock;
+    const uint n0 = block % blocksN * kTileN * kBlock;
+    MatC c[kBlock][kBlock];
+    [[unroll]] for (uint i = 0u; i != kBlock; i++) {
+      [[unroll]] for (uint j = 0u; j != kBlock; j++) {
+        c[i][j] = MatC(0.0);
+      }
+    }
+    for (uint k = split * slice; k != (split + 1u) * slice; k += kTileK) {
+      MatA a[kBlock];
+      MatB b[kBlock];
+      [[unroll]] for (uint i = 0u; i != kBlock; i++) {
+        coopMatLoad(a[i], pc.inputs.v, (m0 + i * kTileM) * pc.k + k, pc.k, gl_CooperativeMatrixLayoutRowMajor);
+        coopMatLoad(b[i], pc.weights.v, k * pc.n + n0 + i * kTileN, pc.n, gl_CooperativeMatrixLayoutRowMajor);
+      }
+      [[unroll]] for (uint i = 0u; i != kBlock; i++) {
+        [[unroll]] for (uint j = 0u; j != kBlock; j++) {
+          c[i][j] = coopMatMulAdd(a[i], b[j], c[i][j]);
+        }
+      }
+    }
+    [[unroll]] for (uint i = 0u; i != kBlock; i++) {
+      [[unroll]] for (uint j = 0u; j != kBlock; j++) {
+        const uint at = (split * kBakeBatch + m0 + i * kTileM) * pc.n + n0 + j * kTileN;
+        coopMatStore(c[i][j], pc.partials.v, at, pc.n, gl_CooperativeMatrixLayoutRowMajor);
+      }
+    }
+  }
+}
+)";
+
+const char* kCodeGeneratorCooperativeFinishCS = R"(
+layout (local_size_x = 256) in;
+
+float leakyRelu(float a) {
+  return a > 0.0 ? a : 0.01 * a;
+}
+
+void main() {
+  const uint index = gl_GlobalInvocationID.x;
+  if (index >= pc.count * pc.n) {
+    return;
+  }
+  const uint o = index % pc.n;
+  float z = 0.0;
+  for (uint split = 0u; split != pc.splits; split++) {
+    z += pc.partials.v[split * kBakeBatch * pc.n + index];
+  }
+  // n is kGeneratorWidth but in the output layer, so index addresses the activations and the stream
+  if (pc.mode == kCooperativePca) {
+    pc.outputs.v[index] = toHalf(z);
+  } else if (pc.mode == kCooperativeOutput) {
+    if (o < kCoefficients) {
+      pc.nlg.coefficients.v[pc.nlg.bakeOrder.v[pc.first + index / pc.n] * kCoefficients + o] = z + pc.biases.v[o];
+    }
+  } else {
+    const float h = (pc.mode == kCooperativeSkip ? pc.stream.v[index] : 0.0) + leakyRelu(z + pc.biases.v[o]);
+    pc.stream.v[index] = h;
+    pc.outputs.v[index] = toHalf(h);
+  }
+}
+)";
+
 const char* kCodePresentPushConstants = R"(
 #extension GL_EXT_buffer_reference : require
 
@@ -1862,6 +2024,22 @@ struct NlgPushConstants {
   float blend;
 };
 
+struct GeneratorCooperativePushConstants {
+  uint64_t inputs;
+  uint64_t weights;
+  uint64_t biases;
+  uint64_t stream;
+  uint64_t partials;
+  uint64_t outputs;
+  uint64_t nlg;
+  uint32_t first;
+  uint32_t count;
+  uint32_t k;
+  uint32_t n;
+  uint32_t mode;
+  uint32_t splits;
+};
+
 struct ApplyPushConstants {
   uint64_t perFrame;
   uint64_t slots;
@@ -1949,6 +2127,7 @@ static_assert(kFunctionThreads == kSupportPoints / 32);
 static_assert(kPcaComponents == kGeneratorWidth);
 static_assert(kDiffusionPasses % 2 == 0);
 static_assert(sizeof(NlgPushConstants) <= 128 && sizeof(ApplyPushConstants) <= 128 && sizeof(PresentPushConstants) <= 128);
+static_assert(sizeof(GeneratorCooperativePushConstants) <= 128 && kCooperativeOutputs >= kCoefficients);
 
 bool loadGenerator(const std::vector<uint8_t>& blob, Generator& out) {
   const uint32_t* header = (const uint32_t*)blob.data();
@@ -2249,6 +2428,7 @@ VULKAN_APP_MAIN {
   bool measureTime = false;
   bool showUI = true;
   bool rebake = false;
+  int preferredPath = -1; // the data graph, else the compute shader
 
   for (int i = 1; i < argc; i++) {
     const char* arg = argv[i];
@@ -2282,6 +2462,12 @@ VULKAN_APP_MAIN {
       showUI = false;
     } else if (!strcmp(arg, "--rebake")) {
       rebake = true;
+    } else if (!strcmp(arg, "--generator") && next) {
+      preferredPath = !strcmp(next, "compute")      ? GeneratorPath_Compute
+                      : !strcmp(next, "data-graph") ? GeneratorPath_DataGraph
+                      : !strcmp(next, "cm")         ? GeneratorPath_Cooperative
+                                                    : preferredPath;
+      i++;
     }
   }
 
@@ -2568,10 +2754,20 @@ VULKAN_APP_MAIN {
   if (nlgReady && ctx->supportsTensorsARM() && ctx->supportsDataGraphARM()) {
     graphReady = !generator.graphLayers.empty();
     if (!graphReady) {
-      LLOGW("`%s` has no integer graph: the generator runs as a compute shader\n", generatorBinPath.c_str());
+      LLOGW("`%s` has no integer graph: the generator cannot run as a data graph\n", generatorBinPath.c_str());
     }
   } else if (nlgReady) {
-    LLOGW("Data graphs are not available: the generator runs as a compute shader\n");
+    LLOGW("VK_ARM_tensors and VK_ARM_data_graph are not available: the generator cannot run as a data graph\n");
+  }
+
+  const CooperativeMatrixShape tile =
+      nlgReady ? getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_FLOAT16_KHR, VK_COMPONENT_TYPE_FLOAT16_KHR, VK_COMPONENT_TYPE_FLOAT32_KHR)
+               : CooperativeMatrixShape{};
+  const bool isTiled = kBakeBatch % (tile.m * kCooperativeBlock) == 0 && kCooperativeOutputs % (tile.n * kCooperativeBlock) == 0 &&
+                       kSupportPoints % (tile.k * kCooperativePcaSplits) == 0 && kGeneratorWidth % (tile.k * kCooperativeSplits) == 0;
+  const bool cooperativeReady = tile.m && isTiled;
+  if (nlgReady && !cooperativeReady) {
+    LLOGW("f16 cooperative matrices (VK_KHR_cooperative_matrix) are not available: the generator cannot run on them\n");
   }
 
   std::string constants;
@@ -2612,6 +2808,10 @@ VULKAN_APP_MAIN {
   addUint("kProbeNotBaked", kProbeNotBaked);
   addUint("kShUpdates", kShUpdates);
   addConst("int kGeneratorInputZeroPoint", std::to_string(kGeneratorInputZeroPoint));
+  addUint("kCooperativePca", kCooperativePca);
+  addUint("kCooperativeFirst", kCooperativeFirst);
+  addUint("kCooperativeSkip", kCooperativeSkip);
+  addUint("kCooperativeOutput", kCooperativeOutput);
   std::string levelDims;
   std::string levelOrigins;
   std::string levelSpacings;
@@ -2642,6 +2842,12 @@ VULKAN_APP_MAIN {
   const std::string codeScene = constants + kCodeSceneDeclarations;
   const std::string codeNlg = codeScene + kCodeNlgPushConstants;
   const std::string codeNlgProbes = codeNlg + kCodeSceneFunctions + kCodeProbeFunctions;
+  const std::string codeCooperative =
+      kCodeGeneratorCooperativeExtensions + constants + "const uint kTileM = " + std::to_string(tile.m) +
+      ";\nconst uint kTileN = " + std::to_string(tile.n) + ";\nconst uint kTileK = " + std::to_string(tile.k) +
+      ";\nconst uint kTilesPerGroup = " + std::to_string(kCooperativeTilesPerGroup) +
+      ";\nconst uint kBlock = " + std::to_string(kCooperativeBlock) + ";\nconst uint kBakeBatch = " + std::to_string(kBakeBatch) + ";\n" +
+      kCodeSceneDeclarations + kCodeGeneratorCooperativePushConstants;
 
   logStartup("compiling the shaders");
   lvk::Holder<lvk::ShaderModuleHandle> smGBufferVert =
@@ -2683,6 +2889,12 @@ VULKAN_APP_MAIN {
   const ComputeProgram programPack = createProgram(nlgReady, codeNlg + kCodePackCS, "Shader Module: NLG pack (comp)");
   const ComputeProgram programQuantize = createProgram(graphReady, codeNlg + kCodeQuantizeCS, "Shader Module: NLG quantize (comp)");
   const ComputeProgram programDequantize = createProgram(graphReady, codeNlg + kCodeDequantizeCS, "Shader Module: NLG dequantize (comp)");
+  const ComputeProgram programCooperativeInput = createProgram(
+      cooperativeReady, codeCooperative + kCodeGeneratorCooperativeInputCS, "Shader Module: NLG generator input (cooperative matrices)");
+  const ComputeProgram programCooperative =
+      createProgram(cooperativeReady, codeCooperative + kCodeGeneratorCooperativeCS, "Shader Module: NLG generator (cooperative matrices)");
+  const ComputeProgram programCooperativeFinish = createProgram(
+      cooperativeReady, codeCooperative + kCodeGeneratorCooperativeFinishCS, "Shader Module: NLG generator finish (cooperative matrices)");
 
   const lvk::Format formatPosition = lvk::Format_RGBA_F32;
   const lvk::Format formatNormal = lvk::Format_RGBA_F16;
@@ -2786,6 +2998,12 @@ VULKAN_APP_MAIN {
   lvk::Holder<lvk::TensorHandle> nlgTensorInput;
   lvk::Holder<lvk::TensorHandle> nlgTensorOutput;
   lvk::Holder<lvk::DataGraphPipelineHandle> pipelineGraph;
+  lvk::Holder<lvk::BufferHandle> nlgCooperativeInput;
+  lvk::Holder<lvk::BufferHandle> nlgCooperativeActivations[2];
+  lvk::Holder<lvk::BufferHandle> nlgCooperativeStream;
+  lvk::Holder<lvk::BufferHandle> nlgCooperativePartials;
+  lvk::Holder<lvk::BufferHandle> nlgCooperativeWeights;
+  lvk::Holder<lvk::BufferHandle> nlgCooperativeBiases;
   const size_t nlgShSize = sizeof(vec4) * 9 * numProbes;
   const size_t nlgFlagsSize = sizeof(uint32_t) * numProbes;
 
@@ -2852,6 +3070,38 @@ VULKAN_APP_MAIN {
         graphReady = false;
       }
     }
+    if (cooperativeReady) {
+      // the float layers as f16 [inputs][outputs], the output layer padded to kCooperativeOutputs, and their f32 biases, a
+      // layer every kGeneratorWidth
+      std::vector<uint16_t> weights(size_t(kGeneratorLayers) * kGeneratorWidth * kGeneratorWidth + kGeneratorWidth * kCooperativeOutputs);
+      std::vector<float> biases(size_t(kGeneratorLayers + 1) * kGeneratorWidth);
+      size_t offset = 0;
+      for (uint32_t layer = 0; layer != kGeneratorLayers + 1; layer++) {
+        const uint32_t outputs = layer == kGeneratorLayers ? kCoefficients : kGeneratorWidth;
+        const uint32_t padded = layer == kGeneratorLayers ? kCooperativeOutputs : kGeneratorWidth;
+        uint16_t* dst = weights.data() + size_t(layer) * kGeneratorWidth * kGeneratorWidth;
+        for (uint32_t i = 0; i != kGeneratorWidth; i++) {
+          for (uint32_t o = 0; o != outputs; o++) {
+            dst[i * padded + o] = glm::packHalf1x16(generator.weights[offset + i * outputs + o]);
+          }
+        }
+        offset += size_t(kGeneratorWidth) * outputs;
+        std::copy(
+            generator.weights.begin() + offset, generator.weights.begin() + offset + outputs, biases.begin() + layer * kGeneratorWidth);
+        offset += outputs;
+      }
+      nlgCooperativeInput =
+          createStorageBuffer(sizeof(uint16_t) * kSupportPoints * kBakeBatch, nullptr, "Buffer: NLG generator input (f16)");
+      nlgCooperativeActivations[0] =
+          createStorageBuffer(sizeof(uint16_t) * kGeneratorWidth * kBakeBatch, nullptr, "Buffer: NLG generator activations 0 (f16)");
+      nlgCooperativeActivations[1] =
+          createStorageBuffer(sizeof(uint16_t) * kGeneratorWidth * kBakeBatch, nullptr, "Buffer: NLG generator activations 1 (f16)");
+      nlgCooperativeStream = createStorageBuffer(sizeof(float) * kGeneratorWidth * kBakeBatch, nullptr, "Buffer: NLG generator stream");
+      nlgCooperativePartials = createStorageBuffer(
+          sizeof(float) * kGeneratorWidth * kBakeBatch * kCooperativePcaSplits, nullptr, "Buffer: NLG generator partial sums");
+      nlgCooperativeWeights = createStorageBuffer(sizeof(uint16_t) * weights.size(), weights.data(), "Buffer: NLG generator (f16)");
+      nlgCooperativeBiases = createStorageBuffer(sizeof(float) * biases.size(), biases.data(), "Buffer: NLG generator biases");
+    }
     const NlgBuffers addresses = {
         .points = ctx->gpuAddress(nlgPoints),
         .neighbours = ctx->gpuAddress(nlgNeighbours),
@@ -2877,6 +3127,16 @@ VULKAN_APP_MAIN {
         .bakeOrder = ctx->gpuAddress(nlgBakeOrder),
     };
     nlgStruct = createStorageBuffer(sizeof(NlgBuffers), &addresses, "Buffer: NLG");
+  }
+
+  // the data graph if it is available, else the compute shader, unless `--generator` names another: the cooperative matrices
+  // only run when asked for, as some drivers expose them without the hardware (an AMD RDNA2 iGPU takes seconds per batch)
+  const bool pathReady[] = {nlgReady, graphReady, cooperativeReady};
+  int generatorPath = graphReady ? GeneratorPath_DataGraph : GeneratorPath_Compute;
+  generatorPath = preferredPath >= 0 && pathReady[preferredPath] ? preferredPath : generatorPath;
+  if (nlgReady) {
+    const char* names[] = {"a compute shader", "a data graph", "cooperative matrices"};
+    LLOGL("Neural Light Grid: the generator runs as %s\n", names[generatorPath]);
   }
 
   GPUStageTimer gpuTimer;
@@ -2962,8 +3222,59 @@ VULKAN_APP_MAIN {
                     {.buffers = {nlgSupport, nlgBakeLight, nlgPhiA, nlgPhiB, nlgScratch, nlgLabels, nlgShares, nlgFlags, nlgCoefficients}});
   };
 
+  auto generateCooperative = [&](lvk::ICommandBuffer& buf, uint32_t first, uint32_t count) {
+    buf.cmdBindComputePipeline(programCooperativeInput.pipeline);
+    buf.cmdPushConstants(GeneratorCooperativePushConstants{
+        .outputs = ctx->gpuAddress(nlgCooperativeInput),
+        .nlg = ctx->gpuAddress(nlgStruct),
+        .count = count,
+    });
+    buf.cmdDispatch({(count * kSupportPoints + 255) / 256, 1, 1}, {.buffers = {nlgPhiA, nlgCooperativeInput}});
+    // the PCA, the hidden layers and the output layer, each the partial sums over slices of k, then their sum finished into its
+    // outputs; the activations alternate between two buffers
+    for (uint32_t layer = 0; layer != kGeneratorLayers + 2; layer++) {
+      const bool isPca = layer == 0;
+      const bool isOutput = layer == kGeneratorLayers + 1;
+      const uint32_t hidden = isPca ? 0 : layer - 1; // the index of the float layer, the output layer last
+      const lvk::BufferHandle inputs = isPca ? nlgCooperativeInput : nlgCooperativeActivations[hidden % 2];
+      const lvk::BufferHandle outputs = isOutput ? nlgCoefficients : nlgCooperativeActivations[layer % 2];
+      const uint32_t k = isPca ? kSupportPoints : kGeneratorWidth;
+      const uint32_t n = isOutput ? kCooperativeOutputs : kGeneratorWidth;
+      const uint32_t mode = isPca ? kCooperativePca : isOutput ? kCooperativeOutput : layer == 1 ? kCooperativeFirst : kCooperativeSkip;
+      const GeneratorCooperativePushConstants pc = {
+          .inputs = ctx->gpuAddress(inputs),
+          .weights = isPca ? ctx->gpuAddress(nlgPcaBasis)
+                           : ctx->gpuAddress(nlgCooperativeWeights, sizeof(uint16_t) * kGeneratorWidth * kGeneratorWidth * hidden),
+          .biases = ctx->gpuAddress(nlgCooperativeBiases, sizeof(float) * kGeneratorWidth * hidden),
+          .stream = ctx->gpuAddress(nlgCooperativeStream),
+          .partials = ctx->gpuAddress(nlgCooperativePartials),
+          .outputs = ctx->gpuAddress(outputs),
+          .nlg = ctx->gpuAddress(nlgStruct),
+          .first = first,
+          .count = count,
+          .k = k,
+          .n = n,
+          .mode = mode,
+          .splits = uint32_t(isPca ? kCooperativePcaSplits : kCooperativeSplits),
+      };
+      const uint32_t blockM = tile.m * kCooperativeBlock;
+      const uint32_t jobs = (count + blockM - 1) / blockM * (n / (tile.n * kCooperativeBlock)) * pc.splits;
+      buf.cmdBindComputePipeline(programCooperative.pipeline);
+      buf.cmdPushConstants(pc);
+      buf.cmdDispatch({(jobs + kCooperativeTilesPerGroup - 1) / kCooperativeTilesPerGroup, 1, 1},
+                      {.buffers = {inputs, nlgCooperativePartials}});
+      buf.cmdBindComputePipeline(programCooperativeFinish.pipeline);
+      buf.cmdPushConstants(pc);
+      buf.cmdDispatch({(count * n + 255) / 256, 1, 1}, {.buffers = {nlgCooperativePartials, outputs, nlgCooperativeStream}});
+    }
+  };
+
   auto generate = [&](lvk::ICommandBuffer& buf, uint32_t first, uint32_t count) {
-    if (graphReady) {
+    if (generatorPath == GeneratorPath_Cooperative) {
+      generateCooperative(buf, first, count);
+      return;
+    }
+    if (generatorPath == GeneratorPath_DataGraph) {
       buf.cmdBindComputePipeline(programQuantize.pipeline);
       buf.cmdPushConstants(nlgPushConstants(first, count, 0));
       buf.cmdDispatch({(count * (kSupportPoints / 4) + 255) / 256, 1, 1}, {.buffers = {nlgPhiA, nlgGraphInput}});
@@ -3078,7 +3389,7 @@ VULKAN_APP_MAIN {
                                   kSupportPoints,
                                   kBakePoints,
                                   kCoefficients,
-                                  graphReady ? 1u : 0u,
+                                  uint32_t(generatorPath),
                                   bakeTextured ? 1u : 0u,
                                   numVertices,
                                   numIndices};
@@ -3204,6 +3515,14 @@ VULKAN_APP_MAIN {
   auto nlgBlend = [&](uint32_t pass) {
     return nlgAverageOld ? 1.0f / float(pass + 2) : pass < kNlgWarmupPasses ? 1.0f : 1.0f / float(pass - kNlgWarmupPasses + 2);
   };
+  // bakes the probes again, the old ones lighting the scene until the new ones replace them
+  auto rebakeOverOldProbes = [&]() {
+    nlgStale = true;
+    nlgKeepProbes = bakedProbes != 0;
+    nlgAverageOld = bakedProbes != 0;
+    nlgUpdates = 0;
+    nlgLitOnce = false;
+  };
 
   uint64_t frameIndex = 0;
   float lastAzimuth = -1.0f;
@@ -3249,11 +3568,7 @@ VULKAN_APP_MAIN {
     // once the textures are in, the untextured bake is replaced by a textured one
     if (texturesRequested && !remainingTextures && !bakeTextured) {
       bakeTextured = true;
-      nlgStale = true;
-      nlgKeepProbes = bakedProbes != 0;
-      nlgAverageOld = bakedProbes != 0;
-      nlgUpdates = 0;
-      nlgLitOnce = false;
+      rebakeOverOldProbes();
     }
 
     // moving the sun before the bake is done restarts the bake: the baked networks depend on the sun
@@ -3421,6 +3736,19 @@ VULKAN_APP_MAIN {
       if (!nlgReady) {
         ImGui::TextDisabled(hasRayQuery ? "the generator is not available" : "ray queries are not available");
       }
+      ImGui::SeparatorText("Generator");
+      // each is grayed out without what it runs on; the probes are baked again with the new one
+      const int oldPath = generatorPath;
+      const char* pathNames[] = {"Compute shader", "VK_ARM_tensors + VK_ARM_data_graph", "VK_KHR_cooperative_matrix"};
+      for (int path = GeneratorPath_Compute; path <= GeneratorPath_Cooperative; path++) {
+        ImGui::BeginDisabled(!pathReady[path]);
+        ImGui::RadioButton(pathNames[path], &generatorPath, path);
+        ImGui::EndDisabled();
+      }
+      if (generatorPath != oldPath) {
+        rebakeOverOldProbes();
+      }
+      ImGui::Separator();
       ImGui::Checkbox("Enable GI", &showGI);
       ImGui::Checkbox("Enable textures", &showTextures);
       ImGui::Separator();
