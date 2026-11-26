@@ -10400,6 +10400,43 @@ VkAccessFlags2 tensorAccessFlagsForStages(VkPipelineStageFlags2 stages) {
 
 } // namespace
 
+uint64_t lvk::VulkanContext::getTensorBufferSize(const TensorDesc& desc) const {
+  const uint64_t dataSize = getTensorDataSize(desc);
+  if (!has_ARM_tensors_ || !desc.rank || desc.rank > LVK_MAX_TENSOR_RANK) {
+    return dataSize;
+  }
+  const bool needsOptimalTensor = (desc.usage & TensorUsageBits_DataGraph) &&
+                                  !(getTensorFormatSupport(desc.format, TensorTiling_Linear) & TensorUsageBits_DataGraph);
+  const TensorUsageFlags usage = needsOptimalTensor ? (TensorUsageFlags)((desc.usage & ~TensorUsageBits_DataGraph) |
+                                                                         TensorUsageBits_TransferSrc | TensorUsageBits_TransferDst)
+                                                    : desc.usage;
+  bool hasCustomStrides = false;
+  for (uint32_t i = 0; i != desc.rank; i++) {
+    hasCustomStrides = hasCustomStrides || desc.strides[i] != 0;
+  }
+  const VkTensorDescriptionARM description = {
+      .sType = VK_STRUCTURE_TYPE_TENSOR_DESCRIPTION_ARM,
+      .tiling = VK_TENSOR_TILING_LINEAR_ARM, // as in createTensorBufferAliasing()
+      .format = lvk::formatToVkFormat(desc.format),
+      .dimensionCount = desc.rank,
+      .pDimensions = desc.dimensions,
+      .pStrides = hasCustomStrides ? desc.strides : nullptr,
+      .usage = tensorUsageToVkTensorUsage(usage),
+  };
+  const VkTensorCreateInfoARM ci = {
+      .sType = VK_STRUCTURE_TYPE_TENSOR_CREATE_INFO_ARM,
+      .pDescription = &description,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  const VkDeviceTensorMemoryRequirementsARM info = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_TENSOR_MEMORY_REQUIREMENTS_ARM,
+      .pCreateInfo = &ci,
+  };
+  VkMemoryRequirements2 requirements = {.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+  vkGetDeviceTensorMemoryRequirementsARM(vkDevice_, &info, &requirements);
+  return std::max(dataSize, (uint64_t)requirements.memoryRequirements.size);
+}
+
 lvk::TensorHandle lvk::VulkanContext::createTensor(const VkTensorDescriptionARM& description,
                                                    VkMemoryPropertyFlags memFlags,
                                                    BufferHandle aliasBuffer,

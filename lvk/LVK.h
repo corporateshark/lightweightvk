@@ -1540,6 +1540,7 @@ class IContext {
   virtual bool supportsDataGraphARM() const = 0;
   [[nodiscard]] virtual TensorProperties getTensorProperties() const = 0;
   [[nodiscard]] virtual TensorUsageFlags getTensorFormatSupport(Format format, TensorTiling tiling) const = 0;
+  [[nodiscard]] virtual uint64_t getTensorBufferSize(const TensorDesc& desc) const = 0; // for createTensorBufferAliasing()
 
   // the maximum number of views in a multiview render pass, i.e. 1 unless multiview is supported
   [[nodiscard]] virtual uint32_t getMultiviewMaxViewCount() const = 0;
