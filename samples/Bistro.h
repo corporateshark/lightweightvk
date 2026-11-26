@@ -861,12 +861,14 @@ struct CooperativeMatrixShape {
   uint32_t maxSharedMemorySize = 0; // of a compute workgroup on the device
 };
 
-// the networks fall back on VK_KHR_cooperative_matrix where VK_ARM_data_graph is missing; square tiles are preferred, and M is
-// never larger than the smallest subgroup, so that a subgroup's own invocations can fill the rows of a tile
+// the networks fall back on VK_KHR_cooperative_matrix where VK_ARM_data_graph is missing; M is never larger than the smallest
+// subgroup, so that a subgroup's own invocations can fill the rows of a tile. Prefers the widest tile no wider than `maxN` (wider
+// ones waste shared memory on narrow layers), else a square one
 CooperativeMatrixShape getCooperativeMatrixShape(lvk::IContext* ctx,
                                                  VkComponentTypeKHR typeA,
                                                  VkComponentTypeKHR typeB,
-                                                 VkComponentTypeKHR typeC) {
+                                                 VkComponentTypeKHR typeC,
+                                                 uint32_t maxN = 0) {
   if (!ctx->supportsCooperativeMatrix()) {
     return {};
   }
@@ -882,7 +884,11 @@ CooperativeMatrixShape getCooperativeMatrixShape(lvk::IContext* ctx,
   for (const VkCooperativeMatrixPropertiesKHR& p : properties) {
     const bool isMatch = p.AType == typeA && p.BType == typeB && p.CType == typeC && p.ResultType == typeC &&
                          p.scope == VK_SCOPE_SUBGROUP_KHR && !p.saturatingAccumulation && p.MSize <= properties13.minSubgroupSize;
-    const bool isBetter = !shape.m || (p.MSize == p.NSize && shape.m != shape.n);
+    const bool isNarrow = maxN && p.NSize <= maxN;
+    const bool wasNarrow = maxN && shape.n <= maxN;
+    const bool isSquareInstead = p.MSize == p.NSize && shape.m != shape.n;
+    const bool isBetter = !shape.m || (isNarrow && !wasNarrow) ||
+                          (isNarrow == wasNarrow && (isNarrow ? p.NSize > shape.n : isSquareInstead));
     if (isMatch && isBetter) {
       shape = {.m = p.MSize,
                .n = p.NSize,

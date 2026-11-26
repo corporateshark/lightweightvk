@@ -55,6 +55,7 @@ enum {
   kAndroidTensorHeight = 408,
 #endif // ANDROID
   kMaxOitLayers = 32,
+  kDfaoitCooperativeRows = 256, // pixels per workgroup of `kCodeDfaoitCooperativeCS`
 };
 
 constexpr size_t getKeysSize(uint32_t numPixels, uint32_t numSlots) {
@@ -490,7 +491,7 @@ const char* kCodeDfaoitCooperativeCS = R"(
 layout (local_size_x = 256) in;
 layout (set = 0, binding = 2, rgba16f) uniform writeonly image2D kImagesRGBA16F[];
 
-const uint kRows = 256u;
+const uint kRows = kDfaoitCooperativeRows;
 
 // a row of A per pixel, which ends up holding the outputs of the network too; C is one tile per subgroup
 shared int8_t sA[kRows * kStrideA];
@@ -865,11 +866,12 @@ std::vector<uint32_t> buildMlpGraph(const Mlp& mlp, uint32_t width, uint32_t hei
 // the same network for `kCodeDfaoitCooperativeCS`: per layer, B = the int8 weights as a K x N row-major matrix padded to the tile
 // size with zeros (so the shader never clears the padded columns of A), and the biases (with the input zero point folded in, since sum((x -
 // zp) * w) = sum(x * w) - zp * sum(w)), the multipliers and the shifts as int32; then the 256 entries of the sigmoid table. Returns the
-// GLSL constants describing the layout
+// GLSL constants describing the layout, and the shared memory a workgroup takes with it
 std::string buildMlpCooperative(const Mlp& mlp,
                                 const CooperativeMatrixShape& tile,
                                 std::vector<int8_t>& outWeights,
-                                std::vector<int32_t>& outParams) {
+                                std::vector<int32_t>& outParams,
+                                uint32_t& outSharedMemory) {
   auto roundUp = [](uint32_t value, uint32_t multiple) { return (value + multiple - 1) / multiple * multiple; };
   auto list = [](const std::vector<int32_t>& values, const char* type) {
     std::string s = std::string(type) + "[](";
@@ -925,8 +927,11 @@ std::string buildMlpCooperative(const Mlp& mlp,
     outParams.push_back(last.table[i]);
   }
   // a row of A holds the widest padded input (every layer's outputs are the next one's inputs), a row of C the widest padded
-  // output, both 16-byte aligned
-  return "const uint kTileM = " + std::to_string(tile.m) + ";\nconst uint kTileN = " + std::to_string(tile.n) +
+  // output, both 16-byte aligned; a row of A per invocation, a tile of C per subgroup
+  outSharedMemory = kDfaoitCooperativeRows * roundUp(strideA, 16) +
+                    kDfaoitCooperativeRows / tile.minSubgroupSize * tile.m * roundUp(strideC, 4) * uint32_t(sizeof(int32_t));
+  return "const uint kDfaoitCooperativeRows = " + std::to_string(kDfaoitCooperativeRows) +
+         ";\nconst uint kTileM = " + std::to_string(tile.m) + ";\nconst uint kTileN = " + std::to_string(tile.n) +
          ";\nconst uint kTileK = " + std::to_string(tile.k) + ";\nconst uint kStrideA = " + std::to_string(roundUp(strideA, 16)) +
          ";\nconst uint kStrideC = " + std::to_string(roundUp(strideC, 4)) +
          ";\nconst uint kNumLayers = " + std::to_string(mlp.layers.size()) +
@@ -1129,18 +1134,24 @@ VULKAN_APP_MAIN {
   const bool networkReady = loadNetwork();
   const bool graphReady = networkReady && createGraph();
 
-  // the same network as int8 cooperative matrices in a compute shader, which needs no VK_ARM_data_graph
+  // the same network as int8 cooperative matrices in a compute shader, which needs no VK_ARM_data_graph; tiles no wider than its
+  // widest layer take the least shared memory
+  uint32_t widestLayer = 0;
+  for (const MlpLayer& layer : mlp.layers) {
+    widestLayer = std::max(widestLayer, layer.numOutputs);
+  }
   const CooperativeMatrixShape tile =
-      networkReady ? getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR)
+      networkReady ? getCooperativeMatrixShape(
+                         ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR, widestLayer)
                    : CooperativeMatrixShape{};
-  const bool cooperativeReady = tile.m != 0;
+  std::vector<int8_t> weights;
+  std::vector<int32_t> params;
+  uint32_t sharedMemory = 0;
+  const std::string cooperativeConstants = tile.m ? buildMlpCooperative(mlp, tile, weights, params, sharedMemory) : std::string();
+  const bool cooperativeReady = tile.m && sharedMemory <= tile.maxSharedMemorySize;
   lvk::Holder<lvk::BufferHandle> cooperativeWeights;
   lvk::Holder<lvk::BufferHandle> cooperativeParams;
-  std::string cooperativeConstants;
   if (cooperativeReady) {
-    std::vector<int8_t> weights;
-    std::vector<int32_t> params;
-    cooperativeConstants = buildMlpCooperative(mlp, tile, weights, params);
     cooperativeWeights = ctx->createBuffer({.usage = lvk::BufferUsageBits_Storage,
                                             .storage = lvk::StorageType_Device,
                                             .size = weights.size(),
@@ -1152,6 +1163,8 @@ VULKAN_APP_MAIN {
                                            .data = params.data(),
                                            .debugName = "DFAOIT: cooperative matrix parameters"});
     LLOGL("DFAOIT: the network runs as %ux%ux%u int8 cooperative matrices\n", tile.m, tile.n, tile.k);
+  } else if (tile.m) {
+    LLOGW("DFAOIT: the cooperative matrices need more shared memory than the device has\n");
   } else if (networkReady) {
     LLOGW("DFAOIT: int8 cooperative matrices (VK_KHR_cooperative_matrix) are not available\n");
   }

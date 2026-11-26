@@ -28,7 +28,7 @@
  * Layer for Vulkan is used when LightweightVK was configured with `LVK_WITH_ML_EMULATION_LAYER=ON` (run with
  * `--no-ml-emulation` to disable it). `--no-nss` starts with NSS disabled,
  * `--camera-rotate` rotates the camera continuously (temporal stability test; combine with `--screenshot-frame`),
- * `--ao-samples N` sets the number of ambient occlusion rays per pixel (6 by default, 0 disables it), `--timings` also prints
+ * `--ao-samples N` sets the number of ambient occlusion rays per pixel (4 by default, 1 on Android, 0 disables it), `--timings` also prints
  * the GPU time of every stage to the log.
  * `--full-res` starts with the scene rendered at the output resolution and NSS off, which is what NSS is compared
  * against; the "F" key and the render mode combo box switch between the two at run time.
@@ -253,7 +253,8 @@ layout (location=5) in vec4 clipPrev;
 layout (location=6) flat in Material mtl;
 
 layout (location=0) out vec4 out_FragColor;
-layout (location=1) out vec2 out_Motion;
+// vec4: a vec2 output next to ray queries corrupts out_FragColor.rg on Adreno
+layout (location=1) out vec4 out_Motion;
 
 float PCF3(vec3 uvw) {
   float size = 1.0 / textureBindlessSize2D(pc.perFrame.texShadow).x;
@@ -287,7 +288,7 @@ void main() {
   vec4 diffuse = textureBindlessCube(pc.perFrame.texSkyboxIrradiance, pc.perFrame.sampler0, n) * Kd * (vec4(1.0) - f0);
   const float ao = ambientOcclusion(vtx.worldPos, n, pc.tlas, pc.aoSamples, pc.frameId, pc.aoRadius, pc.aoPower);
   out_FragColor = vec4((Ka + diffuse * shadow(vtx.shadowCoords) * ao).rgb, 1.0);
-  out_Motion = motionVector(clipCur, clipPrev);
+  out_Motion = vec4(motionVector(clipCur, clipPrev), 0.0, 0.0);
 };
 )";
 
@@ -528,7 +529,11 @@ enum RenderMode {
 };
 int renderMode_ = RenderMode_HalfResolutionNSS;
 bool rayQuery_ = false;
-int aoSamples_ = 6;
+#if defined(ANDROID)
+int aoSamples_ = 1;
+#else
+int aoSamples_ = 4;
+#endif // ANDROID
 float aoRadius_ = 8.0f;
 float aoPower_ = 1.0f;
 
@@ -871,8 +876,8 @@ std::string expandIncludes(const std::string& text, std::vector<std::string>& in
 // a layer of the network on VK_KHR_cooperative_matrix: a CONV2D (int8 into int32) with the RESCALE after it and the TABLE after
 // that, reading the RESIZE (nearest, 2x) or the CONCAT (of channels) before it straight from the activations they combine; the
 // input zero point is folded into the biases, so the staged int8 input is the A matrices as it is, and the padding outside the
-// input is the zero point itself. A subgroup computes tiles of kTileM pixels by 4 rows of the output from the input rows it staged
-// itself, so no subgroup ever waits for another; bit for bit what the data graph computes
+// input is the zero point itself. A subgroup computes tiles of kTileM pixels by kRows rows of the output from the input rows it
+// staged itself, so no subgroup ever waits for another; bit for bit what the data graph computes
 const char* kNssCooperativeExtensions = R"(
 #extension GL_KHR_cooperative_matrix : require
 #extension GL_KHR_memory_scope_semantics : require
@@ -909,7 +914,7 @@ layout(push_constant) uniform constants {
 } pc;
 
 const uint kSpan = (kTileM - 1u) * kStride + kKernelWidth; // the input pixels of a staged row
-const uint kStagedRows = 3u * kStride + kKernelHeight;       // of the 4 output rows of a tile
+const uint kStagedRows = (kRows - 1u) * kStride + kKernelHeight; // of the kRows output rows of a tile
 const uint kStaged = kStagedRows * kSpan * kPaddedChannels;
 const uint kRowStep = kStride * kSpan * kPaddedChannels; // from the staged rows of an output row to those of the next one
 const uint kMaxSubgroups = 64u / kMinSubgroupSize;
@@ -973,7 +978,7 @@ void main() {
   const uint cAt = gl_SubgroupID * kTileM * kTileN;
   for (uint t = gl_SubgroupID; t < kTilesPerGroup; t += gl_NumSubgroups) {
     const uint tile = gl_WorkGroupID.x * kTilesPerGroup + t;
-    const uint oy0 = tile / tilesPerRow * 4u;
+    const uint oy0 = tile / tilesPerRow * kRows;
     if (oy0 >= kOutputHeight) {
       break;
     }
@@ -1002,8 +1007,8 @@ void main() {
     subgroupMemoryBarrierShared();
     subgroupBarrier();
 
-    // 4 output rows at a time, so that a B tile is loaded once for 4 A tiles; the accumulators are 4 variables, since some
-    // drivers are much slower with an array of cooperative matrices
+    // kRows output rows at a time, so that a B tile is loaded once for kRows A tiles; the accumulators are 4 variables, since
+    // some drivers are much slower with an array of cooperative matrices
     [[unroll]] for (uint n = 0u; n != kPaddedOutputs; n += kTileN) {
       coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c0 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
       coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c1 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
@@ -1019,16 +1024,20 @@ void main() {
           coopmat<int8_t, gl_ScopeSubgroup, kTileM, kTileK, gl_MatrixUseA> a;
           coopMatLoad(a, sA, aAt, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
           c0 = coopMatMulAdd(a, b, c0);
-          coopMatLoad(a, sA, aAt + kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
-          c1 = coopMatMulAdd(a, b, c1);
-          coopMatLoad(a, sA, aAt + 2u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
-          c2 = coopMatMulAdd(a, b, c2);
-          coopMatLoad(a, sA, aAt + 3u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
-          c3 = coopMatMulAdd(a, b, c3);
+          if (kRows > 1u) {
+            coopMatLoad(a, sA, aAt + kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            c1 = coopMatMulAdd(a, b, c1);
+          }
+          if (kRows > 2u) {
+            coopMatLoad(a, sA, aAt + 2u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            c2 = coopMatMulAdd(a, b, c2);
+            coopMatLoad(a, sA, aAt + 3u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            c3 = coopMatMulAdd(a, b, c3);
+          }
         }
       }
       // a tile at the bottom of the output computes rows past it too, which are left out
-      [[unroll]] for (uint row = 0u; row != 4u; row++) {
+      [[unroll]] for (uint row = 0u; row != kRows; row++) {
         if (oy0 + row >= kOutputHeight) {
           break;
         }
@@ -1074,6 +1083,7 @@ struct NeuralSuperSampling {
     kFeedbackChannels = 4,
     kJitterPhaseCount = 8 * 2 * 2,
     kCooperativeTilesPerGroup = 4, // of `kNssCooperativeCS`
+    kCooperativeMaxMultiRowTile = 16 * 16, // larger tiles compute one output row
   };
   static_assert(FFX_NSS_THREAD_GROUP_WIDTH == FFX_NSS_THREAD_GROUP_HEIGHT, "The dispatches below assume square thread groups");
   inline static uint32_t kGraphWidth = 0;
@@ -1580,6 +1590,27 @@ struct NeuralSuperSampling {
     return true;
   }
 
+  // the staged input rows and the C tiles of a workgroup of `kNssCooperativeCS`
+  static uint32_t getCooperativeSharedMemory(const CooperativeLayer& layer, const CooperativeMatrixShape& tile, uint32_t rows) {
+    const uint32_t span = (tile.m - 1) * layer.stride + uint32_t(layer.kernelShape.z);
+    const uint32_t stagedRows = (rows - 1) * layer.stride + uint32_t(layer.kernelShape.y);
+    const uint32_t paddedChannels = (uint32_t(layer.kernelShape.w) + tile.k - 1) / tile.k * tile.k;
+    return 64 / tile.minSubgroupSize * (stagedRows * span * paddedChannels + uint32_t(sizeof(int32_t)) * tile.m * tile.n);
+  }
+
+  // output rows per tile: 4 to load a B tile once for 4 A tiles, fewer if shared memory is short, 0 if even 1 row does not fit;
+  // 1 for tiles larger than 16x16 (Adreno's 64x16 is slow and wrong with several accumulators)
+  static uint32_t getCooperativeRows(const CooperativeLayer& layer, const CooperativeMatrixShape& tile) {
+    for (uint32_t rows = 4; rows; rows /= 2) {
+      const bool isFewEnough = tile.m * tile.n <= kCooperativeMaxMultiRowTile;
+      const bool isSharedMemoryEnough = getCooperativeSharedMemory(layer, tile, rows) <= tile.maxSharedMemorySize;
+      if ((isFewEnough || rows == 1) && isSharedMemoryEnough) {
+        return rows;
+      }
+    }
+    return 0;
+  }
+
   // the B matrices (per tap, the channels padded to K by the outputs padded to N, zeros in the padding) and the parameters (the
   // biases with the input zero point folded in, the multipliers, the shifts, then the table) of a layer, appended to `weights`
   // and `params`; returns the GLSL constants of its `kNssCooperativeCS`
@@ -1621,6 +1652,7 @@ struct NeuralSuperSampling {
         {"kTileM", tile.m},
         {"kTileN", tile.n},
         {"kTileK", tile.k},
+        {"kRows", getCooperativeRows(layer, tile)},
         {"kMinSubgroupSize", tile.minSubgroupSize},
         {"kKernelHeight", layer.kernelShape.y},
         {"kKernelWidth", layer.kernelShape.z},
@@ -1770,23 +1802,20 @@ struct NeuralSuperSampling {
     bufTensorKpn = createTensorBuffer(dimsKpn, "NSS: KPN coefficients");
     bufTensorFeedback = createTensorBuffer(dimsFeedback, "NSS: temporal feedback");
 
-    // the same network as int8 cooperative matrices in compute shaders, which needs no VK_ARM_* extension
+    // the same network as int8 cooperative matrices in compute shaders, which needs no VK_ARM_* extension; 16-wide tiles pad
+    // its 4 to 64 outputs the least
     const CooperativeMatrixShape tile =
-        getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR);
+        getCooperativeMatrixShape(ctx, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT8_KHR, VK_COMPONENT_TYPE_SINT32_KHR, 16);
     std::vector<CooperativeLayer> layers;
     std::vector<glm::ivec4> activations;
     uint32_t cooperativeOutputs[2] = {};
     const bool isComputable = tile.m && buildCooperativeLayers(spirv, vgf.getConstants(), layers, activations, cooperativeOutputs);
-    // the staged input rows and the C tile of every subgroup a workgroup can have
-    bool isSharedMemoryEnough = isComputable;
+    uint32_t sharedMemory = 0;
     for (const CooperativeLayer& layer : layers) {
-      const uint32_t span = (tile.m - 1) * layer.stride + uint32_t(layer.kernelShape.z);
-      const uint32_t stagedRows = 3 * layer.stride + uint32_t(layer.kernelShape.y);
-      const uint32_t paddedChannels = (uint32_t(layer.kernelShape.w) + tile.k - 1) / tile.k * tile.k;
-      const uint32_t sharedMemory = 64 / tile.minSubgroupSize * (stagedRows * span * paddedChannels + sizeof(int32_t) * tile.m * tile.n);
-      isSharedMemoryEnough = isSharedMemoryEnough && sharedMemory <= tile.maxSharedMemorySize;
+      sharedMemory = std::max(sharedMemory, getCooperativeSharedMemory(layer, tile, 1));
     }
-    cooperativeReady = isSharedMemoryEnough && activations[0] == glm::ivec4(1, kGraphHeight, kGraphWidth, kInputChannels) &&
+    const bool isSharedMemoryEnough = sharedMemory <= tile.maxSharedMemorySize;
+    cooperativeReady = isComputable && isSharedMemoryEnough && activations[0] == glm::ivec4(1, kGraphHeight, kGraphWidth, kInputChannels) &&
                        activations[cooperativeOutputs[indexKpn]] == shapeKpn &&
                        activations[cooperativeOutputs[indexFeedback]] == shapeFeedback;
     if (!cooperativeReady) {
@@ -1982,11 +2011,12 @@ struct NeuralSuperSampling {
         const size_t weightsAt = weights.size();
         const size_t paramsAt = sizeof(int32_t) * params.size();
         const std::string code = kNssCooperativeExtensions + buildCooperativeLayer(layer, tile, weights, params) + kNssCooperativeCS;
+        const uint32_t rows = getCooperativeRows(layer, tile);
         CooperativeDispatch dispatch = {
             .sm = ctx->createShaderModule({code.c_str(), lvk::Stage_Comp, "Shader Module: NSS cooperative matrices (comp)"}),
             .sources = {layer.sources[0], layer.sources[1]},
             .output = layer.output,
-            .groups = (uint32_t(layer.outputShape.z + tile.m - 1) / tile.m * (uint32_t(layer.outputShape.y + 3) / 4) +
+            .groups = (uint32_t(layer.outputShape.z + tile.m - 1) / tile.m * ((uint32_t(layer.outputShape.y) + rows - 1) / rows) +
                        kCooperativeTilesPerGroup - 1) /
                       kCooperativeTilesPerGroup,
             .weightsAt = weightsAt,
@@ -2266,6 +2296,7 @@ VULKAN_APP_MAIN {
   const VulkanAppConfig cfg{
       .width = (int)(windowHeight * 16 / 9),
       .height = (int)windowHeight,
+      .framebufferScalar = 1, // NSS upscales to the native resolution
       .resizable = false,
       .initialCameraPos = vec3(-100, 40, -47),
       .initialCameraTarget = vec3(0, 35, 0),
