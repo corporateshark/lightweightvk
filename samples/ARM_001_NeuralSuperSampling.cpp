@@ -909,14 +909,16 @@ layout(push_constant) uniform constants {
   Words source0;
   Words source1;
   Activations destination;
-  Weights weights; // per tap, B = kPaddedChannels x kPaddedOutputs int8, row-major
+  Weights weights; // per kernel row, B = kRowK x kPaddedOutputs int8, row-major
   Params params;   // the folded biases, the multipliers, the shifts (kPaddedOutputs each), then the table
 } pc;
 
 const uint kSpan = (kTileM - 1u) * kStride + kKernelWidth; // the input pixels of a staged row
 const uint kStagedRows = (kRows - 1u) * kStride + kKernelHeight; // of the kRows output rows of a tile
-const uint kStaged = kStagedRows * kSpan * kPaddedChannels;
-const uint kRowStep = kStride * kSpan * kPaddedChannels; // from the staged rows of an output row to those of the next one
+// a staged pixel has its channels padded to 16 bytes, so the taps of a kernel row are one contiguous row of A, K = kRowK wide;
+// the K padding reaches into the next pixels (and kTileK bytes past the staged rows), and meets the zero rows of B
+const uint kStaged = kStagedRows * kSpan * kStagedChannels + kTileK;
+const uint kRowStep = kStride * kSpan * kStagedChannels; // from the staged rows of an output row to those of the next one
 const uint kMaxSubgroups = 64u / kMinSubgroupSize;
 
 shared int8_t sA[kMaxSubgroups * kStaged];
@@ -999,7 +1001,7 @@ void main() {
         word = c4 < kChannels0 / 4u ? pc.source0.v[source * (kChannels0 / 4u) + c4]
                                     : pc.source1.v[source * (kChannels1 / 4u) + c4 - kChannels0 / 4u];
       }
-      const uint at = stagedAt + pixel * kPaddedChannels + 4u * c4;
+      const uint at = stagedAt + pixel * kStagedChannels + 4u * c4;
       [[unroll]] for (uint b = 0u; b != 4u; b++) {
         sA[at + b] = int8_t(bitfieldExtract(int(word), int(8u * b), 8));
       }
@@ -1014,24 +1016,22 @@ void main() {
       coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c1 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
       coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c2 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
       coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator> c3 = coopmat<int, gl_ScopeSubgroup, kTileM, kTileN, gl_MatrixUseAccumulator>(0);
-      [[unroll]] for (uint tap = 0u; tap != kKernelHeight * kKernelWidth; tap++) {
-        const uint ky = tap / kKernelWidth;
-        const uint kx = tap % kKernelWidth;
-        [[unroll]] for (uint k = 0u; k != kPaddedChannels; k += kTileK) {
+      [[unroll]] for (uint ky = 0u; ky != kKernelHeight; ky++) {
+        [[unroll]] for (uint k = 0u; k != kRowK; k += kTileK) {
           coopmat<int8_t, gl_ScopeSubgroup, kTileK, kTileN, gl_MatrixUseB> b;
-          coopMatLoad(b, pc.weights.v, (tap * kPaddedChannels + k) * kPaddedOutputs + n, kPaddedOutputs, gl_CooperativeMatrixLayoutRowMajor);
-          const uint aAt = stagedAt + (ky * kSpan + kx) * kPaddedChannels + k;
+          coopMatLoad(b, pc.weights.v, (ky * kRowK + k) * kPaddedOutputs + n, kPaddedOutputs, gl_CooperativeMatrixLayoutRowMajor);
+          const uint aAt = stagedAt + ky * kSpan * kStagedChannels + k;
           coopmat<int8_t, gl_ScopeSubgroup, kTileM, kTileK, gl_MatrixUseA> a;
-          coopMatLoad(a, sA, aAt, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+          coopMatLoad(a, sA, aAt, kStride * kStagedChannels, gl_CooperativeMatrixLayoutRowMajor);
           c0 = coopMatMulAdd(a, b, c0);
           if (kRows > 1u) {
-            coopMatLoad(a, sA, aAt + kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            coopMatLoad(a, sA, aAt + kRowStep, kStride * kStagedChannels, gl_CooperativeMatrixLayoutRowMajor);
             c1 = coopMatMulAdd(a, b, c1);
           }
           if (kRows > 2u) {
-            coopMatLoad(a, sA, aAt + 2u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            coopMatLoad(a, sA, aAt + 2u * kRowStep, kStride * kStagedChannels, gl_CooperativeMatrixLayoutRowMajor);
             c2 = coopMatMulAdd(a, b, c2);
-            coopMatLoad(a, sA, aAt + 3u * kRowStep, kStride * kPaddedChannels, gl_CooperativeMatrixLayoutRowMajor);
+            coopMatLoad(a, sA, aAt + 3u * kRowStep, kStride * kStagedChannels, gl_CooperativeMatrixLayoutRowMajor);
             c3 = coopMatMulAdd(a, b, c3);
           }
         }
@@ -1594,8 +1594,8 @@ struct NeuralSuperSampling {
   static uint32_t getCooperativeSharedMemory(const CooperativeLayer& layer, const CooperativeMatrixShape& tile, uint32_t rows) {
     const uint32_t span = (tile.m - 1) * layer.stride + uint32_t(layer.kernelShape.z);
     const uint32_t stagedRows = (rows - 1) * layer.stride + uint32_t(layer.kernelShape.y);
-    const uint32_t paddedChannels = (uint32_t(layer.kernelShape.w) + tile.k - 1) / tile.k * tile.k;
-    return 64 / tile.minSubgroupSize * (stagedRows * span * paddedChannels + uint32_t(sizeof(int32_t)) * tile.m * tile.n);
+    const uint32_t stagedChannels = (uint32_t(layer.kernelShape.w) + 15) / 16 * 16;
+    return 64 / tile.minSubgroupSize * (stagedRows * span * stagedChannels + tile.k + uint32_t(sizeof(int32_t)) * tile.m * tile.n);
   }
 
   // output rows per tile: 4 to load a B tile once for 4 A tiles, fewer if shared memory is short, 0 if even 1 row does not fit;
@@ -1611,21 +1611,24 @@ struct NeuralSuperSampling {
     return 0;
   }
 
-  // the B matrices (per tap, the channels padded to K by the outputs padded to N, zeros in the padding) and the parameters (the
-  // biases with the input zero point folded in, the multipliers, the shifts, then the table) of a layer, appended to `weights`
-  // and `params`; returns the GLSL constants of its `kNssCooperativeCS`
+  // the B matrices (per kernel row, its taps' channels padded to 16, padded to K, by the outputs padded to N, zeros in the padding)
+  // and the parameters (the biases with the input zero point folded in, the multipliers, the shifts, then the table) of a layer,
+  // appended to `weights` and `params`; returns the GLSL constants of its `kNssCooperativeCS`
   static std::string buildCooperativeLayer(const CooperativeLayer& layer,
                                            const CooperativeMatrixShape& tile,
                                            std::vector<int8_t>& weights,
                                            std::vector<int32_t>& params) {
     auto roundUp = [](uint32_t value, uint32_t multiple) { return (value + multiple - 1) / multiple * multiple; };
     const uint32_t outputs = (uint32_t)layer.kernelShape.x;
-    const uint32_t taps = uint32_t(layer.kernelShape.y * layer.kernelShape.z);
+    const uint32_t kernelHeight = (uint32_t)layer.kernelShape.y;
+    const uint32_t kernelWidth = (uint32_t)layer.kernelShape.z;
+    const uint32_t taps = kernelHeight * kernelWidth;
     const uint32_t channels = (uint32_t)layer.kernelShape.w;
-    const uint32_t paddedChannels = roundUp(channels, tile.k);
+    const uint32_t stagedChannels = roundUp(channels, 16);
+    const uint32_t rowK = roundUp(kernelWidth * stagedChannels, tile.k);
     const uint32_t paddedOutputs = roundUp(outputs, tile.n);
     const size_t weightsAt = weights.size();
-    weights.resize(weightsAt + size_t(taps) * paddedChannels * paddedOutputs, 0);
+    weights.resize(weightsAt + size_t(kernelHeight) * rowK * paddedOutputs, 0);
     const size_t paramsAt = params.size();
     params.resize(paramsAt + 3 * size_t(paddedOutputs), 0);
     for (uint32_t o = 0; o != outputs; o++) {
@@ -1633,7 +1636,8 @@ struct NeuralSuperSampling {
       for (uint32_t tap = 0; tap != taps; tap++) {
         for (uint32_t c = 0; c != channels; c++) {
           const int32_t w = layer.weights[(size_t(o) * taps + tap) * channels + c];
-          weights[weightsAt + (size_t(tap) * paddedChannels + c) * paddedOutputs + o] = (int8_t)w;
+          const size_t row = size_t(tap / kernelWidth) * rowK + tap % kernelWidth * stagedChannels + c;
+          weights[weightsAt + row * paddedOutputs + o] = (int8_t)w;
           sum += w;
         }
       }
@@ -1663,7 +1667,8 @@ struct NeuralSuperSampling {
         {"kChannels", channels},
         {"kChannels0", layer.sourceChannels[0]},
         {"kChannels1", layer.sourceChannels[1]},
-        {"kPaddedChannels", paddedChannels},
+        {"kStagedChannels", stagedChannels},
+        {"kRowK", rowK},
         {"kOutputWidth", layer.outputShape.z},
         {"kOutputHeight", layer.outputShape.y},
         {"kOutputs", outputs},
