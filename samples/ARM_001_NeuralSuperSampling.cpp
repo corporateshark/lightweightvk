@@ -889,7 +889,7 @@ const char* kNssCooperativeExtensions = R"(
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
 )";
 
-const char* kNssCooperativeCS = R"(
+const char* kNssLayerCS = R"(
 layout (local_size_x = 64) in;
 
 layout(std430, buffer_reference) readonly buffer Words {
@@ -909,20 +909,9 @@ layout(push_constant) uniform constants {
   Words source0;
   Words source1;
   Activations destination;
-  Weights weights; // per kernel row, B = kRowK x kPaddedOutputs int8, row-major
+  Weights weights; // per kernel row, B = kRowK x kPaddedOutputs int8, row-major (a direct layer: per tap and channel, kOutputs)
   Params params;   // the folded biases, the multipliers, the shifts (kPaddedOutputs each), then the table
 } pc;
-
-const uint kSpan = (kTileM - 1u) * kStride + kKernelWidth; // the input pixels of a staged row
-const uint kStagedRows = (kRows - 1u) * kStride + kKernelHeight; // of the kRows output rows of a tile
-// a staged pixel has its channels padded to 16 bytes, so the taps of a kernel row are one contiguous row of A, K = kRowK wide;
-// the K padding reaches into the next pixels (and kTileK bytes past the staged rows), and meets the zero rows of B
-const uint kStaged = kStagedRows * kSpan * kStagedChannels + kTileK;
-const uint kRowStep = kStride * kSpan * kStagedChannels; // from the staged rows of an output row to those of the next one
-const uint kMaxSubgroups = 64u / kMinSubgroupSize;
-
-shared int8_t sA[kMaxSubgroups * kStaged];
-shared int sC[kMaxSubgroups * kTileM * kTileN];
 
 // TOSA RESCALE with scale32 and single rounding, (value * multiplier + 2^(shift - 1)) >> shift in 64 bits, saturated to int8
 int rescale(int value, int multiplier, int shift, int zeroPoint) {
@@ -948,6 +937,20 @@ void storeOutput(uint pixel, uint channel, int acc, int multiplier, int shift) {
   // the no-op mask keeps Mali-G925 from faulting
   pc.destination.v[pixel * kOutputs + channel] = int8_t(kHasTable ? pc.params.v[kTableAt + (uint(q + 128) & 255u)] : q);
 }
+
+)";
+
+const char* kNssCooperativeCS = R"(
+const uint kSpan = (kTileM - 1u) * kStride + kKernelWidth; // the input pixels of a staged row
+const uint kStagedRows = (kRows - 1u) * kStride + kKernelHeight; // of the kRows output rows of a tile
+// a staged pixel has its channels padded to 16 bytes, so the taps of a kernel row are one contiguous row of A, K = kRowK wide;
+// the K padding reaches into the next pixels (and kTileK bytes past the staged rows), and meets the zero rows of B
+const uint kStaged = kStagedRows * kSpan * kStagedChannels + kTileK;
+const uint kRowStep = kStride * kSpan * kStagedChannels; // from the staged rows of an output row to those of the next one
+const uint kMaxSubgroups = 64u / kMinSubgroupSize;
+
+shared int8_t sA[kMaxSubgroups * kStaged];
+shared int sC[kMaxSubgroups * kTileM * kTileN];
 
 // the RESCALE (and the TABLE) of the accumulators of an output row, which C holds, into the output
 void storeOutputs(uint firstPixel, uint ox0, uint n, uint cAt) {
@@ -1057,6 +1060,54 @@ void main() {
         subgroupBarrier();
       }
     }
+  }
+}
+)";
+
+// a layer with too few outputs for the N of a tile, without cooperative matrices: an invocation per output pixel, all of its
+// outputs; the same arithmetic, so still bit for bit what the data graph computes
+const char* kNssDirectCS = R"(
+const uint kTaps = kKernelHeight * kKernelWidth;
+
+shared int sW[kTaps * kChannels * kOutputs];
+
+void main() {
+  for (uint i = gl_LocalInvocationIndex; i < kTaps * kChannels * kOutputs; i += gl_WorkGroupSize.x) {
+    sW[i] = int(pc.weights.v[i]);
+  }
+  barrier();
+  const uint pixel = gl_GlobalInvocationID.x;
+  if (pixel >= kOutputWidth * kOutputHeight) {
+    return;
+  }
+  const int iy0 = int(pixel / kOutputWidth * kStride) - kPadTop;
+  const int ix0 = int(pixel % kOutputWidth * kStride) - kPadLeft;
+  int acc[kOutputs];
+  [[unroll]] for (uint o = 0u; o != kOutputs; o++) {
+    acc[o] = pc.params.v[o];
+  }
+  [[unroll]] for (uint tap = 0u; tap != kTaps; tap++) {
+    const int iy = iy0 + int(tap / kKernelWidth);
+    const int ix = ix0 + int(tap % kKernelWidth);
+    const bool isInside = iy >= 0 && iy < int(kInputHeight) && ix >= 0 && ix < int(kInputWidth);
+    const uint source = (uint(iy) >> kUpsample) * (kInputWidth >> kUpsample) + (uint(ix) >> kUpsample);
+    [[unroll]] for (uint c4 = 0u; c4 != kChannels / 4u; c4++) {
+      uint word = kInputZeroPointWord;
+      if (isInside) {
+        word = c4 < kChannels0 / 4u ? pc.source0.v[source * (kChannels0 / 4u) + c4]
+                                    : pc.source1.v[source * (kChannels1 / 4u) + c4 - kChannels0 / 4u];
+      }
+      [[unroll]] for (uint b = 0u; b != 4u; b++) {
+        const int x = bitfieldExtract(int(word), int(8u * b), 8);
+        const uint w = (tap * kChannels + 4u * c4 + b) * kOutputs;
+        [[unroll]] for (uint o = 0u; o != kOutputs; o++) {
+          acc[o] += x * sW[w + o];
+        }
+      }
+    }
+  }
+  [[unroll]] for (uint o = 0u; o != kOutputs; o++) {
+    storeOutput(pixel, o, acc[o], pc.params.v[kPaddedOutputs + o], pc.params.v[2u * kPaddedOutputs + o]);
   }
 }
 )";
@@ -1611,11 +1662,12 @@ struct NeuralSuperSampling {
     return 0;
   }
 
-  // the B matrices (per kernel row, its taps' channels padded to 16, padded to K, by the outputs padded to N, zeros in the padding)
-  // and the parameters (the biases with the input zero point folded in, the multipliers, the shifts, then the table) of a layer,
-  // appended to `weights` and `params`; returns the GLSL constants of its `kNssCooperativeCS`
+  // the B matrices (per kernel row, its taps' channels padded to 16, padded to K, by the outputs padded to N, zeros in the padding;
+  // a direct layer: per tap and channel, the outputs) and the parameters (the biases with the input zero point folded in, the
+  // multipliers, the shifts, then the table) of a layer, appended to `weights` and `params`; returns the GLSL constants of its shader
   static std::string buildCooperativeLayer(const CooperativeLayer& layer,
                                            const CooperativeMatrixShape& tile,
+                                           bool isDirect,
                                            std::vector<int8_t>& weights,
                                            std::vector<int32_t>& params) {
     auto roundUp = [](uint32_t value, uint32_t multiple) { return (value + multiple - 1) / multiple * multiple; };
@@ -1626,9 +1678,9 @@ struct NeuralSuperSampling {
     const uint32_t channels = (uint32_t)layer.kernelShape.w;
     const uint32_t stagedChannels = roundUp(channels, 16);
     const uint32_t rowK = roundUp(kernelWidth * stagedChannels, tile.k);
-    const uint32_t paddedOutputs = roundUp(outputs, tile.n);
+    const uint32_t paddedOutputs = isDirect ? outputs : roundUp(outputs, tile.n);
     const size_t weightsAt = weights.size();
-    weights.resize(weightsAt + size_t(kernelHeight) * rowK * paddedOutputs, 0);
+    weights.resize(weightsAt + (isDirect ? size_t(taps) * channels : size_t(kernelHeight) * rowK) * paddedOutputs, 0);
     const size_t paramsAt = params.size();
     params.resize(paramsAt + 3 * size_t(paddedOutputs), 0);
     for (uint32_t o = 0; o != outputs; o++) {
@@ -1636,7 +1688,8 @@ struct NeuralSuperSampling {
       for (uint32_t tap = 0; tap != taps; tap++) {
         for (uint32_t c = 0; c != channels; c++) {
           const int32_t w = layer.weights[(size_t(o) * taps + tap) * channels + c];
-          const size_t row = size_t(tap / kernelWidth) * rowK + tap % kernelWidth * stagedChannels + c;
+          const size_t row = isDirect ? size_t(tap) * channels + c
+                                      : size_t(tap / kernelWidth) * rowK + tap % kernelWidth * stagedChannels + c;
           weights[weightsAt + row * paddedOutputs + o] = (int8_t)w;
           sum += w;
         }
@@ -2087,21 +2140,28 @@ struct NeuralSuperSampling {
       for (const CooperativeLayer& layer : layers) {
         const size_t weightsAt = weights.size();
         const size_t paramsAt = sizeof(int32_t) * params.size();
-        const std::string code = kNssCooperativeExtensions + buildCooperativeLayer(layer, tile, weights, params) + kNssCooperativeCS;
+        // a tile would be mostly padding
+        const bool isDirect = uint32_t(layer.kernelShape.x) * 4 <= tile.n;
+        const std::string code = kNssCooperativeExtensions + buildCooperativeLayer(layer, tile, isDirect, weights, params) + kNssLayerCS +
+                                 (isDirect ? kNssDirectCS : kNssCooperativeCS);
         const uint32_t rows = getCooperativeRows(layer, tile);
+        const uint32_t pixels = uint32_t(layer.outputShape.z * layer.outputShape.y);
         CooperativeDispatch dispatch = {
             .sm = ctx->createShaderModule({code.c_str(), lvk::Stage_Comp, "Shader Module: NSS cooperative matrices (comp)"}),
             .sources = {layer.sources[0], layer.sources[1]},
             .output = layer.output,
-            .groups = (uint32_t(layer.outputShape.z + tile.m - 1) / tile.m * ((uint32_t(layer.outputShape.y) + rows - 1) / rows) +
-                       kCooperativeTilesPerGroup - 1) /
-                      kCooperativeTilesPerGroup,
+            .groups = isDirect
+                          ? (pixels + 63) / 64
+                          : (uint32_t(layer.outputShape.z + tile.m - 1) / tile.m * ((uint32_t(layer.outputShape.y) + rows - 1) / rows) +
+                             kCooperativeTilesPerGroup - 1) /
+                                kCooperativeTilesPerGroup,
             .weightsAt = weightsAt,
             .paramsAt = paramsAt,
         };
         snprintf(dispatch.name,
                  sizeof(dispatch.name),
-                 "layer %u: %ux%u/%u%s, %u -> %u channels, %ux%u, %ux%u tiles, %u rows",
+                 isDirect ? "layer %u: %ux%u/%u%s, %u -> %u channels, %ux%u, direct"
+                          : "layer %u: %ux%u/%u%s, %u -> %u channels, %ux%u, %ux%u tiles, %u rows",
                  (uint32_t)cooperativeDispatches.size(),
                  (uint32_t)layer.kernelShape.y,
                  (uint32_t)layer.kernelShape.z,
