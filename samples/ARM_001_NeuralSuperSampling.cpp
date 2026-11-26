@@ -2380,7 +2380,7 @@ VULKAN_APP_MAIN {
     nss_.jitterPrev = nss_.jitter;
     nss_.jitter = useNSS ? NeuralSuperSampling::jitterOffset(nss_.frameIndex) : vec2(0.0f);
     const float aspectRatio = (float)sceneWidth_ / (float)sceneHeight_;
-    const mat4 projNoJitter = glm::perspectiveRH_ZO(kCameraFovY, aspectRatio, kCameraNear, kCameraFar);
+    const mat4 projNoJitter = glm::perspective(kCameraFovY, aspectRatio, kCameraNear, kCameraFar);
     const mat4 proj =
         glm::translate(mat4(1.0f), vec3(-2.0f * nss_.jitter.x / sceneWidth_, 2.0f * nss_.jitter.y / sceneHeight_, 0.0f)) * projNoJitter;
     const mat4 viewMatrix = app.camera_.getViewMatrix();
