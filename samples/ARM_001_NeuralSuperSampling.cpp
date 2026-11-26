@@ -938,7 +938,8 @@ int rescale(int value, int multiplier, int shift, int zeroPoint) {
 
 void storeOutput(uint pixel, uint channel, int acc, int multiplier, int shift) {
   const int q = rescale(acc, multiplier, shift, kOutputZeroPoint);
-  pc.destination.v[pixel * kOutputs + channel] = int8_t(kHasTable ? pc.params.v[kTableAt + uint(q + 128)] : q);
+  // the no-op mask keeps Mali-G925 from faulting
+  pc.destination.v[pixel * kOutputs + channel] = int8_t(kHasTable ? pc.params.v[kTableAt + (uint(q + 128) & 255u)] : q);
 }
 
 // the RESCALE (and the TABLE) of the accumulators of an output row, which C holds, into the output

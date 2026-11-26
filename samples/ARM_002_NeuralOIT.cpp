@@ -517,7 +517,8 @@ int rescale(int value, int multiplier, int shift, int zeroPoint) {
 
 // a hidden layer's output is the next layer's input; the last layer's, through the sigmoid table, is the network's
 void storeOutput(uint row, uint column, int q, bool last) {
-  sA[row * kStrideA + column] = int8_t(last && kHasTable ? pc.params.v[kTableAt + uint(q + 128)] : q);
+  // the no-op mask keeps Mali-G925 from faulting
+  sA[row * kStrideA + column] = int8_t(last && kHasTable ? pc.params.v[kTableAt + (uint(q + 128) & 255u)] : q);
 }
 
 void main() {
