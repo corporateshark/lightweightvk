@@ -1359,15 +1359,20 @@ void attributeSupport(uint local, uint base, uint probe, bool inside) {
   for (uint k = 0; k != kPointsPerThread; k++) {
     pc.nlg.labels.v[base + t + k * kFunctionThreads] = kNoOwner;
   }
+  sReceived[t] = 0u;
   sync();
   {
     uint bp = pc.nlg.bakePoints.v[t];
     if (validAt(bp) && (pc.mode == 2u || pc.nlg.bakeLight.v[local * kBakePoints + t].w < kProbeBackfaceLimit)) {
       pc.nlg.labels.v[base + bp] = t;
+      setReceived(bp);
     }
   }
   sync();
+  // a point is relaxed only over the neighbours whose labels changed in the previous pass (received) or so far in this one (new),
+  // as the others gave it what they have already (a change it misses is relaxed in the next pass); the min converges to the same labels
   for (uint pass = 0; pass != 64; pass++) {
+    sNew[t] = 0u;
     if (t == 0u) {
       sFlag = 0u;
     }
@@ -1386,24 +1391,23 @@ void attributeSupport(uint local, uint base, uint probe, bool inside) {
           continue;
         }
         uint j = pc.nlg.neighbours.v[i * kSupportNeighbours + n];
-        if (!validAt(j)) {
+        if (!receivedAt(j) && !newAt(j)) {
           continue;
         }
         uint pj = pc.nlg.labels.v[base + j];
-        if ((pj & 0xFFFFu) == 0xFFFFu) {
-          continue;
-        }
         float dj = unpackHalf2x16(pj >> 16).x + distance(pc.nlg.points.v[j].xyz, pi);
         uint candidate = (packHalf2x16(vec2(dj, 0.0)) << 16) | (pj & 0xFFFFu);
         best = min(best, candidate);
       }
       if (best < current) {
         pc.nlg.labels.v[base + i] = best;
+        setNew(i);
         sFlag = 1u;
       }
     }
     sync();
     uint changed = sFlag;
+    sReceived[t] = sNew[t];
     barrier();
     if (changed == 0u) {
       break;
