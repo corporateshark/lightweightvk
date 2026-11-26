@@ -29,7 +29,7 @@
  * `--no-ml-emulation` to disable it). `--no-nss` starts with NSS disabled,
  * `--camera-rotate` rotates the camera continuously (temporal stability test; combine with `--screenshot-frame`),
  * `--ao-samples N` sets the number of ambient occlusion rays per pixel (4 by default, 1 on Android, 0 disables it), `--timings` also prints
- * the GPU time of every stage to the log.
+ * the GPU time of every stage to the log, and every 600 frames that of every NSS pass and layer.
  * `--full-res` starts with the scene rendered at the output resolution and NSS off, which is what NSS is compared
  * against; the "F" key and the render mode combo box switch between the two at run time.
  *
@@ -1724,12 +1724,84 @@ struct NeuralSuperSampling {
     uint32_t groups = 0;
     size_t weightsAt = 0;
     size_t paramsAt = 0;
+    char name[96] = {};
   };
   std::vector<CooperativeDispatch> cooperativeDispatches;
   std::vector<lvk::Holder<lvk::BufferHandle>> cooperativeActivations;
   std::vector<lvk::BufferHandle> activationBuffers; // of every activation, the tensors' buffers included
   lvk::Holder<lvk::BufferHandle> cooperativeWeights;
   lvk::Holder<lvk::BufferHandle> cooperativeParams;
+  // the GPU time of every pass (every layer of the cooperative matrices), with `--timings`
+  enum {
+    kPassSlots = 4,
+    kMaxPassTimestamps = 24,
+  };
+  bool profilePasses = false;
+  lvk::Holder<lvk::QueryPoolHandle> queryPoolPasses;
+  uint32_t passSlotTimestamps[kPassSlots] = {}; // written into a slot and not read back yet
+  const char* passSlotNames[kPassSlots][kMaxPassTimestamps] = {};
+  uint32_t numPassTimestamps = 0;
+  double passTimes[kMaxPassTimestamps] = {}; // ms, summed over passFrames
+  const char* passNames[kMaxPassTimestamps] = {};
+  uint32_t numPassTimes = 0;
+  uint32_t passFrames = 0;
+
+  // reads back the timestamps of the slot this frame writes, 4 frames old, then writes timestamp 0
+  void beginPasses(lvk::IContext* ctx, lvk::ICommandBuffer& buffer) {
+    if (!profilePasses) {
+      return;
+    }
+    const uint32_t slot = frameIndex % kPassSlots;
+    const uint32_t num = passSlotTimestamps[slot];
+    if (num) {
+      uint64_t timestamps[kMaxPassTimestamps] = {};
+      ctx->getQueryPoolResults(queryPoolPasses, slot * kMaxPassTimestamps, num, sizeof(uint64_t) * num, timestamps, sizeof(uint64_t));
+      if (num != numPassTimes) {
+        passFrames = 0;
+        numPassTimes = num;
+        std::fill(passTimes, passTimes + kMaxPassTimestamps, 0.0);
+      }
+      for (uint32_t i = 1; i != num; i++) {
+        passTimes[i] += double(timestamps[i] - timestamps[i - 1]) * ctx->getTimestampPeriodToMs();
+        passNames[i] = passSlotNames[slot][i];
+      }
+      passFrames++;
+    }
+    passSlotTimestamps[slot] = 0;
+    buffer.cmdResetQueryPool(queryPoolPasses, slot * kMaxPassTimestamps, kMaxPassTimestamps);
+    numPassTimestamps = 0;
+    markPass(buffer, nullptr);
+  }
+  void markPass(lvk::ICommandBuffer& buffer, const char* name) {
+    if (!profilePasses) {
+      return;
+    }
+    LVK_ASSERT(numPassTimestamps < kMaxPassTimestamps);
+    const uint32_t slot = frameIndex % kPassSlots;
+    passSlotNames[slot][numPassTimestamps] = name;
+    buffer.cmdWriteTimestamp(queryPoolPasses, slot * kMaxPassTimestamps + numPassTimestamps++);
+  }
+  void endPasses() {
+    if (profilePasses) {
+      passSlotTimestamps[frameIndex % kPassSlots] = numPassTimestamps;
+    }
+  }
+  // the mean of every pass since the last call
+  void logPassTimes() {
+    if (!passFrames) {
+      return;
+    }
+    double total = 0.0;
+    for (uint32_t i = 1; i != numPassTimes; i++) {
+      total += passTimes[i];
+    }
+    LLOGL("NSS GPU time per pass, ms (mean of %u frames, total %.2f):\n", passFrames, total / passFrames);
+    for (uint32_t i = 1; i != numPassTimes; i++) {
+      LLOGL("  %6.2f  %4.1f%%  %s\n", passTimes[i] / passFrames, 100.0 * passTimes[i] / total, passNames[i]);
+    }
+    passFrames = 0;
+    std::fill(passTimes, passTimes + kMaxPassTimestamps, 0.0);
+  }
 
   static float halton(int32_t index, int32_t base) {
     float f = 1.0f;
@@ -2022,6 +2094,21 @@ struct NeuralSuperSampling {
             .weightsAt = weightsAt,
             .paramsAt = paramsAt,
         };
+        snprintf(dispatch.name,
+                 sizeof(dispatch.name),
+                 "layer %u: %ux%u/%u%s, %u -> %u channels, %ux%u, %ux%u tiles, %u rows",
+                 (uint32_t)cooperativeDispatches.size(),
+                 (uint32_t)layer.kernelShape.y,
+                 (uint32_t)layer.kernelShape.z,
+                 (uint32_t)layer.stride,
+                 layer.upsample ? " upsampled" : "",
+                 (uint32_t)layer.kernelShape.w,
+                 (uint32_t)layer.kernelShape.x,
+                 (uint32_t)layer.outputShape.z,
+                 (uint32_t)layer.outputShape.y,
+                 tile.m,
+                 tile.n,
+                 rows);
         dispatch.pipeline = ctx->createComputePipeline({.smComp = dispatch.sm, .debugName = "NSS: cooperative matrices"});
         cooperativeDispatches.push_back(std::move(dispatch));
       }
@@ -2047,6 +2134,7 @@ struct NeuralSuperSampling {
             1000.0 * (glfwGetTime() - start));
     }
 
+    queryPoolPasses = ctx->createQueryPool(kPassSlots * kMaxPassTimestamps, "Query pool: NSS passes");
     supported = graphReady || cooperativeReady;
     path = graphReady ? NssPath_DataGraph : NssPath_Cooperative;
     resetHistory = true;
@@ -2118,6 +2206,7 @@ struct NeuralSuperSampling {
     resetHistory = false;
 
     const NssConstants constants = makeConstants(reset);
+    beginPasses(ctx, buffer);
     buffer.cmdUpdateBuffer(bufConstants, 0, sizeof(constants), &constants);
 
     const lvk::TextureHandle lumaDerivTm1 = texLumaDeriv[(frameIndex + 1) & 1];
@@ -2168,6 +2257,7 @@ struct NeuralSuperSampling {
                            .buffers = {bufConstants},
                        });
     buffer.cmdPopDebugGroupLabel();
+    markPass(buffer, "depth scatter");
 
     // the cooperative matrices read and write the tensors' buffers directly
     const bool isGraph = path == NssPath_DataGraph;
@@ -2187,11 +2277,13 @@ struct NeuralSuperSampling {
             .tensors = {tensorsInput, isGraph ? 1u : 0u},
         });
     buffer.cmdPopDebugGroupLabel();
+    markPass(buffer, "preprocess");
 
     if (isGraph) {
       buffer.cmdPushDebugGroupLabel("NSS: data graph", 0xff0000ff);
       buffer.cmdDispatchDataGraph(pipelineGraph, graphInputs, graphOutputs);
       buffer.cmdPopDebugGroupLabel();
+      markPass(buffer, "data graph");
     } else {
       buffer.cmdPushDebugGroupLabel("NSS: cooperative matrices", 0xff0000ff);
       for (const CooperativeDispatch& layer : cooperativeDispatches) {
@@ -2207,6 +2299,7 @@ struct NeuralSuperSampling {
             .params = ctx->gpuAddress(cooperativeParams, layer.paramsAt),
         });
         buffer.cmdDispatch({layer.groups, 1, 1}, {.buffers = {source0, source1, destination}});
+        markPass(buffer, layer.name);
       }
       buffer.cmdPopDebugGroupLabel();
     }
@@ -2233,6 +2326,7 @@ struct NeuralSuperSampling {
                              .tensors = {tensorsFeedback, isGraph ? 1u : 0u},
                          });
       buffer.cmdPopDebugGroupLabel();
+      markPass(buffer, "feedback to texture");
     }
 
     buffer.cmdPushDebugGroupLabel("NSS: postprocess", 0xff0000ff);
@@ -2246,6 +2340,8 @@ struct NeuralSuperSampling {
                            .tensors = {tensorsOutput, isGraph ? 2u : 0u},
                        });
     buffer.cmdPopDebugGroupLabel();
+    markPass(buffer, "postprocess");
+    endPasses();
   }
 };
 
@@ -2354,6 +2450,7 @@ VULKAN_APP_MAIN {
 #endif // ANDROID
   }
 
+  nss_.profilePasses = measureTime;
   nss_.init(ctx_);
   // `--nss-cm` prefers the cooperative matrices to the data graph
   nss_.path = preferCooperative && nss_.cooperativeReady ? NssPath_Cooperative : nss_.path;
@@ -2646,6 +2743,9 @@ VULKAN_APP_MAIN {
             gpuTimer_.stageTime[GPUTimestamp_Scene],
             gpuTimer_.stageTime[GPUTimestamp_NSS],
             gpuTimer_.stageTime[GPUTimestamp_Present]);
+    }
+    if (measureTime && frameCounter % 600 == 0) {
+      nss_.logPassTimes();
     }
 
     frameCounter++;
