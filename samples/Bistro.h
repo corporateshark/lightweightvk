@@ -846,7 +846,7 @@ lvk::Holder<lvk::TensorHandle> createTensorWithBuffer(lvk::IContext* ctx,
   outBuffer = ctx->createBuffer({
       .usage = lvk::BufferUsageBits_Storage,
       .storage = lvk::StorageType_Device,
-      .size = lvk::getTensorDataSize(desc),
+      .size = ctx->getTensorBufferSize(desc),
       .debugName = debugName,
   });
   return ctx->createTensorBufferAliasing(outBuffer, 0, desc, debugName, outResult);

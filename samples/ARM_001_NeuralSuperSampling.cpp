@@ -1748,12 +1748,20 @@ struct NeuralSuperSampling {
       return false;
     }
 
+    auto graphTensorDesc = [](const int64_t (&dims)[4]) -> lvk::TensorDesc {
+      return {
+          .format = lvk::Format_R_I8,
+          .rank = 4,
+          .dimensions = {dims[0], dims[1], dims[2], dims[3]},
+          .usage = lvk::TensorUsageBits_DataGraph,
+      };
+    };
     // the tensors' buffers: the data graph reaches them through the tensors aliasing them, the cooperative matrices directly
-    auto createTensorBuffer = [ctx](const int64_t (&dims)[4], const char* debugName) -> lvk::Holder<lvk::BufferHandle> {
+    auto createTensorBuffer = [ctx, &graphTensorDesc](const int64_t (&dims)[4], const char* debugName) -> lvk::Holder<lvk::BufferHandle> {
       return ctx->createBuffer({
           .usage = lvk::BufferUsageBits_Storage,
           .storage = lvk::StorageType_Device,
-          .size = size_t(dims[0] * dims[1] * dims[2] * dims[3]),
+          .size = ctx->getTensorBufferSize(graphTensorDesc(dims)),
           .debugName = debugName,
       });
     };
@@ -1792,14 +1800,6 @@ struct NeuralSuperSampling {
           "NSS: VK_ARM_tensors and VK_ARM_data_graph are not available (configure with LVK_WITH_ML_EMULATION_LAYER=ON to emulate them)\n");
     }
     lvk::Result result;
-    auto graphTensorDesc = [](const int64_t (&dims)[4]) -> lvk::TensorDesc {
-      return {
-          .format = lvk::Format_R_I8,
-          .rank = 4,
-          .dimensions = {dims[0], dims[1], dims[2], dims[3]},
-          .usage = lvk::TensorUsageBits_DataGraph,
-      };
-    };
     bool tensorsReady = hasTensors;
     if (tensorsReady) {
       tensorInput = ctx->createTensorBufferAliasing(bufTensorInput, 0, graphTensorDesc(dimsInput), "NSS: input tensor", &result);
