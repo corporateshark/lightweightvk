@@ -1064,7 +1064,7 @@ void main() {
 }
 )";
 
-// a layer with too few outputs for the N of a tile, without cooperative matrices: an invocation per output pixel, all of its
+// a layer with too few outputs for the N of a large tile, without cooperative matrices: an invocation per output pixel, all of its
 // outputs; the same arithmetic, so still bit for bit what the data graph computes
 const char* kNssDirectCS = R"(
 const uint kTaps = kKernelHeight * kKernelWidth;
@@ -1134,7 +1134,7 @@ struct NeuralSuperSampling {
     kFeedbackChannels = 4,
     kJitterPhaseCount = 8 * 2 * 2,
     kCooperativeTilesPerGroup = 4, // of `kNssCooperativeCS`
-    kCooperativeMaxMultiRowTile = 16 * 16, // larger tiles compute one output row
+    kCooperativeMaxMultiRowTile = 16 * 16, // larger tiles compute one output row, and a layer of too few outputs directly
   };
   static_assert(FFX_NSS_THREAD_GROUP_WIDTH == FFX_NSS_THREAD_GROUP_HEIGHT, "The dispatches below assume square thread groups");
   inline static uint32_t kGraphWidth = 0;
@@ -2140,8 +2140,9 @@ struct NeuralSuperSampling {
       for (const CooperativeLayer& layer : layers) {
         const size_t weightsAt = weights.size();
         const size_t paramsAt = sizeof(int32_t) * params.size();
-        // a tile would be mostly padding
-        const bool isDirect = uint32_t(layer.kernelShape.x) * 4 <= tile.n;
+        // a tile would be mostly padding; only large tiles are slower than a compute shader (16x16 ones are faster on desktop)
+        const bool isMostlyPadding = uint32_t(layer.kernelShape.x) * 4 <= tile.n;
+        const bool isDirect = isMostlyPadding && tile.m * tile.n > kCooperativeMaxMultiRowTile;
         const std::string code = kNssCooperativeExtensions + buildCooperativeLayer(layer, tile, isDirect, weights, params) + kNssLayerCS +
                                  (isDirect ? kNssDirectCS : kNssCooperativeCS);
         const uint32_t rows = getCooperativeRows(layer, tile);
