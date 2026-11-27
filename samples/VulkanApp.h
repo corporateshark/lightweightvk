@@ -175,6 +175,9 @@ class VulkanApp {
   bool imguiClearMouseNextFrame_ = false;
   std::unique_ptr<TarFileReader> tarReader_;
   std::string tarBasePath_;
+  std::string pipelineCacheFile_; // in the internal storage: the driver compiles a pipeline on the first run only
+  std::vector<uint8_t> pipelineCacheData_; // what the file holds
+  void savePipelineCache();
 #endif // ANDROID
   std::unique_ptr<lvk::IContext> ctx_;
   mutable lvk::Holder<lvk::TextureHandle> depthTexture_;

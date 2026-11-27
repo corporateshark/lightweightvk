@@ -181,6 +181,8 @@ static void handle_cmd(android_app* androidApp, int32_t cmd) {
 
   LLOGD("handle_cmd(%s)", cmdToString(cmd));
 
+  app->savePipelineCache();
+
   switch (cmd) {
   case APP_CMD_INIT_WINDOW:
     if (androidApp->window) {
@@ -416,6 +418,13 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   }
 
 #if defined(ANDROID)
+  if (const char* dataPath = androidApp_->activity->internalDataPath; dataPath && !cfg_.contextConfig.pipelineCacheData) {
+    pipelineCacheFile_ = std::string(dataPath) + "/pipeline_cache.bin";
+    pipelineCacheData_ = loadFile(pipelineCacheFile_.c_str());
+    cfg_.contextConfig.pipelineCacheData = pipelineCacheData_.data();
+    cfg_.contextConfig.pipelineCacheDataSize = pipelineCacheData_.size();
+    LLOGL("Pipeline cache: %zu bytes\n", pipelineCacheData_.size());
+  }
   androidApp_->userData = this;
   androidApp_->onAppCmd = handle_cmd;
   androidApp_->onInputEvent = handle_input;
@@ -571,6 +580,9 @@ VulkanApp::~VulkanApp() {
     return;
   }
 #endif // LVK_WITH_OPENXR
+#if defined(ANDROID)
+  savePipelineCache();
+#endif // ANDROID
   ctx_ = nullptr;
 #if LVK_WITH_GLFW
   glfwDestroyWindow(window_);
@@ -949,6 +961,35 @@ std::vector<uint8_t> VulkanApp::loadFile(const char* filePath) const {
   fclose(f);
   return data;
 }
+
+#if defined(ANDROID)
+// called on every lifecycle command and when the app is destroyed: a kill without notice loses only the pipelines since the last one
+void VulkanApp::savePipelineCache() {
+  if (!ctx_ || pipelineCacheFile_.empty()) {
+    return;
+  }
+  const size_t size = ctx_->getPipelineCacheData(nullptr, 0);
+  if (!size || size == pipelineCacheData_.size()) {
+    return;
+  }
+  std::vector<uint8_t> data(size);
+  data.resize(ctx_->getPipelineCacheData(data.data(), size));
+  // a file cut short by a kill would be worse than none: write it aside and rename it over the old one
+  const std::string tmpFile = pipelineCacheFile_ + ".tmp";
+  FILE* f = fopen(tmpFile.c_str(), "wb");
+  if (!f) {
+    return;
+  }
+  const bool isWritten = fwrite(data.data(), 1, data.size(), f) == data.size();
+  fclose(f);
+  if (!isWritten || rename(tmpFile.c_str(), pipelineCacheFile_.c_str())) {
+    return;
+  }
+  pipelineCacheData_ = std::move(data);
+  cfg_.contextConfig.pipelineCacheData = pipelineCacheData_.data();
+  cfg_.contextConfig.pipelineCacheDataSize = pipelineCacheData_.size();
+}
+#endif // ANDROID
 
 #if LVK_WITH_OPENXR
 
