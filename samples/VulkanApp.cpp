@@ -22,6 +22,7 @@
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
 #include <fcntl.h>
+#include <lvk/vulkan/VulkanClasses.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -188,13 +189,36 @@ static void handle_cmd(android_app* androidApp, int32_t cmd) {
     if (androidApp->window) {
       app->width_ = ANativeWindow_getWidth(androidApp->window) / app->cfg_.framebufferScalar;
       app->height_ = ANativeWindow_getHeight(androidApp->window) / app->cfg_.framebufferScalar;
-      if (!app->ctx_)
+      if (!app->ctx_) {
         app->ctx_ = lvk::createVulkanContextWithSwapchain(androidApp->window, app->width_, app->height_, app->cfg_.contextConfig);
+      } else {
+        // back from the background: the app keeps its resources, only the window is new
+        static_cast<lvk::VulkanContext*>(app->ctx_.get())->recreateSurface(androidApp->window, nullptr, app->width_, app->height_);
+        app->depthTexture_.reset();
+      }
     }
     return;
   case APP_CMD_TERM_WINDOW:
-    app->ctx_ = nullptr;
+    // the context outlives the window (the app holds its resources): nothing is rendered until the next APP_CMD_INIT_WINDOW
+    if (app->ctx_) {
+      app->ctx_->wait({});
+    }
     return;
+  case APP_CMD_WINDOW_RESIZED: {
+    // here, on the render thread: the swapchain is never recreated while a frame is acquiring its image
+    if (!app->ctx_ || !androidApp->window) {
+      return;
+    }
+    const int w = ANativeWindow_getWidth(androidApp->window) / app->cfg_.framebufferScalar;
+    const int h = ANativeWindow_getHeight(androidApp->window) / app->cfg_.framebufferScalar;
+    if (app->width_ != w || app->height_ != h) {
+      app->width_ = w;
+      app->height_ = h;
+      app->ctx_->initSwapchain(w, h);
+      app->depthTexture_.reset();
+    }
+    return;
+  }
   }
 }
 
@@ -256,25 +280,6 @@ static int32_t handle_input(android_app* androidApp, AInputEvent* event) {
   }
 
   return 0;
-}
-
-static void resize_callback(ANativeActivity* activity, ANativeWindow* window) {
-  LLOGD("resize_callback()");
-
-  VulkanApp* app = (VulkanApp*)activity->instance;
-  const int w = ANativeWindow_getWidth(window) / app->cfg_.framebufferScalar;
-  const int h = ANativeWindow_getHeight(window) / app->cfg_.framebufferScalar;
-  if (app->width_ != w || app->height_ != h) {
-    app->width_ = w;
-    app->height_ = h;
-    if (app->ctx_) {
-      app->ctx_->initSwapchain(w, h);
-      app->depthTexture_.reset();
-      LLOGD("Swapchain recreated");
-    }
-  }
-
-  LLOGD("resize_callback()<-");
 }
 
 } // extern "C"
@@ -446,9 +451,6 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
 
   if (!ctx_)
     return;
-
-  androidApp_->activity->instance = this;
-  androidApp_->activity->callbacks->onNativeWindowResized = resize_callback;
 #else
 #if LVK_WITH_OPENXR
   if (cfg_.enableOpenXR) {
@@ -647,7 +649,9 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       accTime -= kTimeQuantum;
       simulatedTime_ += kTimeQuantum;
     }
-    if (ctx_) {
+    // without a window (in the background) the app sleeps in ALooper_pollOnce() until the next command
+    const bool hasWindow = ctx_ && androidApp_->window;
+    if (hasWindow) {
       const float ratio = width_ / (float)height_;
 
       const bool justPressed = mouseState_.pressedLeft && !imguiLastPressedLeft_;
@@ -672,7 +676,7 @@ void VulkanApp::run(DrawFrameFunc drawFrame) {
       };
       drawFrame({&view, 1}, deltaSeconds);
     }
-    if (ALooper_pollOnce(0, nullptr, &events, (void**)&source) >= 0) {
+    if (ALooper_pollOnce(hasWindow ? 0 : -1, nullptr, &events, (void**)&source) >= 0) {
       if (source) {
         source->process(androidApp_, source);
       }
