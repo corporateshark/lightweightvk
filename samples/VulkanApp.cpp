@@ -555,6 +555,22 @@ VulkanApp::VulkanApp(int argc, char* argv[], const VulkanAppConfig& cfg) : cfg_(
   imgui_ = std::make_unique<lvk::ImGuiRenderer>(
       *ctx_, window_, (folderThirdParty_ + "3D-Graphics-Rendering-Cookbook/data/OpenSans-Light.ttf").c_str(), 30.0f);
 #endif // ANDROID
+  // splash screen: the samples load their content before the first frame, the swapchain shows this one until then
+  {
+    const lvk::Framebuffer framebuffer = {.color = {{.texture = ctx_->getCurrentSwapchainTexture()}}};
+    lvk::ICommandBuffer& buffer = ctx_->acquireCommandBuffer();
+    imgui_->beginFrame(framebuffer);
+    const ImVec2 size = ImGui::GetIO().DisplaySize;
+    ImGui::PushFont(nullptr, std::min(size.x, size.y) / 16.0f);
+    const ImVec2 textSize = ImGui::CalcTextSize("Loading...");
+    ImGui::GetForegroundDrawList()->AddText(
+        ImVec2((size.x - textSize.x) * 0.5f, (size.y - textSize.y) * 0.5f), IM_COL32_WHITE, "Loading...");
+    ImGui::PopFont();
+    buffer.cmdBeginRendering({.color = {{.loadOp = lvk::LoadOp_Clear, .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}}}}, framebuffer);
+    imgui_->endFrame(buffer);
+    buffer.cmdEndRendering();
+    ctx_->submit(buffer, framebuffer.color[0].texture);
+  }
 }
 
 VulkanApp::~VulkanApp() {
