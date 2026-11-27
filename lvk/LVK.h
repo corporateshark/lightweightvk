@@ -1618,6 +1618,10 @@ struct ContextConfig {
   bool enableFragmentShadingRate = false;
 
   uint64_t maxStagingBufferSize = 128ull * 1024ull * 1024ull; // a reasonable default
+
+  // the bindless arrays start this large and double when they run out (every growth recreates all pipelines)
+  uint32_t initialMaxTextures = 16;
+  uint32_t initialMaxSamplers = 16;
 };
 
 [[nodiscard]] bool isDepthOrStencilFormat(lvk::Format format);

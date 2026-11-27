@@ -9886,8 +9886,8 @@ void lvk::VulkanContext::checkAndUpdateDescriptorSets() {
   LVK_ASSERT(texturesPool_.numObjects() >= 1);
   LVK_ASSERT(samplersPool_.numObjects() >= 1);
 
-  uint32_t newMaxTextures = std::max(dset.maxTextures, 16u);
-  uint32_t newMaxSamplers = std::max(dset.maxSamplers, 16u);
+  uint32_t newMaxTextures = std::max(dset.maxTextures, config_.initialMaxTextures);
+  uint32_t newMaxSamplers = std::max(dset.maxSamplers, config_.initialMaxSamplers);
   uint32_t newMaxAccelStructs = std::max(dset.maxAccelStructs, workaround_fixedSizeAccelStructArray_ ? 128u : 1u);
 
   while (texturesPool_.objects_.size() > newMaxTextures) {

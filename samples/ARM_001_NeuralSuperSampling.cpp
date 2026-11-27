@@ -2467,6 +2467,7 @@ VULKAN_APP_MAIN {
               .enableValidationGpuAV = false,
               .swapchainUseSurfacePreTransform = true,
               .layers = {"VK_LAYER_ML_Graph_Emulation", "VK_LAYER_ML_Tensor_Emulation"},
+              .initialMaxTextures = 1024, // room for every Bistro texture: none recreates the pipelines as it streams in
           },
   };
   VULKAN_APP_DECLARE(app, cfg);
