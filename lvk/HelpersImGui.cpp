@@ -272,11 +272,13 @@ void ImGuiRenderer::beginFrame(const lvk::Framebuffer& desc) {
   io.IniFilename = nullptr;
 
   const lvk::Format colorFormat = ctx_.getFormat(desc.color[0].texture);
-  if (pipeline_.empty() || pipelineColorFormat_ != colorFormat) {
+  const lvk::Format depthFormat = desc.depthStencil.texture ? ctx_.getFormat(desc.depthStencil.texture) : lvk::Format_Invalid;
+  if (pipeline_.empty() || pipelineColorFormat_ != colorFormat || pipelineDepthFormat_ != depthFormat) {
     // ImGui writes only into the first color attachment; `VK_EXT_dynamic_rendering_unused_attachments` allows us to leave all the
     // other attachments out of the pipeline, so that it can be used with any framebuffer layout
     pipeline_ = createNewPipelineState(hasUnusedAttachments_ ? lvk::Framebuffer{.color = {{.texture = desc.color[0].texture}}} : desc);
     pipelineColorFormat_ = colorFormat;
+    pipelineDepthFormat_ = depthFormat;
   }
 #if LVK_WITH_GLFW || LVK_WITH_SDL3
   if (window_) {
